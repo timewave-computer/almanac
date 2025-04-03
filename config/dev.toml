@@ -1,0 +1,39 @@
+# Development environment configuration
+
+[api]
+host = "127.0.0.1"
+port = 8080
+enable_http = true
+enable_graphql = true
+
+[storage]
+rocksdb_path = "./data/rocks_dev"
+postgres_url = "postgres://postgres:postgres@localhost/indexer_dev"
+rocksdb_create_if_missing = true
+postgres_max_connections = 10
+postgres_migrate = true
+
+[ethereum]
+rpc_url = "http://localhost:8545"
+chain_id = "1337" # Anvil local chain
+start_block = 0
+batch_size = 50
+polling_interval_ms = 1000
+finality_blocks = 0
+
+[cosmos]
+rpc_url = "http://localhost:26657"
+chain_id = "ufo-local-1"
+start_block = 0
+batch_size = 50
+polling_interval_ms = 1000
+
+[logging]
+level = "debug"
+file = "./logs/indexer_dev.log"
+console = true
+
+[metrics]
+enable = true
+host = "127.0.0.1"
+port = 9090 

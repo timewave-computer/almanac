@@ -1,0 +1,39 @@
+# Test environment configuration
+
+[api]
+host = "127.0.0.1"
+port = 8081
+enable_http = true
+enable_graphql = true
+
+[storage]
+rocksdb_path = "./data/rocks_test"
+postgres_url = "postgres://postgres:postgres@localhost/indexer_test"
+rocksdb_create_if_missing = true
+postgres_max_connections = 5
+postgres_migrate = true
+
+[ethereum]
+rpc_url = "http://localhost:8545"
+chain_id = "1337" # Anvil local chain
+start_block = 0
+batch_size = 25
+polling_interval_ms = 500
+finality_blocks = 0
+
+[cosmos]
+rpc_url = "http://localhost:26657"
+chain_id = "ufo-test-1"
+start_block = 0
+batch_size = 25
+polling_interval_ms = 500
+
+[logging]
+level = "info"
+file = "./logs/indexer_test.log"
+console = true
+
+[metrics]
+enable = true
+host = "127.0.0.1"
+port = 9091 

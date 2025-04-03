@@ -1,0 +1,57 @@
+# Nix
+result
+result-*
+.direnv/
+
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+yarn-debug.log
+
+# Foundry
+cache/
+out/
+forge-cache/
+broadcast/
+
+# Solidity
+artifacts/
+typechain/
+typechain-types/
+deployments/
+
+# VSCode
+.vscode/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# UFO
+/tmp/osmosis-source*
+/benchmark_results/
+
+# Runtime
+data/
+logs/
+.sqlx/
+target/
+
+# Testing
+*.log
+
+# Project specific
+*.env
+.env
+.env.local
+
+# Cache files
+.cache/
+cache/
+
+# Working files
+work/
+lib/
+.cursor/

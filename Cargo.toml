@@ -1,0 +1,62 @@
+[workspace]
+members = [
+    "crates/core",
+    "crates/ethereum",
+    "crates/cosmos",
+    "crates/storage",
+    "crates/api",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Timewave"]
+repository = "https://github.com/timewave-computer/almanac"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1.32", features = ["full"] }
+futures = "0.3"
+async-trait = "0.1"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_bytes = "0.11"
+
+# Logging and error handling
+tracing = "0.1"
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Ethereum specific
+ethers = { version = "2", features = ["ws", "rustls"] }
+reth = { version = "0.1.0-alpha.6", default-features = false }
+
+# Cosmos specific
+cosmrs = { version = "0.14", features = ["rpc"] }
+
+# Storage
+rocksdb = "0.21"
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "sqlite"] }
+
+# API
+axum = { version = "0.7", features = ["macros"] }
+tower = "0.4"
+tower-http = { version = "0.4", features = ["trace", "cors"] }
+async-graphql = { version = "6.0", features = ["chrono"] }
+async-graphql-axum = "6.0"
+
+# CLI
+clap = { version = "4.4", features = ["derive"] }
+tracing-subscriber = "0.3"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+
+[profile.dev]
+opt-level = 0
+debug = true 

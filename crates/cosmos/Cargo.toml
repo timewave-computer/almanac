@@ -1,0 +1,28 @@
+[package]
+name = "indexer-cosmos"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+# Async runtime
+tokio.workspace = true
+futures.workspace = true
+async-trait.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Logging and error handling
+tracing.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+
+# Cosmos specific
+cosmrs.workspace = true
+
+# Internal crates
+indexer-core = { path = "../core" } 

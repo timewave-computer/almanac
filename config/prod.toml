@@ -1,0 +1,39 @@
+# Production environment configuration
+
+[api]
+host = "0.0.0.0"  # Listen on all interfaces
+port = 8080
+enable_http = true
+enable_graphql = true
+
+[storage]
+rocksdb_path = "/var/lib/indexer/rocks"
+postgres_url = "postgres://indexer:${POSTGRES_PASSWORD}@postgres.internal:5432/indexer_prod"
+rocksdb_create_if_missing = true
+postgres_max_connections = 50
+postgres_migrate = false  # In production, migrations should be run separately
+
+[ethereum]
+rpc_url = "${ETH_RPC_URL}"
+chain_id = "1"  # Ethereum mainnet
+start_block = 0
+batch_size = 100
+polling_interval_ms = 2000
+finality_blocks = 20  # Wait 20 blocks for finality on mainnet
+
+[cosmos]
+rpc_url = "${COSMOS_RPC_URL}"
+chain_id = "cosmoshub-4"  # Cosmos Hub mainnet
+start_block = 0
+batch_size = 100
+polling_interval_ms = 2000
+
+[logging]
+level = "info"
+file = "/var/log/indexer/indexer.log"
+console = false  # Only log to file in production
+
+[metrics]
+enable = true
+host = "127.0.0.1"  # Only expose metrics on localhost
+port = 9090 
