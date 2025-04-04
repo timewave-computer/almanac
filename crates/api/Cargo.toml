@@ -5,31 +5,39 @@ edition.workspace = true
 authors.workspace = true
 repository.workspace = true
 license.workspace = true
+description = "API interface for the indexer"
 
 [dependencies]
-# Async runtime
-tokio = { workspace = true, features = ["full"] }
-futures = { workspace = true }
-async-trait = { workspace = true }
-
-# Web frameworks
-axum = { version = "0.7.2", features = ["macros"] }
-async-graphql = { version = "6.0.10", features = ["chrono"] }
-async-graphql-axum = "6.0.10"
-tower-http = { version = "0.4.4", features = ["trace", "cors"] }
-
-# Serialization
-serde = { workspace = true }
-serde_json = { workspace = true }
-base64 = "0.21.4"
-
-# Logging
-tracing = { workspace = true }
-
-# Error handling
-thiserror = { workspace = true }
-anyhow = { workspace = true }
-
 # Internal crates
 indexer-core = { path = "../core" }
-indexer-storage = { path = "../storage" } 
+indexer-common = { path = "../common" }
+
+# Async runtime
+tokio.workspace = true
+futures.workspace = true
+async-trait.workspace = true
+
+# Web frameworks
+axum = "0.7.9"
+tower = "0.4.13"
+tower-http = "0.4.4"
+
+# GraphQL
+async-graphql = "6.0.11"
+async-graphql-axum = "6.0.11"
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Base64 encoding for binary data
+base64 = "0.21.7"
+
+# Logging and error handling
+tracing.workspace = true
+thiserror.workspace = true
+
+[features]
+default = []
+postgres = ["indexer-core/postgres"]
+rocks = ["indexer-core/rocks"] 

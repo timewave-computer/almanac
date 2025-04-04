@@ -29,6 +29,41 @@ pub trait Event: Debug + Send + Sync {
     fn raw_data(&self) -> &[u8];
 }
 
+// Implement Event for Box<dyn Event> to solve the trait bound issues
+impl Event for Box<dyn Event> {
+    fn id(&self) -> &str {
+        (**self).id()
+    }
+
+    fn chain(&self) -> &str {
+        (**self).chain()
+    }
+
+    fn block_number(&self) -> u64 {
+        (**self).block_number()
+    }
+
+    fn block_hash(&self) -> &str {
+        (**self).block_hash()
+    }
+
+    fn tx_hash(&self) -> &str {
+        (**self).tx_hash()
+    }
+
+    fn timestamp(&self) -> SystemTime {
+        (**self).timestamp()
+    }
+
+    fn event_type(&self) -> &str {
+        (**self).event_type()
+    }
+
+    fn raw_data(&self) -> &[u8] {
+        (**self).raw_data()
+    }
+}
+
 /// Common metadata for all events
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventMetadata {

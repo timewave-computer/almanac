@@ -2,13 +2,15 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use indexer_core::event::Event;
-use indexer_core::Result;
+use indexer_common::{BlockStatus, Result};
 
 pub mod rocks;
 pub mod postgres;
 pub mod migrations;
-#[cfg(test)]
-mod tests;
+pub mod tests;
+
+// Re-export repositories from postgres module
+pub use postgres::repositories;
 
 /// Re-export contract schema types for convenience
 pub use migrations::schema::{
@@ -27,28 +29,77 @@ pub trait Storage: Send + Sync + 'static {
     
     /// Get the latest block height for a chain
     async fn get_latest_block(&self, chain: &str) -> Result<u64>;
+    
+    /// Get the latest block with a specific status for a chain
+    async fn get_latest_block_with_status(&self, chain: &str, status: BlockStatus) -> Result<u64>;
+    
+    /// Update block status
+    async fn update_block_status(&self, chain: &str, block_number: u64, status: BlockStatus) -> Result<()>;
+    
+    /// Get events with specific block status
+    async fn get_events_with_status(&self, filters: Vec<EventFilter>, status: BlockStatus) -> Result<Vec<Box<dyn Event>>>;
+}
+
+/// Default implementations for Storage trait methods
+pub mod storage_defaults {
+    use super::*;
+    
+    /// Default implementation for get_latest_block_with_status
+    pub async fn get_latest_block_with_status(
+        storage: &dyn Storage,
+        chain: &str, 
+        _status: BlockStatus
+    ) -> Result<u64> {
+        // Default implementation just returns the latest block
+        // This is compatible with chain adapters that don't support block status
+        storage.get_latest_block(chain).await
+    }
+    
+    /// Default implementation for update_block_status
+    pub async fn update_block_status(
+        _storage: &dyn Storage,
+        _chain: &str, 
+        _block_number: u64, 
+        _status: BlockStatus
+    ) -> Result<()> {
+        // Default implementation does nothing
+        // This is compatible with storage backends that don't support block status
+        Ok(())
+    }
+    
+    /// Default implementation for get_events_with_status
+    pub async fn get_events_with_status(
+        storage: &dyn Storage,
+        filters: Vec<EventFilter>, 
+        _status: BlockStatus
+    ) -> Result<Vec<Box<dyn Event>>> {
+        // Default implementation ignores status
+        // This is compatible with storage backends that don't support block status
+        storage.get_events(filters).await
+    }
 }
 
 /// Boxed storage
 pub type BoxedStorage = Arc<dyn Storage>;
 
-/// Filter for retrieving events from storage
+/// Event filter for querying events
+#[derive(Debug, Clone)]
 pub struct EventFilter {
-    /// Chain ID
+    /// Chain filter
     pub chain: Option<String>,
     
-    /// Block number range
+    /// Block range filter (min, max)
     pub block_range: Option<(u64, u64)>,
     
-    /// Timestamp range
+    /// Time range filter (min, max) in unix seconds
     pub time_range: Option<(u64, u64)>,
     
-    /// Event types
+    /// Event type filter
     pub event_types: Option<Vec<String>>,
     
-    /// Maximum number of events to return
+    /// Result limit
     pub limit: Option<usize>,
     
-    /// Offset for pagination
+    /// Result offset
     pub offset: Option<usize>,
 } 

@@ -6,18 +6,41 @@ authors.workspace = true
 repository.workspace = true
 license.workspace = true
 
+[[bin]]
+name = "run_rocks_benchmark"
+path = "src/bin/run_rocks_benchmark.rs"
+
+[[bin]]
+name = "test_rocks_transactions"
+path = "src/bin/test_rocks_transactions.rs"
+
 [dependencies]
 # Workspace dependencies
 tokio = { workspace = true }
 futures = { workspace = true }
-async-trait = { workspace = true }
+async-trait.workspace = true
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 rocksdb = { workspace = true }
-sqlx = { workspace = true }
+sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "macros", "uuid", "time", "chrono"] }
+chrono = { version = "0.4.40", features = ["serde"] }
 
 # Internal crates
-indexer-core = { path = "../core" } 
+indexer-core = { path = "../core", features = ["postgres", "rocks"] }
+indexer-common = { path = "../common", features = ["postgres", "rocks"] }
+rand = "0.8.5"
+tempfile = "3.9.0"
+
+[dev-dependencies]
+tempfile = "3.9.0"
+rand = "0.8.5"
+criterion = { version = "0.5.1", features = ["async_tokio"] }
+proptest = "1.4.0"
+
+[features]
+default = []
+rocks = []
+postgres = [] 

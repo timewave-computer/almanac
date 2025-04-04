@@ -1,96 +1,69 @@
 /// The API crate provides HTTP and GraphQL API endpoints for the indexer service
-use std::sync::Arc;
+use std::net::SocketAddr;
 
-use indexer_core::event::{Event, EventService};
-use indexer_storage::Storage;
+use indexer_common::{Result, Error};
+use indexer_core::service::BoxedEventService;
+use indexer_core::types::ApiConfig;
+use tracing::{info, error};
 
 pub mod http;
 pub mod graphql;
 
-use http::start_http_server;
-use graphql::start_graphql_server;
-
-/// Configuration for the API server
-#[derive(Clone)]
-pub struct ApiConfig {
-    /// Host to bind to
-    pub host: String,
-    
-    /// Port to listen on
-    pub port: u16,
-    
-    /// Enable GraphQL API
-    pub enable_graphql: bool,
-    
-    /// Enable HTTP API
-    pub enable_http: bool,
-}
-
-impl Default for ApiConfig {
-    fn default() -> Self {
-        Self {
-            host: "127.0.0.1".to_string(),
-            port: 8080,
-            enable_graphql: true,
-            enable_http: true,
-        }
-    }
-}
-
-/// API Server
+/// API server implementation
 pub struct ApiServer {
-    /// Configuration
+    /// API configuration
     config: ApiConfig,
     
-    /// Event services
-    event_services: Vec<Arc<dyn EventService>>,
-    
-    /// Storage backend
-    storage: Arc<dyn Storage>,
+    /// Event service
+    event_service: BoxedEventService,
 }
 
 impl ApiServer {
     /// Create a new API server
-    pub fn new(
-        config: ApiConfig,
-        event_services: Vec<Arc<dyn EventService>>,
-        storage: Arc<dyn Storage>,
-    ) -> Self {
+    pub fn new(config: ApiConfig, event_service: BoxedEventService) -> Self {
         Self {
             config,
-            event_services,
-            storage,
+            event_service,
         }
     }
     
     /// Start the API server
-    pub async fn start(&self) -> indexer_core::Result<()> {
-        if self.config.enable_http {
-            // Initialize HTTP server
+    pub async fn start(&self) -> Result<()> {
+        // Parse server address
+        let addr = format!("{}:{}", self.config.host, self.config.port)
+            .parse::<SocketAddr>()
+            .map_err(|e| Error::api(format!("Invalid server address: {}", e)))?;
+
+        info!("Starting API server on {}", addr);
+
+        // Start servers based on configuration
+        if self.config.enable_rest {
+            info!("HTTP API enabled");
+            // Using tokio::spawn to run HTTP server in background
             tokio::spawn({
-                let config = self.config.clone();
-                let storage = self.storage.clone();
+                let event_service = self.event_service.clone();
                 async move {
-                    if let Err(e) = start_http_server(&config, storage).await {
-                        tracing::error!("HTTP server error: {}", e);
+                    if let Err(e) = http::start_http_server(addr, event_service).await {
+                        error!("HTTP server error: {}", e);
                     }
                 }
             });
         }
-        
+
         if self.config.enable_graphql {
-            // Initialize GraphQL server
+            info!("GraphQL API enabled");
+            // Using tokio::spawn to run GraphQL server in background
             tokio::spawn({
-                let config = self.config.clone();
-                let storage = self.storage.clone();
+                let event_service = self.event_service.clone();
+                let graphql_addr = SocketAddr::new(addr.ip(), addr.port() + 1);
                 async move {
-                    if let Err(e) = start_graphql_server(&config, storage).await {
-                        tracing::error!("GraphQL server error: {}", e);
+                    if let Err(e) = graphql::start_graphql_server(graphql_addr, event_service).await {
+                        error!("GraphQL server error: {}", e);
                     }
                 }
             });
         }
-        
+
         Ok(())
     }
-}
+} 

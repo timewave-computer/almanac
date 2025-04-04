@@ -163,66 +163,113 @@ For development, use the provided shell scripts or the Nix commands directly. Th
 
 A high-performance cross-chain indexer supporting Ethereum and Cosmos chains with future Causality integration capability.
 
-## Quick Start
+## Project Overview
 
-To build and check the codebase, use the provided cargo-check.sh script which ensures proper environment variables are set:
+This indexer is designed to track state across Ethereum and Cosmos chains, providing both high-performance access paths via RocksDB for real-time operations and rich query capabilities via PostgreSQL for complex analytics.
 
-```bash
-# Run with all features
-./scripts/cargo-check.sh
+## Features
 
-# Run with specific features
-./scripts/cargo-check.sh --features "sqlx-postgres"
+- Multi-chain support (Ethereum and Cosmos)
+- High-performance state tracking
+- RocksDB for real-time data access
+- PostgreSQL for rich query capabilities
+- Chain reorganization handling
+- Block finality tracking for Ethereum (confirmed, safe, justified, finalized)
+- Event classification for Cosmos chains
+- Test node configuration for both Ethereum (Anvil) and Cosmos (UFO)
+- Live node integration for real networks
+
+## Development
+
+This project uses Nix for development environment management. All dependencies, tools, and runtime components are defined and managed through Nix to ensure reproducibility across development, CI/CD, and production environments.
+
+### Getting Started
+
+1. Install Nix (if not already installed):
+```
+curl -L https://nixos.org/nix/install | sh
 ```
 
-## Development Environment
-
-The project uses environment variables to configure the build process and connections to databases and nodes:
-
-- `MACOSX_DEPLOYMENT_TARGET=11.0` - Required for building on macOS
-- `SOURCE_DATE_EPOCH=1672531200` - Ensures reproducible builds
-- `DATABASE_URL="postgresql://postgres:postgres@localhost:5432/indexer"` - PostgreSQL connection
-- `ROCKSDB_PATH="./data/rocksdb"` - Path for RocksDB storage
-- `ETH_RPC_URL="http://localhost:8545"` - Ethereum node connection
-- `COSMOS_RPC_URL="http://localhost:26657"` - Cosmos node connection
-
-These variables are automatically set by the cargo-check.sh script.
-
-## Project Structure
-
-The project is organized as a Rust workspace with multiple crates:
-
-- **crates/core**: Core types, traits, and utilities used across the project
-- **crates/ethereum**: Ethereum chain adapter for indexing Ethereum chains
-- **crates/cosmos**: Cosmos chain adapter for indexing Cosmos chains
-- **crates/storage**: Storage implementations for both PostgreSQL and RocksDB
-- **crates/api**: API servers (GraphQL, REST) for querying indexed data
-
-## Database Setup
-
-The project uses PostgreSQL for relational data storage and SQLx for compile-time validated SQL:
-
-1. Make sure PostgreSQL is running locally
-2. Create a database named `indexer`:
-   ```bash
-   createdb indexer
-   ```
-3. Update the `DATABASE_URL` environment variable if necessary
-
-## Running Tests
-
-Run tests using the cargo-check.sh script:
-
-```bash
-./scripts/cargo-check.sh test
+2. Enable Flakes (if not already enabled):
+```
+# Add to ~/.config/nix/nix.conf
+experimental-features = nix-command flakes
 ```
 
-## Documentation
+3. Clone the repository:
+```
+git clone <repository-url>
+cd almanac
+```
 
-- [Work Plan](./work/00.md) - Detailed development plan and roadmap
-- [Indexer Architecture](./docs/indexer_architecture.md) - Core requirements and architectural design
-- [ADRs](./docs/adr_*.md) - Architecture Decision Records
+4. Enter the development shell:
+```
+nix develop
+```
+
+This will set up a complete development environment with all necessary dependencies.
+
+### Available Commands
+
+The following commands are available within the Nix development shell:
+
+- `nix run .#start-postgres` - Start PostgreSQL server
+- `nix run .#start-anvil` - Start Ethereum test node (Anvil)
+- `nix run .#run-ufo-node` - Start UFO node
+- `nix run .#deploy-contracts` - Deploy test contracts to Anvil
+- `nix run .#mint-tokens` - Mint tokens to an Ethereum address
+- `nix run .#ufo-mint-tokens` - Mint tokens to a Cosmos address
+- `nix run .#e2e-test` - Run Ethereum end-to-end test
+- `nix run .#ufo-e2e-test` - Run UFO end-to-end test
+- `nix run .#prepare-sqlx` - Prepare SQL migrations for sqlx
+- `nix run .#setup-test-nodes` - Configure test nodes for development
+- `nix run .#test-nodes` - Test node configuration
+- `nix run .#connect-live-nodes` - Test connection to live network nodes
+- `nix run .#run-all-nodes` - Start all nodes for development
+
+### Testing
+
+To run tests:
+
+```
+cargo test
+```
+
+For end-to-end tests with live nodes:
+
+```
+nix run .#e2e-test
+nix run .#ufo-e2e-test
+```
+
+### Development Workflow
+
+1. Enter the development environment: `nix develop`
+2. Start the required services: `nix run .#run-all-nodes`
+3. Run the application or tests as needed
+4. Make changes to the codebase
+5. Verify changes with tests
+
+## Architecture
+
+The indexer follows a modular architecture with these key components:
+
+1. **Chain Adapters** - Provide a unified interface to different blockchain networks
+2. **Storage Layer** - Manages data persistence across RocksDB and PostgreSQL
+3. **Indexing Pipeline** - Processes blockchain data efficiently
+4. **API Layer** - Exposes data through GraphQL and REST endpoints
+5. **Block Finality Tracking** - Monitors and tracks different levels of block finality:
+   - **Confirmed**: Recently mined blocks that may still be reorganized
+   - **Safe**: Blocks with enough attestations to be considered unlikely to be reorganized
+   - **Justified**: Blocks voted on by validators in the current epoch (Ethereum PoS)
+   - **Finalized**: Blocks that are permanently confirmed and cannot be reorganized
+
+See the [architecture documentation](docs/indexer_architecture.md) and [Ethereum finality documentation](docs/src/ethereum_finality.md) for more details.
+
+## Project Status
+
+The project is actively under development. See [work plan](work/00.md) for details on the current status and upcoming work.
 
 ## License
 
-MIT OR Apache-2.0
+[Insert license information here]

@@ -1,11 +1,35 @@
 [workspace]
+resolver = "2"
 members = [
+    "crates/common",
     "crates/core",
     "crates/ethereum",
     "crates/cosmos",
     "crates/storage",
     "crates/api",
 ]
+
+[package]
+name = "indexer"
+version = "0.1.0"
+edition = "2021"
+authors = ["Timewave"]
+repository = "https://github.com/timewave-computer/almanac"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+indexer-common = { path = "crates/common" }
+indexer-core = { path = "crates/core" }
+indexer-ethereum = { path = "crates/ethereum" }
+indexer-cosmos = { path = "crates/cosmos" }
+indexer-storage = { path = "crates/storage" }
+indexer-api = { path = "crates/api" }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
 
 [workspace.package]
 version = "0.1.0"
@@ -18,7 +42,7 @@ license = "MIT OR Apache-2.0"
 # Async runtime
 tokio = { version = "1.32", features = ["full"] }
 futures = "0.3"
-async-trait = "0.1"
+async-trait = "0.1.77"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -27,7 +51,7 @@ serde_bytes = "0.11"
 
 # Logging and error handling
 tracing = "0.1"
-thiserror = "1.0"
+thiserror = "1.0.50"
 anyhow = "1.0"
 
 # Ethereum specific
@@ -45,7 +69,7 @@ sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "sqlit
 axum = { version = "0.7", features = ["macros"] }
 tower = "0.4"
 tower-http = { version = "0.4", features = ["trace", "cors"] }
-async-graphql = { version = "6.0", features = ["chrono"] }
+async-graphql = { version = "6.0.10", features = ["chrono"] }
 async-graphql-axum = "6.0"
 
 # CLI

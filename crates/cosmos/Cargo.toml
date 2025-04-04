@@ -7,10 +7,22 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
+# Indexer core
+indexer-core = { path = "../core" }
+indexer-common = { path = "../common" }
+
 # Async runtime
 tokio.workspace = true
 futures.workspace = true
-async-trait.workspace = true
+async-trait = "0.1.77"
+
+# Cosmos specific
+cosmrs.workspace = true
+
+# Crypto
+sha2 = "0.10.8"
+hex = "0.4.3"
+uuid = { version = "1.6.0", features = ["v4", "serde"] }
 
 # Serialization
 serde.workspace = true
@@ -21,8 +33,5 @@ tracing.workspace = true
 thiserror.workspace = true
 anyhow.workspace = true
 
-# Cosmos specific
-cosmrs.workspace = true
-
-# Internal crates
-indexer-core = { path = "../core" } 
+[dev-dependencies]
+mockall = "0.11.4" 

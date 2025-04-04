@@ -1,249 +1,251 @@
 /// HTTP API server implementation
 use std::net::SocketAddr;
-use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::collections::HashMap;
+use std::time::UNIX_EPOCH;
 
 use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    response::{IntoResponse, Json},
     routing::{get, post},
-    extract::{Path, Query, Json, State},
-    Router, http::StatusCode,
+    Router,
 };
+use base64::prelude::*;
 use serde::{Deserialize, Serialize};
-use tower_http::trace::TraceLayer;
-use base64::{encode, decode};
+use tokio::net::TcpListener;
+use tracing::info;
 
-use indexer_core::Result;
+use indexer_common::{BlockStatus, Error, Result};
 use indexer_core::event::Event;
-use indexer_core::types::EventFilter as CoreEventFilter;
-use indexer_storage::{Storage, EventFilter};
+use indexer_core::service::BoxedEventService;
+use indexer_core::types::EventFilter;
 
-use crate::ApiConfig;
-
-/// HTTP server state
+/// State for the HTTP server
 #[derive(Clone)]
 pub struct HttpServerState {
-    /// Storage backend
-    pub storage: Arc<dyn Storage>,
+    /// Event service
+    event_service: BoxedEventService,
+}
+
+/// Response for event data
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EventResponse {
+    /// Event ID
+    pub id: String,
+    
+    /// Chain ID
+    pub chain: String,
+    
+    /// Block number
+    pub block_number: u64,
+    
+    /// Block hash
+    pub block_hash: String,
+    
+    /// Transaction hash
+    pub tx_hash: String,
+    
+    /// Timestamp
+    pub timestamp: u64,
+    
+    /// Event type
+    pub event_type: String,
+    
+    /// Event data as base64
+    pub data: String,
+}
+
+/// Request for event filters
+#[derive(Debug, Clone, Deserialize)]
+pub struct EventFilterRequest {
+    /// Chain ID
+    pub chain: Option<String>,
+    
+    /// Block range
+    pub block_range: Option<(u64, u64)>,
+    
+    /// Time range
+    pub time_range: Option<(u64, u64)>,
+    
+    /// Event types
+    pub event_types: Option<Vec<String>>,
+    
+    /// Limit
+    pub limit: Option<usize>,
+    
+    /// Offset
+    pub offset: Option<usize>,
+    
+    /// Custom filters
+    #[serde(default)]
+    pub custom_filters: HashMap<String, String>,
 }
 
 /// Start the HTTP server
 pub async fn start_http_server(
-    config: &ApiConfig, 
-    storage: Arc<dyn Storage>
+    addr: SocketAddr,
+    event_service: BoxedEventService,
 ) -> Result<()> {
-    // Create the server state
-    let state = HttpServerState {
-        storage,
-    };
+    let state = HttpServerState { event_service };
     
-    // Create the router
+    // Create router with routes
     let app = Router::new()
-        .route("/health", get(health_check))
-        .route("/events", get(get_events))
-        .route("/events/:chain/:id", get(get_event_by_id))
-        .route("/events", post(store_event))
-        .layer(TraceLayer::new_for_http())
+        .route("/events", post(get_events))
+        .route("/events/:id", get(get_event))
+        .route("/blocks/latest", get(get_latest_block))
+        .route("/blocks/latest/:status", get(get_latest_block_with_status))
+        .route("/blocks/:number", get(get_block))
+        .route("/blocks/:number/events", get(get_events_by_block))
         .with_state(state);
     
-    // Parse the address
-    let addr: SocketAddr = format!("{}:{}", config.host, config.port)
-        .parse()
-        .map_err(|e| indexer_core::Error::generic(format!("Failed to parse address: {}", e)))?;
+    info!("Starting HTTP server on {}", addr);
     
-    // Start the server
-    tracing::info!("Starting HTTP server on {}", addr);
+    // Bind to address
+    let listener = TcpListener::bind(addr).await
+        .map_err(|e| Error::api(format!("Failed to bind to address: {}", e)))?;
     
-    axum::Server::bind(&addr)
-        .serve(app.into_make_service())
-        .await
-        .map_err(|e| indexer_core::Error::generic(format!("Failed to start HTTP server: {}", e)))?;
+    // Start server
+    axum::serve(listener, app).await
+        .map_err(|e| Error::api(format!("Server error: {}", e)))?;
     
     Ok(())
 }
 
-/// Health check endpoint
-async fn health_check() -> &'static str {
-    "OK"
-}
-
-/// Event filter query parameters
-#[derive(Debug, Deserialize)]
-struct EventsQuery {
-    /// Chain ID
-    chain: Option<String>,
-    
-    /// Block range
-    block_start: Option<u64>,
-    block_end: Option<u64>,
-    
-    /// Timestamp range
-    time_start: Option<u64>,
-    time_end: Option<u64>,
-    
-    /// Event types
-    event_types: Option<String>,
-    
-    /// Pagination
-    limit: Option<usize>,
-    offset: Option<usize>,
-}
-
-impl From<EventsQuery> for EventFilter {
-    fn from(query: EventsQuery) -> Self {
-        let block_range = if query.block_start.is_some() || query.block_end.is_some() {
-            Some((
-                query.block_start.unwrap_or(0),
-                query.block_end.unwrap_or(u64::MAX),
-            ))
-        } else {
-            None
-        };
-        
-        let time_range = if query.time_start.is_some() || query.time_end.is_some() {
-            Some((
-                query.time_start.unwrap_or(0),
-                query.time_end.unwrap_or(u64::MAX),
-            ))
-        } else {
-            None
-        };
-        
-        let event_types = query.event_types.map(|s| {
-            s.split(',')
-                .map(|s| s.trim().to_string())
-                .collect()
-        });
-        
-        Self {
-            chain: query.chain,
-            block_range,
-            time_range,
-            event_types,
-            limit: query.limit,
-            offset: query.offset,
-        }
-    }
-}
-
-/// Event response
-#[derive(Debug, Serialize)]
-struct EventResponse {
-    /// Event ID
-    id: String,
-    
-    /// Chain ID
-    chain: String,
-    
-    /// Block number
-    block_number: u64,
-    
-    /// Block hash
-    block_hash: String,
-    
-    /// Transaction hash
-    tx_hash: String,
-    
-    /// Timestamp
-    timestamp: u64,
-    
-    /// Event type
-    event_type: String,
-    
-    /// Raw data as base64
-    data: String,
-}
-
-impl EventResponse {
-    /// Create a new event response from an event
-    fn from_event(event: &Box<dyn Event>) -> Self {
-        Self {
-            id: event.id().to_string(),
-            chain: event.chain().to_string(),
-            block_number: event.block_number(),
-            block_hash: event.block_hash().to_string(),
-            tx_hash: event.tx_hash().to_string(),
-            timestamp: event.timestamp().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs(),
-            event_type: event.event_type().to_string(),
-            data: base64::encode(event.raw_data().to_vec()),
-        }
-    }
-}
-
-/// Get events endpoint
+/// Get events based on filters
 async fn get_events(
     State(state): State<HttpServerState>,
-    Query(query): Query<EventsQuery>,
-) -> Result<Json<Vec<EventResponse>>, StatusCode> {
-    let filter = EventFilter::from(query);
+    Json(filter_req): Json<EventFilterRequest>,
+) -> impl IntoResponse {
+    let mut filter = EventFilter::new();
+    filter.chain = filter_req.chain;
+    filter.block_range = filter_req.block_range;
+    filter.time_range = filter_req.time_range;
+    filter.event_types = filter_req.event_types;
+    filter.limit = filter_req.limit;
+    filter.offset = filter_req.offset;
+    filter.custom_filters = filter_req.custom_filters;
     
-    let events = state.storage.get_events(vec![filter])
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    
-    let responses = events.iter()
-        .map(|event| EventResponse::from_event(event))
-        .collect();
-    
-    Ok(Json(responses))
+    match state.event_service.get_events(vec![filter]).await {
+        Ok(events) => {
+            let responses: Vec<EventResponse> = events.into_iter()
+                .map(|event| event_to_response(&event))
+                .collect();
+            (StatusCode::OK, Json(responses)).into_response()
+        }
+        Err(e) => {
+            (error_to_status_code(&e), Json(e.to_string())).into_response()
+        }
+    }
 }
 
-/// Get event by ID endpoint
-async fn get_event_by_id(
+/// Get a specific event by ID
+async fn get_event(
     State(state): State<HttpServerState>,
-    Path((chain, id)): Path<(String, String)>,
-) -> Result<Json<EventResponse>, StatusCode> {
-    let filter = EventFilter {
-        chain: Some(chain),
-        block_range: None,
-        time_range: None,
-        event_types: None,
-        limit: Some(1),
-        offset: None,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    // Use a filter to find the event by ID
+    let mut filter = EventFilter::new();
+    filter.custom_filters.insert("id".to_string(), id);
+    filter.limit = Some(1);
+    
+    match state.event_service.get_events(vec![filter]).await {
+        Ok(events) if !events.is_empty() => {
+            (StatusCode::OK, Json(event_to_response(&events[0]))).into_response()
+        }
+        Ok(_) => {
+            (StatusCode::NOT_FOUND, Json("Event not found".to_string())).into_response()
+        }
+        Err(e) => {
+            (error_to_status_code(&e), Json(e.to_string())).into_response()
+        }
+    }
+}
+
+/// Get the latest block number
+async fn get_latest_block(
+    State(state): State<HttpServerState>,
+) -> impl IntoResponse {
+    match state.event_service.get_latest_block().await {
+        Ok(block) => (StatusCode::OK, Json(block)).into_response(),
+        Err(e) => (error_to_status_code(&e), Json(e.to_string())).into_response(),
+    }
+}
+
+/// Get the latest block number with a specific status
+async fn get_latest_block_with_status(
+    State(state): State<HttpServerState>,
+    Path(status_str): Path<String>,
+) -> impl IntoResponse {
+    let status = match status_str.as_str() {
+        "confirmed" => BlockStatus::Confirmed,
+        "safe" => BlockStatus::Safe,
+        "justified" => BlockStatus::Justified,
+        "finalized" => BlockStatus::Finalized,
+        _ => return (StatusCode::BAD_REQUEST, Json("Invalid block status".to_string())).into_response(),
     };
     
-    let events = state.storage.get_events(vec![filter])
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    
-    let event = events.first()
-        .ok_or(StatusCode::NOT_FOUND)?;
-    
-    Ok(Json(EventResponse::from_event(event)))
+    match state.event_service.get_latest_block_with_status("", status).await {
+        Ok(block) => (StatusCode::OK, Json(block)).into_response(),
+        Err(e) => (error_to_status_code(&e), Json(e.to_string())).into_response(),
+    }
 }
 
-/// Event creation request
-#[derive(Debug, Deserialize)]
-struct CreateEventRequest {
-    /// Chain ID
-    chain: String,
-    
-    /// Block number
-    block_number: u64,
-    
-    /// Block hash
-    block_hash: String,
-    
-    /// Transaction hash
-    tx_hash: String,
-    
-    /// Timestamp
-    timestamp: u64,
-    
-    /// Event type
-    event_type: String,
-    
-    /// Raw data as base64
-    data: String,
+/// Get a specific block
+async fn get_block(Path(number): Path<u64>) -> impl IntoResponse {
+    (StatusCode::OK, Json(number)).into_response()
 }
 
-/// Store event endpoint
-async fn store_event(
+/// Get events for a specific block
+async fn get_events_by_block(
     State(state): State<HttpServerState>,
-    Json(request): Json<CreateEventRequest>,
-) -> Result<StatusCode, StatusCode> {
-    // In a real implementation, we would create an event from the request
-    // This is a placeholder implementation
+    Path(block_number): Path<u64>,
+) -> impl IntoResponse {
+    let mut filter = EventFilter::new();
+    filter.block_range = Some((block_number, block_number));
     
-    // Return success
-    Ok(StatusCode::CREATED)
+    match state.event_service.get_events(vec![filter]).await {
+        Ok(events) => {
+            let responses: Vec<EventResponse> = events.into_iter()
+                .map(|event| event_to_response(&event))
+                .collect();
+            (StatusCode::OK, Json(responses)).into_response()
+        }
+        Err(e) => {
+            (error_to_status_code(&e), Json(e.to_string())).into_response()
+        }
+    }
+}
+
+/// Convert an error to an HTTP status code
+fn error_to_status_code(error: &Error) -> StatusCode {
+    match error {
+        Error::Generic(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        Error::Storage(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        Error::Database(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        Error::MissingService(_) => StatusCode::NOT_FOUND,
+        Error::InvalidEvent(_) => StatusCode::BAD_REQUEST,
+        Error::Api(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        Error::RocksDB(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        Error::Serialization(_) => StatusCode::BAD_REQUEST,
+    }
+}
+
+/// Convert an event to a response
+fn event_to_response(event: &Box<dyn Event>) -> EventResponse {
+    // Convert SystemTime to u64 timestamp
+    let timestamp = event.timestamp()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+        
+    EventResponse {
+        id: event.id().to_string(),
+        chain: event.chain().to_string(),
+        block_number: event.block_number(),
+        block_hash: event.block_hash().to_string(),
+        tx_hash: event.tx_hash().to_string(),
+        timestamp,
+        event_type: event.event_type().to_string(),
+        data: BASE64_STANDARD.encode(event.raw_data()),
+    }
 } 

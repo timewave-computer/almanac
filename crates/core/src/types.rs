@@ -23,6 +23,9 @@ pub struct EventFilter {
     /// Chain ID to filter
     pub chain_id: Option<ChainId>,
     
+    /// Chain string (used in simpler interfaces)
+    pub chain: Option<String>,
+    
     /// Block number range
     pub block_range: Option<(u64, u64)>,
     
@@ -40,6 +43,22 @@ pub struct EventFilter {
     
     /// Offset for pagination
     pub offset: Option<usize>,
+}
+
+impl EventFilter {
+    /// Create a new empty event filter
+    pub fn new() -> Self {
+        Self {
+            chain_id: None,
+            chain: None,
+            block_range: None,
+            time_range: None,
+            event_types: None,
+            custom_filters: HashMap::new(),
+            limit: None,
+            offset: None,
+        }
+    }
 }
 
 /// Configuration for an indexer

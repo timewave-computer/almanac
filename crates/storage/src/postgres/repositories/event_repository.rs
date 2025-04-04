@@ -79,34 +79,84 @@ impl PostgresEventRepository {
             event_type: record.event_type,
         };
         
-        // Create a generic event container
-        let container = EventContainer {
-            metadata: metadata.clone(),
-            data: (),  // We don't have the original typed data, just the raw bytes
+        Box::new(EventWrapper {
+            metadata,
             raw_data: record.raw_data,
-        };
+        })
+    }
+    
+    /// Ensure the block for this event exists in the database
+    async fn ensure_block_exists(&self, event: &dyn Event) -> Result<()> {
+        sqlx::query!(
+            r#"
+            INSERT INTO blocks (chain, block_number, block_hash, timestamp)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (chain, block_number) DO NOTHING
+            "#,
+            event.chain(),
+            event.block_number() as i64,
+            event.block_hash(),
+            event.timestamp().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() as i64
+        )
+        .execute(&self.pool)
+        .await?;
         
-        // Box the container as a trait object
-        Box::new(container) as Box<dyn Event>
+        Ok(())
+    }
+}
+
+// Create a new type to implement Event trait
+#[derive(Debug)]
+pub struct EventWrapper {
+    metadata: EventMetadata,
+    raw_data: Vec<u8>,
+}
+
+// Implementation for our own wrapper
+impl Event for EventWrapper {
+    fn id(&self) -> &str {
+        &self.metadata.id
+    }
+    
+    fn chain(&self) -> &str {
+        &self.metadata.chain
+    }
+    
+    fn block_number(&self) -> u64 {
+        self.metadata.block_number
+    }
+    
+    fn block_hash(&self) -> &str {
+        &self.metadata.block_hash
+    }
+    
+    fn tx_hash(&self) -> &str {
+        &self.metadata.tx_hash
+    }
+    
+    fn timestamp(&self) -> SystemTime {
+        UNIX_EPOCH + std::time::Duration::from_secs(self.metadata.timestamp)
+    }
+    
+    fn event_type(&self) -> &str {
+        &self.metadata.event_type
+    }
+    
+    fn raw_data(&self) -> &[u8] {
+        &self.raw_data
     }
 }
 
 #[async_trait]
 impl EventRepository for PostgresEventRepository {
+    /// Store an event in the database
     async fn store_event(&self, event: Box<dyn Event>) -> Result<()> {
-        // Store the event in the database using sqlx
+        // Insert the event
         sqlx::query!(
             r#"
             INSERT INTO events (id, chain, block_number, block_hash, tx_hash, timestamp, event_type, raw_data)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            ON CONFLICT (id) DO UPDATE SET
-                chain = EXCLUDED.chain,
-                block_number = EXCLUDED.block_number,
-                block_hash = EXCLUDED.block_hash,
-                tx_hash = EXCLUDED.tx_hash,
-                timestamp = EXCLUDED.timestamp,
-                event_type = EXCLUDED.event_type,
-                raw_data = EXCLUDED.raw_data
+            ON CONFLICT (id) DO NOTHING
             "#,
             event.id(),
             event.chain(),
@@ -120,22 +170,8 @@ impl EventRepository for PostgresEventRepository {
         .execute(&self.pool)
         .await?;
         
-        // Update the latest block
-        sqlx::query!(
-            r#"
-            INSERT INTO blocks (chain, block_number, block_hash, timestamp)
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT (chain, block_number) DO UPDATE SET
-                block_hash = EXCLUDED.block_hash,
-                timestamp = EXCLUDED.timestamp
-            "#,
-            event.chain(),
-            event.block_number() as i64,
-            event.block_hash(),
-            event.timestamp().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() as i64
-        )
-        .execute(&self.pool)
-        .await?;
+        // Check if we need to insert a block
+        self.ensure_block_exists(event.as_ref()).await?;
         
         Ok(())
     }
@@ -185,40 +221,5 @@ impl EventRepository for PostgresEventRepository {
         let max_block = result.max_block.unwrap_or(0) as u64;
         
         Ok(max_block)
-    }
-}
-
-// This dummy implementation helps the EventContainer implement the Event trait
-impl Event for EventContainer<()> {
-    fn id(&self) -> &str {
-        &self.metadata.id
-    }
-    
-    fn chain(&self) -> &str {
-        &self.metadata.chain
-    }
-    
-    fn block_number(&self) -> u64 {
-        self.metadata.block_number
-    }
-    
-    fn block_hash(&self) -> &str {
-        &self.metadata.block_hash
-    }
-    
-    fn tx_hash(&self) -> &str {
-        &self.metadata.tx_hash
-    }
-    
-    fn timestamp(&self) -> SystemTime {
-        UNIX_EPOCH + std::time::Duration::from_secs(self.metadata.timestamp)
-    }
-    
-    fn event_type(&self) -> &str {
-        &self.metadata.event_type
-    }
-    
-    fn raw_data(&self) -> &[u8] {
-        &self.raw_data
     }
 } 

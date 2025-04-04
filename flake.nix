@@ -95,7 +95,12 @@
             echo "  nix run .#e2e-test           - Run Ethereum end-to-end test"
             echo "  nix run .#ufo-e2e-test       - Run UFO end-to-end test"
             echo "  nix run .#prepare-sqlx       - Prepare SQL migrations for sqlx"
+            echo "  nix run .#setup-test-nodes   - Configure test nodes for development"
+            echo "  nix run .#test-nodes         - Test node configuration"
+            echo "  nix run .#connect-live-nodes - Test connection to live network nodes"
             echo "  nix run .#run-all-nodes      - Start all nodes for development"
+            echo "  nix run .#storage-benchmarks - Run storage benchmark tests" 
+            echo "  nix run .#run-storage-benchmarks - Run storage benchmark tests"
           '';
         };
         
@@ -106,6 +111,43 @@
             export MACOSX_DEPLOYMENT_TARGET="${darwinDeploymentTarget}"
             export SOURCE_DATE_EPOCH="1672531200"
             ${pkgs.cargo}/bin/cargo check "$@"
+          '';
+          
+          # Test node configuration
+          setup-test-nodes = pkgs.writeShellScriptBin "setup-test-nodes" ''
+            #!/usr/bin/env bash
+            set -euo pipefail
+            
+            cd "$PWD"
+            ./scripts/setup-test-nodes.sh "$@"
+          '';
+          
+          # Test node verification
+          test-nodes = pkgs.writeShellScriptBin "test-nodes" ''
+            #!/usr/bin/env bash
+            set -euo pipefail
+            
+            cd "$PWD"
+            ./scripts/test-nodes.sh "$@"
+          '';
+          
+          # Live node connectivity
+          connect-live-nodes = pkgs.writeShellScriptBin "connect-live-nodes" ''
+            #!/usr/bin/env bash
+            set -euo pipefail
+            
+            cd "$PWD"
+            ./scripts/connect-live-nodes.sh "$@"
+          '';
+          
+          # Storage benchmark tests
+          storage-benchmarks = pkgs.writeShellScriptBin "storage-benchmarks" ''
+            #!/usr/bin/env bash
+            set -euo pipefail
+            
+            cd "$PWD"
+            export IN_NIX_SHELL=1
+            ./scripts/run-storage-benchmarks.sh "$@"
           '';
           
           # Postgres management
@@ -315,23 +357,38 @@
         
         # Apps
         apps = {
-          default = self.apps.${system}.start-postgres;
-          
-          start-postgres = {
-            type = "app";
-            program = "${self.packages.${system}.start-postgres}/bin/start-postgres";
+          # Infrastructure
+          start-postgres = flake-utils.lib.mkApp {
+            drv = self.packages.${system}.start-postgres;
           };
           
-          start-anvil = {
-            type = "app";
-            program = "${self.packages.${system}.start-anvil}/bin/start-anvil";
+          start-anvil = flake-utils.lib.mkApp {
+            drv = pkgs.writeShellScriptBin "start-anvil" ''
+              ${pkgs.foundry-bin}/bin/anvil -p 8545 "$@"
+            '';
           };
           
-          run-ufo-node = {
-            type = "app";
-            program = "${self.packages.${system}.run-ufo-node}/bin/run-ufo-node";
+          setup-test-nodes = flake-utils.lib.mkApp {
+            drv = self.packages.${system}.setup-test-nodes;
           };
           
+          test-nodes = flake-utils.lib.mkApp {
+            drv = self.packages.${system}.test-nodes;
+          };
+          
+          connect-live-nodes = flake-utils.lib.mkApp {
+            drv = self.packages.${system}.connect-live-nodes;
+          };
+          
+          run-all-nodes = flake-utils.lib.mkApp {
+            drv = self.packages.${system}.run-all-nodes;
+          };
+          
+          run-storage-benchmarks = flake-utils.lib.mkApp {
+            drv = self.packages.${system}.storage-benchmarks;
+          };
+          
+          # Development tools
           deploy-contracts = {
             type = "app";
             program = "${self.packages.${system}.deploy-contracts}/bin/deploy-contracts";
@@ -360,11 +417,6 @@
           prepare-sqlx = {
             type = "app";
             program = "${self.packages.${system}.prepare-sqlx}/bin/prepare-sqlx";
-          };
-          
-          run-all-nodes = {
-            type = "app";
-            program = "${self.packages.${system}.run-all-nodes}/bin/run-all-nodes";
           };
         };
       }
