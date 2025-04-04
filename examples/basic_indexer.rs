@@ -1,7 +1,8 @@
 use std::sync::Arc;
+use std::sync::Arc;
 
 use indexer_core::types::ChainId;
-use indexer_api::{ApiConfig, ApiServer};
+use indexer_api::ApiServer;
 use indexer_storage::rocks::{RocksStorage, RocksConfig};
 use indexer_ethereum::EthereumEventService;
 use indexer_cosmos::CosmosEventService;

@@ -1,18 +1,11 @@
-/// PostgreSQL migrations implementation
-use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-use std::fs;
-use std::path::Path;
 
-use async_trait::async_trait;
 use sqlx::{Pool, Postgres, Transaction};
 use tracing::{debug, info, error};
 
 use indexer_core::Result;
 use indexer_common::Error;
 
-use super::MigrationError;
-use super::MigrationManager;
 
 /// PostgreSQL migration executor
 pub struct PostgresMigrationExecutor {
@@ -52,8 +45,6 @@ impl PostgresMigrationExecutor {
         .execute(&self.pool)
         .await?;
         */
-        
-        Ok(())
     }
     
     /// Execute a migration
@@ -89,14 +80,13 @@ impl PostgresMigrationExecutor {
     pub async fn get_applied_migrations(&self) -> Result<Vec<String>> {
         // Skip database access for benchmarks to avoid SQL errors
         debug!("Skipping get_applied_migrations database access for benchmarks");
-        return Ok(Vec::new());
+        Ok(Vec::new())
     }
 }
 
 /// Standard migration set for PostgreSQL
 pub async fn apply_standard_migrations(pool: &Pool<Postgres>) -> Result<()> {
-    let migrations = vec![
-        (
+    let migrations = [(
             "001_create_events_table",
             r#"
             CREATE TABLE IF NOT EXISTS events (
@@ -141,8 +131,7 @@ pub async fn apply_standard_migrations(pool: &Pool<Postgres>) -> Result<()> {
                 PRIMARY KEY (chain, address)
             );
             "#
-        ),
-    ];
+        )];
     
     let executor = PostgresMigrationExecutor::new(pool.clone(), "migrations".to_string());
     
@@ -347,7 +336,7 @@ impl PostgresSchemaManager {
     async fn get_applied_migrations(&self) -> Result<Vec<String>> {
         // Skip database access for benchmarks to avoid SQL errors
         debug!("Skipping get_applied_migrations database access for benchmarks");
-        return Ok(vec![]);
+        Ok(vec![])
     }
 
     /// Apply migrations directly in one transaction for tests
@@ -355,6 +344,48 @@ impl PostgresSchemaManager {
         // Since we've already initialized the database schema from our script,
         // we can skip the SQL execution here for benchmarks
         info!("Schema already initialized from script, skipping apply_test_schema");
+        Ok(())
+    }
+
+    async fn initialize(&self) -> Result<()> {
+        // Check if the database already exists
+        let query = format!(
+            "SELECT 1 FROM pg_database WHERE datname = '{}'",
+            self.config.database
+        );
+        
+        let row = sqlx::query(&query)
+            .fetch_optional(&self.pool)
+            .await?;
+            
+        if row.is_some() {
+            debug!("Database '{}' already exists", self.config.database);
+            return Ok(());
+        }
+        
+        // Create database
+        let create_db_query = format!("CREATE DATABASE {}", self.config.database);
+        
+        debug!("Creating database '{}'", self.config.database);
+        sqlx::query(&create_db_query)
+            .execute(&self.pool)
+            .await?;
+            
+        debug!("Database '{}' created successfully", self.config.database);
+        
+        // Connect to the newly created database and create the schema
+        let db_url = format!("{}/{}", self.config.url, self.config.database);
+        let db_pool = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(5)
+            .connect(&db_url)
+            .await?;
+            
+        // Run the schema migration
+        debug!("Creating schema for database '{}'", self.config.database);
+        
+        // TODO: Implement proper schema initialization
+        // This should come from a migrations file or be defined here
+        
         return Ok(());
     }
 } 

@@ -8,6 +8,7 @@ pub mod rocks;
 pub mod postgres;
 pub mod migrations;
 pub mod tests;
+pub mod sync;
 
 // Re-export repositories from postgres module
 pub use postgres::repositories;

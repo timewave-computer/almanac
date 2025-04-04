@@ -1,5 +1,3 @@
-/// Repository for contract schemas in PostgreSQL
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use sqlx::{Pool, Postgres, FromRow};

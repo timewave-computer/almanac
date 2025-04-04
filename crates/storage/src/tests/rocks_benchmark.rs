@@ -1,17 +1,5 @@
-/// RocksDB performance benchmarking tests
-use std::time::{Duration, Instant};
-use std::sync::Arc;
-use std::thread;
 
-use indexer_core::event::Event;
-use indexer_common::{Result, BlockStatus};
-use tempfile::TempDir;
-use rand::prelude::*;
 
-use crate::rocks::{RocksStorage, RocksConfig, Key};
-use crate::EventFilter;
-use crate::Storage;
-use crate::tests::common::{create_mock_event, create_mock_events, assert_duration_less_than};
 
 // Test checkpoint 1.3.1: Benchmark RocksDB performance
 
@@ -23,6 +11,7 @@ async fn benchmark_write_performance() -> Result<()> {
     let config = RocksConfig {
         path: temp_dir.path().to_str().unwrap().to_string(),
         create_if_missing: true,
+        cache_size_mb: 128,
     };
     
     // Create the storage
@@ -70,6 +59,7 @@ async fn benchmark_read_performance() -> Result<()> {
     let config = RocksConfig {
         path: temp_dir.path().to_str().unwrap().to_string(),
         create_if_missing: true,
+        cache_size_mb: 128,
     };
     
     // Create the storage
@@ -138,6 +128,7 @@ async fn test_transaction_isolation() -> Result<()> {
     let config = RocksConfig {
         path: temp_dir.path().to_str().unwrap().to_string(),
         create_if_missing: true,
+        cache_size_mb: 128,
     };
     
     // Create the storage
@@ -158,10 +149,10 @@ async fn test_transaction_isolation() -> Result<()> {
             
             // Try to read the event
             let key = Key::new("events", "event1");
-            let result = storage_clone.get(&key);
+            
             
             // Return the result - it should either be None or a complete event, never partial
-            result
+            storage_clone.get(&key)
         })
     });
     

@@ -2792,6 +2792,7 @@ dependencies = [
  "futures",
  "indexer-common",
  "indexer-core",
+ "num_cpus",
  "proptest",
  "rand",
  "rocksdb",

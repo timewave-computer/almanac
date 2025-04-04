@@ -1,6 +1,5 @@
 /// PostgreSQL module and storage implementation
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 use std::collections::HashMap;
 
 use async_trait::async_trait;
@@ -17,10 +16,9 @@ pub mod repositories;
 pub mod migrations;
 
 // Use the repositories directly instead of using paths
-use repositories::event_repository::{EventRepository, PostgresEventRepository, EventRecord};
+use repositories::event_repository::{EventRepository, PostgresEventRepository};
 use repositories::contract_schema_repository::{
-    ContractSchemaRepository, PostgresContractSchemaRepository,
-    ContractSchemaRecord
+    ContractSchemaRepository, PostgresContractSchemaRepository
 };
 
 /// PostgreSQL storage configuration
@@ -61,7 +59,7 @@ pub struct PostgresStorage {
 #[async_trait]
 impl Storage for PostgresStorage {
     async fn store_event(&self, event: Box<dyn Event>) -> Result<()> {
-        let mut transaction = self.pool.begin().await?;
+        let transaction = self.pool.begin().await?;
         
         // Store the event using the repository
         self.event_repository.store_event(event).await?;

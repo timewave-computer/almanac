@@ -14,6 +14,18 @@ path = "src/bin/run_rocks_benchmark.rs"
 name = "test_rocks_transactions"
 path = "src/bin/test_rocks_transactions.rs"
 
+[[bin]]
+name = "test_ethereum_adapter"
+path = "src/bin/test_ethereum_adapter.rs"
+
+[[bin]]
+name = "test_cosmos_adapter"
+path = "src/bin/test_cosmos_adapter.rs"
+
+[[bin]]
+name = "test_chain_reorg"
+path = "src/bin/test_chain_reorg.rs"
+
 [dependencies]
 # Workspace dependencies
 tokio = { workspace = true }
@@ -27,6 +39,7 @@ anyhow = { workspace = true }
 rocksdb = { workspace = true }
 sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "macros", "uuid", "time", "chrono"] }
 chrono = { version = "0.4.40", features = ["serde"] }
+num_cpus = "1.16.0"
 
 # Internal crates
 indexer-core = { path = "../core", features = ["postgres", "rocks"] }

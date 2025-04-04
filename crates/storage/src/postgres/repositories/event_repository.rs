@@ -1,12 +1,10 @@
-/// Event repository implementation for PostgreSQL using sqlx
-use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
-use sqlx::{postgres::PgRow, Pool, Postgres, Row};
+use sqlx::{Pool, Postgres, Row};
 use sqlx::FromRow;
 
-use indexer_core::event::{Event, EventContainer, EventMetadata};
+use indexer_core::event::{Event, EventMetadata};
 use indexer_core::Result;
 
 use crate::EventFilter;

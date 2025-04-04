@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use tempfile::TempDir;
 
-use indexer_storage::rocks::{RocksConfig, RocksStorage, Key, WriteBatchExt};
+use indexer_storage::rocks::{RocksConfig, RocksStorage, Key};
 
 #[tokio::main]
 async fn main() {
@@ -33,7 +33,8 @@ async fn test_transaction_isolation(path: PathBuf) {
     // Initialize RocksDB
     let config = RocksConfig { 
         path: path.to_string_lossy().to_string(),
-        create_if_missing: true
+        create_if_missing: true,
+        cache_size_mb: 64,
     };
     let storage = RocksStorage::new(config).expect("Failed to create RocksDB storage");
     
@@ -49,7 +50,7 @@ async fn test_transaction_isolation(path: PathBuf) {
     
     // Create a transaction (implemented using batch operations)
     println!("Creating a transaction to update values...");
-    let batch = storage.create_write_batch();
+    let mut batch = storage.create_write_batch();
     
     // Make changes in the transaction (batch)
     batch.put(&key1, "new_value1".as_bytes());
@@ -84,7 +85,8 @@ async fn test_transaction_atomicity(path: PathBuf) {
     // Initialize RocksDB
     let config = RocksConfig { 
         path: path.to_string_lossy().to_string(),
-        create_if_missing: true
+        create_if_missing: true,
+        cache_size_mb: 64,
     };
     let storage = RocksStorage::new(config).expect("Failed to create RocksDB storage");
     
@@ -100,7 +102,7 @@ async fn test_transaction_atomicity(path: PathBuf) {
     
     // Create a transaction (batch)
     println!("Creating a transaction with multiple operations...");
-    let batch = storage.create_write_batch();
+    let mut batch = storage.create_write_batch();
     
     // Make changes in the transaction
     batch.put(&key1, "updated_value1".as_bytes());
@@ -144,7 +146,8 @@ async fn test_concurrent_access(path: PathBuf) {
     // Initialize RocksDB
     let config = RocksConfig { 
         path: path.to_string_lossy().to_string(),
-        create_if_missing: true
+        create_if_missing: true,
+        cache_size_mb: 64,
     };
     let storage = Arc::new(RocksStorage::new(config).expect("Failed to create RocksDB storage"));
     

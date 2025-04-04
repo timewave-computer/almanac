@@ -1,13 +1,9 @@
-/// Database migration system
-use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-use std::path::Path;
-use std::fs;
 
 use async_trait::async_trait;
 use sqlx::{Pool, Postgres};
 use thiserror::Error;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 use indexer_core::Result;
 use indexer_common::{Error};
@@ -397,7 +393,7 @@ pub async fn initialize_database(pool: &Pool<Postgres>) -> Result<()> {
 pub async fn get_applied_migrations(pool: &Pool<Postgres>) -> Result<Vec<String>> {
     // For benchmarks, we'll bypass database access
     debug!("Bypassing migrations table check for benchmarks");
-    return Ok(vec![]);
+    Ok(vec![])
     
     // Original implementation
     /*

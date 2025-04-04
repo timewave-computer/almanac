@@ -6,9 +6,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use async_trait::async_trait;
 use indexer_common::{BlockStatus, Error, Result};
 use indexer_core::event::Event;
-use rocksdb::{Options, DB, WriteBatch};
+use rocksdb::{Options, DB, WriteBatch, IteratorMode, Direction, BlockBasedOptions};
 use serde::{Deserialize, Serialize};
-use tracing::info;
+use tracing::debug;
 
 use crate::EventFilter;
 use crate::Storage;
@@ -21,6 +21,9 @@ pub struct RocksConfig {
     
     /// Whether to create if missing
     pub create_if_missing: bool,
+
+    /// Cache size in megabytes
+    pub cache_size_mb: usize,
 }
 
 impl Default for RocksConfig {
@@ -28,6 +31,7 @@ impl Default for RocksConfig {
         Self {
             path: "data/rocksdb".to_string(),
             create_if_missing: true,
+            cache_size_mb: 128,
         }
     }
 }
@@ -71,6 +75,11 @@ impl Key {
             id: parts[1].to_string(),
         })
     }
+
+    /// Create a prefix key for range scans
+    pub fn prefix(namespace: impl Into<String>) -> Vec<u8> {
+        format!("{}:", namespace.into()).into_bytes()
+    }
 }
 
 /// RocksDB storage
@@ -98,38 +107,127 @@ impl Storage for RocksStorage {
             raw_data: event.raw_data().to_vec(),
         })?;
         
-        self.put(&key, event_data.as_bytes())?;
+        // Start a batch operation for atomicity
+        let mut batch = self.create_write_batch();
         
-        // Update block height
-        let block_key = Key::new("blocks", &format!("{}:{}", event.chain(), event.block_number()));
-        self.put(&block_key, event.block_hash().as_bytes())?;
+        // Store the event
+        batch.put(&key, event_data.as_bytes());
+        
+        // Add secondary indexes for efficient querying
+        
+        // Chain + block index (for querying by chain and block range)
+        let chain_block_key = Key::new(
+            "index:chain_block", 
+            format!("{}:{}", event.chain(), event.block_number())
+        );
+        batch.put(&chain_block_key, event.id().as_bytes());
+        
+        // Chain + event type index (for filtering by event type)
+        let chain_type_key = Key::new(
+            "index:chain_type", 
+            format!("{}:{}", event.chain(), event.event_type())
+        );
+        batch.put(&chain_type_key, event.id().as_bytes());
+        
+        // Chain + time index (for time-based queries)
+        let timestamp = event.timestamp().duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let chain_time_key = Key::new(
+            "index:chain_time", 
+            format!("{}:{:016x}", event.chain(), timestamp)
+        );
+        batch.put(&chain_time_key, event.id().as_bytes());
+        
+        // Update latest block for chain
+        let latest_block_key = Key::new("latest_block", event.chain());
+        let current_latest = self.get(&latest_block_key)?
+            .and_then(|bytes| String::from_utf8(bytes).ok())
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(0);
+        
+        if event.block_number() > current_latest {
+            batch.put(&latest_block_key, event.block_number().to_string().as_bytes());
+        }
+        
+        // Update block hash mapping
+        let block_key = Key::new("block", format!("{}:{}", event.chain(), event.block_number()));
+        batch.put(&block_key, event.block_hash().as_bytes());
+        
+        // Write the batch
+        self.write_batch(batch)?;
         
         Ok(())
     }
     
-    async fn get_events(&self, _filters: Vec<EventFilter>) -> Result<Vec<Box<dyn Event>>> {
-        // This is a placeholder implementation
-        // In a real implementation, we would:
-        // 1. Iterate through the database with a specific prefix
-        // 2. Filter events based on the provided filters
-        // 3. Convert each event to the appropriate type
+    async fn get_events(&self, filters: Vec<EventFilter>) -> Result<Vec<Box<dyn Event>>> {
+        debug!("Getting events from RocksDB with {} filters", filters.len());
         
-        info!("Getting events from RocksDB (mock implementation)");
+        // If there are no filters, return empty results
+        if filters.is_empty() {
+            return Ok(Vec::new());
+        }
         
-        // Return an empty vector for now
-        Ok(Vec::new())
+        // We'll process each filter separately and then combine the results
+        let mut all_results: Vec<Box<dyn Event>> = Vec::new();
+        
+        for filter in filters {
+            // Determine the most efficient query strategy based on the filter
+            let event_ids = if let Some(chain) = &filter.chain {
+                if let Some((min_block, max_block)) = filter.block_range {
+                    // If we have a chain and block range, use the chain_block index
+                    self.get_event_ids_by_chain_and_block_range(chain, min_block, max_block)?
+                } else if let Some(event_types) = &filter.event_types {
+                    // If we have chain and event types, use the chain_type index
+                    self.get_event_ids_by_chain_and_event_types(chain, event_types)?
+                } else if let Some((min_time, max_time)) = filter.time_range {
+                    // If we have chain and time range, use the chain_time index
+                    self.get_event_ids_by_chain_and_time_range(chain, min_time, max_time)?
+                } else {
+                    // If we only have a chain, scan all events for that chain
+                    self.get_event_ids_by_chain(chain)?
+                }
+            } else {
+                // If no chain specified, scan all events (expensive!)
+                self.get_all_event_ids()?
+            };
+            
+            // Now get the actual events by their IDs
+            let mut events = Vec::new();
+            for id in event_ids {
+                if let Some(event) = self.get_event_by_id(&id)? {
+                    events.push(event);
+                }
+            }
+            
+            // Apply any remaining filters that weren't covered by the index lookup
+            let filtered_events = self.apply_remaining_filters(events, &filter);
+            
+            // Apply limit and offset if specified
+            let mut result = filtered_events;
+            if let Some(offset) = filter.offset {
+                result = result.into_iter().skip(offset).collect();
+            }
+            if let Some(limit) = filter.limit {
+                result = result.into_iter().take(limit).collect();
+            }
+            
+            all_results.extend(result);
+        }
+        
+        Ok(all_results)
     }
     
     async fn get_latest_block(&self, chain: &str) -> Result<u64> {
-        // This is a placeholder implementation
-        // In a real implementation, we would:
-        // 1. Use a special key to store the latest block for each chain
-        // 2. Retrieve and parse that value
+        debug!("Getting latest block for chain {}", chain);
         
-        info!("Getting latest block from RocksDB for chain {} (mock implementation)", chain);
+        let latest_block_key = Key::new("latest_block", chain);
+        let result = self.get(&latest_block_key)?
+            .and_then(|bytes| String::from_utf8(bytes).ok())
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(0);
         
-        // Return a mock value for now
-        Ok(0)
+        Ok(result)
     }
     
     async fn update_block_status(&self, chain: &str, block_number: u64, status: BlockStatus) -> Result<()> {
@@ -141,32 +239,68 @@ impl Storage for RocksStorage {
             BlockStatus::Finalized => "finalized",
         };
         
-        let key = Key::new("block_status", &format!("{}:{}", chain, block_number));
+        let key = Key::new("block_status", format!("{}:{}", chain, block_number));
         self.put(&key, status_str.as_bytes())?;
+        
+        // Also store the latest block with this status
+        let latest_status_key = Key::new(format!("latest_block_status:{}", status_str), chain);
+        let current_latest = self.get(&latest_status_key)?
+            .and_then(|bytes| String::from_utf8(bytes).ok())
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(0);
+        
+        if block_number > current_latest {
+            self.put(&latest_status_key, block_number.to_string().as_bytes())?;
+        }
         
         Ok(())
     }
     
     async fn get_latest_block_with_status(&self, chain: &str, status: BlockStatus) -> Result<u64> {
-        // This is a placeholder implementation
-        // In a real implementation, we would query for the latest block with the given status
+        debug!("Getting latest block with status {:?} for chain {}", status, chain);
         
-        info!("Getting latest block with status {:?} for chain {} (mock implementation)", status, chain);
+        let status_str = match status {
+            BlockStatus::Confirmed => "confirmed",
+            BlockStatus::Safe => "safe",
+            BlockStatus::Justified => "justified",
+            BlockStatus::Finalized => "finalized",
+        };
         
-        // For now, just return the latest block without filtering by status
-        self.get_latest_block(chain).await
+        let latest_status_key = Key::new(format!("latest_block_status:{}", status_str), chain);
+        let result = self.get(&latest_status_key)?
+            .and_then(|bytes| String::from_utf8(bytes).ok())
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(0);
+        
+        Ok(result)
     }
     
     async fn get_events_with_status(&self, filters: Vec<EventFilter>, status: BlockStatus) -> Result<Vec<Box<dyn Event>>> {
-        // This is a placeholder implementation
-        // In a real implementation, we would:
-        // 1. Get events with the basic filters
-        // 2. Filter out events from blocks that don't have the required status
+        debug!("Getting events with status {:?}", status);
         
-        info!("Getting events with status {:?} (mock implementation)", status);
+        let events = self.get_events(filters).await?;
         
-        // For now, just return all events without filtering by status
-        self.get_events(filters).await
+        // Filter events by block status
+        let mut filtered_events = Vec::new();
+        for event in events {
+            let block_status_key = Key::new("block_status", format!("{}:{}", event.chain(), event.block_number()));
+            if let Some(status_bytes) = self.get(&block_status_key)? {
+                let event_status = std::str::from_utf8(&status_bytes).unwrap_or("");
+                let matches = match status {
+                    BlockStatus::Confirmed => event_status == "confirmed" || event_status == "safe" || 
+                                             event_status == "justified" || event_status == "finalized",
+                    BlockStatus::Safe => event_status == "safe" || event_status == "justified" || event_status == "finalized",
+                    BlockStatus::Justified => event_status == "justified" || event_status == "finalized",
+                    BlockStatus::Finalized => event_status == "finalized",
+                };
+                
+                if matches {
+                    filtered_events.push(event);
+                }
+            }
+        }
+        
+        Ok(filtered_events)
     }
 }
 
@@ -175,6 +309,20 @@ impl RocksStorage {
     pub fn new(config: RocksConfig) -> Result<Self> {
         let mut opts = Options::default();
         opts.create_if_missing(config.create_if_missing);
+        
+        // Set recommended options for indexing workloads
+        opts.increase_parallelism(num_cpus::get() as i32);
+        opts.optimize_level_style_compaction(512 * 1024 * 1024); // 512MB
+        opts.set_write_buffer_size(64 * 1024 * 1024); // 64MB
+        
+        // Configure block-based table options
+        let mut block_opts = BlockBasedOptions::default();
+        if config.cache_size_mb > 0 {
+            // Set bloom filter and other block options
+            block_opts.set_bloom_filter(10.0, false);
+            block_opts.set_cache_index_and_filter_blocks(true);
+        }
+        opts.set_block_based_table_factory(&block_opts);
         
         let db = DB::open(&opts, Path::new(&config.path))
             .map_err(|e| Error::generic(format!("Failed to open RocksDB: {}", e)))?;
@@ -207,6 +355,174 @@ impl RocksStorage {
         
         Ok(())
     }
+    
+    /// Get an iterator over a range of keys with a given prefix
+    pub fn scan_prefix(&self, prefix: &[u8]) -> Result<Vec<(Vec<u8>, Vec<u8>)>> {
+        let mode = IteratorMode::From(prefix, Direction::Forward);
+        let iter = self.db.iterator(mode);
+        
+        // Create a vector to store the results
+        let mut results = Vec::new();
+        let prefix_vec = prefix.to_vec();
+        
+        // Process the iterator and handle results
+        for item in iter {
+            match item {
+                Ok((key, value)) => {
+                    let key_vec = key.to_vec();
+                    // Stop when we reach a key that doesn't have our prefix
+                    if !key_vec.starts_with(&prefix_vec) {
+                        break;
+                    }
+                    results.push((key_vec, value.to_vec()));
+                },
+                Err(e) => {
+                    return Err(Error::generic(format!("Failed to iterate RocksDB: {}", e)));
+                }
+            }
+        }
+        
+        Ok(results)
+    }
+    
+    /// Get event IDs by chain
+    fn get_event_ids_by_chain(&self, chain: &str) -> Result<Vec<String>> {
+        let prefix = Key::prefix(format!("index:chain_block:{}", chain));
+        let mut event_ids = Vec::new();
+        
+        let scan_results = self.scan_prefix(&prefix)?;
+        for (_, id_bytes) in scan_results {
+            if let Ok(id) = String::from_utf8(id_bytes.to_vec()) {
+                event_ids.push(id);
+            }
+        }
+        
+        Ok(event_ids)
+    }
+    
+    /// Get event IDs by chain and block range
+    fn get_event_ids_by_chain_and_block_range(&self, chain: &str, min_block: u64, max_block: u64) -> Result<Vec<String>> {
+        let mut event_ids = Vec::new();
+        
+        for block_num in min_block..=max_block {
+            let key = Key::new("index:chain_block", format!("{}:{}", chain, block_num));
+            if let Some(id_bytes) = self.get(&key)? {
+                if let Ok(id) = String::from_utf8(id_bytes.to_vec()) {
+                    event_ids.push(id);
+                }
+            }
+        }
+        
+        Ok(event_ids)
+    }
+    
+    /// Get event IDs by chain and event types
+    fn get_event_ids_by_chain_and_event_types(&self, chain: &str, event_types: &[String]) -> Result<Vec<String>> {
+        let mut event_ids = Vec::new();
+        
+        for event_type in event_types {
+            let key = Key::new("index:chain_type", format!("{}:{}", chain, event_type));
+            if let Some(id_bytes) = self.get(&key)? {
+                if let Ok(id) = String::from_utf8(id_bytes.to_vec()) {
+                    event_ids.push(id);
+                }
+            }
+        }
+        
+        Ok(event_ids)
+    }
+    
+    /// Get event IDs by chain and time range
+    fn get_event_ids_by_chain_and_time_range(&self, chain: &str, min_time: u64, max_time: u64) -> Result<Vec<String>> {
+        let prefix = Key::prefix(format!("index:chain_time:{}", chain));
+        let min_time_key = format!("{}:{:016x}", chain, min_time).into_bytes();
+        let max_time_key = format!("{}:{:016x}", chain, max_time).into_bytes();
+        
+        let mut event_ids = Vec::new();
+        
+        let scan_results = self.scan_prefix(&prefix)?;
+        for (key, id_bytes) in scan_results {
+            // Check if the key is within the time range
+            if key >= min_time_key && key <= max_time_key {
+                if let Ok(id) = String::from_utf8(id_bytes.to_vec()) {
+                    event_ids.push(id);
+                }
+            }
+        }
+        
+        Ok(event_ids)
+    }
+    
+    /// Get all event IDs (expensive operation)
+    fn get_all_event_ids(&self) -> Result<Vec<String>> {
+        let prefix = Key::prefix("events");
+        let mut event_ids = Vec::new();
+        
+        let scan_results = self.scan_prefix(&prefix)?;
+        for (key, _) in scan_results {
+            if let Ok(key_obj) = Key::from_bytes(&key) {
+                event_ids.push(key_obj.id);
+            }
+        }
+        
+        Ok(event_ids)
+    }
+    
+    /// Get an event by its ID
+    fn get_event_by_id(&self, id: &str) -> Result<Option<Box<dyn Event>>> {
+        let key = Key::new("events", id);
+        
+        if let Some(event_bytes) = self.get(&key)? {
+            if let Ok(event_data_str) = std::str::from_utf8(&event_bytes) {
+                if let Ok(event_data) = serde_json::from_str::<EventData>(event_data_str) {
+                    return Ok(Some(Box::new(event_data.to_mock_event())));
+                }
+            }
+        }
+        
+        Ok(None)
+    }
+    
+    /// Apply remaining filters that weren't handled by index lookups
+    fn apply_remaining_filters(&self, events: Vec<Box<dyn Event>>, filter: &EventFilter) -> Vec<Box<dyn Event>> {
+        events.into_iter().filter(|event| {
+            // Apply chain filter if specified
+            if let Some(chain) = &filter.chain {
+                if event.chain() != chain {
+                    return false;
+                }
+            }
+            
+            // Apply block range filter if specified
+            if let Some((min_block, max_block)) = filter.block_range {
+                let block_num = event.block_number();
+                if block_num < min_block || block_num > max_block {
+                    return false;
+                }
+            }
+            
+            // Apply time range filter if specified
+            if let Some((min_time, max_time)) = filter.time_range {
+                if let Ok(event_time) = event.timestamp().duration_since(UNIX_EPOCH) {
+                    let event_time_secs = event_time.as_secs();
+                    if event_time_secs < min_time || event_time_secs > max_time {
+                        return false;
+                    }
+                } else {
+                    return false;
+                }
+            }
+            
+            // Apply event type filter if specified
+            if let Some(event_types) = &filter.event_types {
+                if !event_types.is_empty() && !event_types.iter().any(|t| t == event.event_type()) {
+                    return false;
+                }
+            }
+            
+            true
+        }).collect()
+    }
 }
 
 /// Event data for serialization
@@ -237,9 +553,78 @@ struct EventData {
     pub raw_data: Vec<u8>,
 }
 
+impl EventData {
+    /// Convert to a mock event implementation
+    pub fn to_mock_event(&self) -> MockEvent {
+        MockEvent {
+            id: self.id.clone(),
+            chain: self.chain.clone(),
+            block_number: self.block_number,
+            block_hash: self.block_hash.clone(),
+            tx_hash: self.tx_hash.clone(),
+            timestamp: SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(self.timestamp),
+            event_type: self.event_type.clone(),
+            raw_data: self.raw_data.clone(),
+        }
+    }
+}
+
+/// Mock event implementation for deserialization
+#[derive(Debug)]
+struct MockEvent {
+    id: String,
+    chain: String,
+    block_number: u64,
+    block_hash: String,
+    tx_hash: String,
+    timestamp: SystemTime,
+    event_type: String,
+    raw_data: Vec<u8>,
+}
+
+impl Event for MockEvent {
+    fn id(&self) -> &str {
+        &self.id
+    }
+    
+    fn chain(&self) -> &str {
+        &self.chain
+    }
+    
+    fn block_number(&self) -> u64 {
+        self.block_number
+    }
+    
+    fn block_hash(&self) -> &str {
+        &self.block_hash
+    }
+    
+    fn tx_hash(&self) -> &str {
+        &self.tx_hash
+    }
+    
+    fn timestamp(&self) -> SystemTime {
+        self.timestamp
+    }
+    
+    fn event_type(&self) -> &str {
+        &self.event_type
+    }
+    
+    fn raw_data(&self) -> &[u8] {
+        &self.raw_data
+    }
+}
+
 /// A wrapper around WriteBatch that works with our Key type
 pub struct KeyBatch {
     batch: WriteBatch,
+}
+
+impl Default for KeyBatch {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl KeyBatch {

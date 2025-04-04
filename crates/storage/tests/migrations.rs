@@ -1,43 +1,50 @@
 //! Test for database migrations
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use indexer_core::event::{Event, EventContainer, EventMetadata};
+use indexer_core::event::Event;
 use indexer_core::Result;
 use indexer_storage::postgres::{PostgresConfig, PostgresStorage};
 use indexer_storage::Storage;
 
+#[derive(Debug)]
 struct TestEvent {
-    metadata: EventMetadata,
+    id: String,
+    chain: String,
+    block_number: u64,
+    block_hash: String,
+    tx_hash: String,
+    timestamp: SystemTime,
+    event_type: String,
     raw_data: Vec<u8>,
 }
 
 impl Event for TestEvent {
     fn id(&self) -> &str {
-        &self.metadata.id
+        &self.id
     }
     
     fn chain(&self) -> &str {
-        &self.metadata.chain
+        &self.chain
     }
     
     fn block_number(&self) -> u64 {
-        self.metadata.block_number
+        self.block_number
     }
     
     fn block_hash(&self) -> &str {
-        &self.metadata.block_hash
+        &self.block_hash
     }
     
     fn tx_hash(&self) -> &str {
-        &self.metadata.tx_hash
+        &self.tx_hash
     }
     
     fn timestamp(&self) -> SystemTime {
-        UNIX_EPOCH + std::time::Duration::from_secs(self.metadata.timestamp)
+        self.timestamp
     }
     
     fn event_type(&self) -> &str {
-        &self.metadata.event_type
+        &self.event_type
     }
     
     fn raw_data(&self) -> &[u8] {
@@ -49,14 +56,13 @@ impl Event for TestEvent {
 async fn test_postgres_migrations() -> Result<()> {
     // Skip the test if DATABASE_URL is not set
     let database_url = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost/indexer_test".to_string());
+        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/indexer_test".to_string());
     
     // Create a config that points to a test database
     let config = PostgresConfig {
-        connection_string: database_url,
+        url: database_url,
         max_connections: 5,
-        migrate: true,
-        migrations_path: "./migrations".to_string(),
+        connection_timeout: 30,
     };
     
     // Create storage instance - this will run migrations
@@ -64,15 +70,13 @@ async fn test_postgres_migrations() -> Result<()> {
     
     // Now test that we can store and retrieve events
     let event = TestEvent {
-        metadata: EventMetadata {
-            id: "test-event-1".to_string(),
-            chain: "ethereum".to_string(),
-            block_number: 12345,
-            block_hash: "0xabcdef".to_string(),
-            tx_hash: "0x123456".to_string(),
-            timestamp: 1617235200, // April 1, 2021
-            event_type: "test-event".to_string(),
-        },
+        id: "test-event-1".to_string(),
+        chain: "ethereum".to_string(),
+        block_number: 12345,
+        block_hash: "0xabcdef".to_string(),
+        tx_hash: "0x123456".to_string(),
+        timestamp: UNIX_EPOCH + std::time::Duration::from_secs(1617235200), // April 1, 2021
+        event_type: "test-event".to_string(),
         raw_data: b"test data".to_vec(),
     };
     
@@ -101,10 +105,9 @@ async fn test_postgres_storage_full() -> Result<()> {
     
     // Create a config
     let config = PostgresConfig {
-        connection_string: database_url,
+        url: database_url,
         max_connections: 5,
-        migrate: true,
-        migrations_path: "./migrations".to_string(),
+        connection_timeout: 30,
     };
     
     // Create storage instance
@@ -114,15 +117,13 @@ async fn test_postgres_storage_full() -> Result<()> {
     for i in 0..100 {
         let block_number = 1000 + i;
         let event = TestEvent {
-            metadata: EventMetadata {
-                id: format!("test-event-{}", i),
-                chain: "ethereum".to_string(),
-                block_number,
-                block_hash: format!("0xblock{}", block_number),
-                tx_hash: format!("0xtx{}", i),
-                timestamp: 1617235200 + i as u64 * 12, // 12 seconds per block
-                event_type: "test-event".to_string(),
-            },
+            id: format!("test-event-{}", i),
+            chain: "ethereum".to_string(),
+            block_number,
+            block_hash: format!("0xblock{}", block_number),
+            tx_hash: format!("0xtx{}", i),
+            timestamp: UNIX_EPOCH + std::time::Duration::from_secs(1617235200 + i * 12), // 12 seconds per block
+            event_type: "test-event".to_string(),
             raw_data: format!("test data for event {}", i).into_bytes(),
         };
         

@@ -2,10 +2,8 @@
 use std::time::{Duration, SystemTime};
 
 use indexer_core::event::Event;
-use indexer_core::Result;
 use async_trait::async_trait;
 use rand::{thread_rng, Rng};
-use chrono::{DateTime, Utc};
 
 /// Assert that a duration is less than an expected maximum
 pub fn assert_duration_less_than(actual: Duration, expected_max: Duration, message: &str) {
