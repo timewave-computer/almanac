@@ -176,12 +176,23 @@ pub async fn apply_standard_migrations(pool: &Pool<Postgres>) -> Result<()> {
 /// PostgreSQL schema manager for applying migrations
 pub struct PostgresSchemaManager {
     pool: Pool<Postgres>,
+    config: PostgresSchemaManagerConfig,
+}
+
+/// Configuration for PostgreSQL schema manager
+#[derive(Debug, Clone)]
+pub struct PostgresSchemaManagerConfig {
+    /// Database URL
+    pub url: String,
+    
+    /// Database name
+    pub database: String,
 }
 
 impl PostgresSchemaManager {
     /// Create a new schema manager
-    pub fn new(pool: Pool<Postgres>) -> Self {
-        Self { pool }
+    pub fn new(pool: Pool<Postgres>, config: PostgresSchemaManagerConfig) -> Self {
+        Self { pool, config }
     }
 
     /// Apply all pending migrations

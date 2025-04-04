@@ -14,6 +14,7 @@ use indexer_core::event::Event;
 use crate::{BoxedStorage, EventFilter};
 use crate::rocks::RocksStorage;
 use crate::postgres::PostgresStorage;
+use crate::Storage;
 
 use chrono::Utc;
 use futures::stream::FuturesUnordered;
@@ -62,6 +63,25 @@ pub struct StorageSynchronizer {
 }
 
 impl StorageSynchronizer {
+    /// Create a new storage synchronizer with any two storage implementations
+    pub async fn new_generic<P, S>(
+        primary: Arc<P>, 
+        secondary: Arc<S>,
+        config: SyncConfig
+    ) -> Self 
+    where 
+        P: Storage + 'static,
+        S: Storage + 'static
+    {
+        Self {
+            primary: primary as BoxedStorage,
+            secondary: secondary as BoxedStorage,
+            config,
+            task_handle: RwLock::new(None),
+            running: RwLock::new(false),
+        }
+    }
+    
     /// Create a new storage synchronizer with RocksDB as primary and PostgreSQL as secondary
     pub async fn new_rocks_postgres(
         rocks: Arc<RocksStorage>, 
