@@ -33,8 +33,8 @@
           mkdir -p "$LIB_PATH"
           
           if [ ! -f "$LIB_PATH/libwasmvm.dylib" ]; then
-            echo "Downloading libwasmvm ${WASMVM_VERSION} for macOS arm64..."
-            curl -L https://github.com/CosmWasm/wasmvm/releases/download/${WASMVM_VERSION}/libwasmvm.dylib.gz -o /tmp/libwasmvm.dylib.gz
+            echo "Downloading libwasmvm ''${WASMVM_VERSION} for macOS arm64..."
+            curl -L "https://github.com/CosmWasm/wasmvm/releases/download/''${WASMVM_VERSION}/libwasmvm.dylib.gz" -o /tmp/libwasmvm.dylib.gz
             gunzip -f /tmp/libwasmvm.dylib.gz
             mv /tmp/libwasmvm.dylib "$LIB_PATH/libwasmvm.dylib"
             echo "✓ libwasmvm.dylib installed to $LIB_PATH/libwasmvm.dylib"
