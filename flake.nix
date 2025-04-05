@@ -34,6 +34,7 @@
       # Import our modules
       imports = [
         ./nix/cosmos-module.nix
+        ./nix/database-module.nix
       ];
       
       systems = ["aarch64-darwin" "x86_64-linux"];
@@ -95,22 +96,6 @@
             export CARGO_TARGET_DIR="\$TMPDIR/cargo-target-reth"
             exec "${self}/scripts/test-ethereum-adapter.sh" "$@"
           '';
-          
-          # Database initialization and testing scripts
-          initDatabasesScript = pkgs.writeShellScript "init-databases-runner" ''
-            # Set postgres environment variables
-            export PGHOST=localhost
-            # Export environment variable to indicate nix shell
-            export IN_NIX_SHELL=1
-            exec "${self}/scripts/init-databases.sh" "$@"
-          '';
-          testDatabasesScript = pkgs.writeShellScript "test-databases-runner" ''
-            # Set postgres environment variables
-            export PGHOST=localhost
-            # Export environment variable to indicate nix shell
-            export IN_NIX_SHELL=1
-            exec "${self}/scripts/test-databases.sh" "$@"
-          '';
 
         in
         {
@@ -160,10 +145,6 @@
               echo "  (Database)"
               echo "  - nix run .#init-databases"
               echo "  - nix run .#test-databases"
-              
-              # Create aliases for database commands
-              alias init-databases='${self'.packages.init-databases}/bin/init-databases'
-              alias test-databases='${self'.packages.test-databases}/bin/test-databases'
             '';
           };
 
@@ -205,32 +186,6 @@
                  makeWrapper ${self'.packages.reth-pkg}/bin/reth $out/bin/start-reth --add-flags "node"
                '';
              };
-             
-             # Database tools
-             init-databases = pkgs.stdenv.mkDerivation {
-               name = "init-databases";
-               src = pkgs.lib.cleanSource ./.;
-               buildInputs = [ pkgs.makeWrapper pkgs.postgresql ];
-               installPhase = ''
-                 mkdir -p $out/bin
-                 cp scripts/init-databases.sh $out/bin/init-databases
-                 chmod +x $out/bin/init-databases
-                 wrapProgram $out/bin/init-databases \
-                   --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.postgresql pkgs.sqlx-cli ]}
-               '';
-             };
-             test-databases = pkgs.stdenv.mkDerivation {
-               name = "test-databases";
-               src = pkgs.lib.cleanSource ./.;
-               buildInputs = [ pkgs.makeWrapper pkgs.postgresql ];
-               installPhase = ''
-                 mkdir -p $out/bin
-                 cp scripts/test-databases.sh $out/bin/test-databases
-                 chmod +x $out/bin/test-databases
-                 wrapProgram $out/bin/test-databases \
-                   --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.postgresql pkgs.cargo ]}
-               '';
-             };
           };
 
           # Define runnable applications
@@ -261,15 +216,6 @@
             test-ethereum-adapter-reth = {
               type = "app";
               program = "${testEthRethScript}"; # Reference the script derivation
-            };
-            # Database Apps
-            init-databases = {
-              type = "app";
-              program = "${self'.packages.init-databases}/bin/init-databases";
-            };
-            test-databases = {
-              type = "app";
-              program = "${self'.packages.test-databases}/bin/test-databases";
             };
           };
         };

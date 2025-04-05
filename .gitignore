@@ -59,9 +59,13 @@ lib/
 # Database
 .db_env
 .sqlx/
+
+# Temp
 $TMPDIR/
+$CARGO_TARGET_DIR/
 
 # Reth Source (if cloned locally)
 /reth-src/
 
+# Valence
 valence-protocol/
