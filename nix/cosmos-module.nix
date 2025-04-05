@@ -27,23 +27,20 @@
         cargo 
       ];
       
-      # Use a different approach for libwasmvm
-      # Let's use the CosmWasm-provided download script
-      postPatch = ''
-        # Update go.mod if needed for apple silicon
-        ${pkgs.gnused}/bin/sed -i 's|github.com/CosmWasm/wasmvm/v2 v2.0.0|github.com/CosmWasm/wasmvm/v2 v2.0.0|g' go.mod
-        
-        # Create lib directory in the output
+      # Build libwasmvm from source using provided rust code
+      preBuild = ''
+        # We need to build the Rust library from source
+        # The wasmvm git repo is vendored in the wasmd source
+        cd vendor/github.com/CosmWasm/wasmvm/v2
+        make build-rust
         mkdir -p $out/lib
-        
-        # Download and extract libwasmvm directly from CosmWasm release
-        ${pkgs.curl}/bin/curl -L -o libwasmvm.tar.gz https://github.com/CosmWasm/wasmvm/releases/download/v2.0.0/libwasmvm_darwin_arm64.tar.gz
-        ${pkgs.gnutar}/bin/tar -xzf libwasmvm.tar.gz
-        cp libwasmvm.dylib $out/lib/
+        cp internal/api/libwasmvm.*.dylib $out/lib/libwasmvm.dylib || cp libwasmvm.dylib $out/lib/
+        cd -
       '';
       
       # Fix rpath in binaries
       postInstall = ''
+        # Link the built library
         for bin in $out/bin/*; do
           chmod +w $bin
           ${pkgs.darwin.cctools}/bin/install_name_tool -add_rpath $out/lib $bin
