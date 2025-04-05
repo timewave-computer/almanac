@@ -7,46 +7,28 @@
 
   perSystem = { config, self', pkgs, system, ... }:
   let
-    # --- Build wasmd from source ---
-    wasmd = pkgs.buildGoModule {
-      pname = "wasmd";
-      version = "0.31.0"; 
-      src = inputs.wasmd-src;
-      vendorHash = "sha256-sQWTbr/blbdK1MFGCgpDhyBi67LnBh/H9VVVRAJQJBA=";
-      subPackages = [ "cmd/wasmd" ];
+    # --- Use a prebuilt wasmd binary --- 
+    wasmd-bin = pkgs.stdenv.mkDerivation {
+      pname = "wasmd-bin";
+      version = "0.31.0";
       
-      # Required for CosmWasm CGo components
-      env = {
-        CGO_ENABLED = "1";
-        LEDGER_ENABLED = "false";
-      };
+      # No source needed, we're downloading a binary
+      dontUnpack = true;
       
-      nativeBuildInputs = with pkgs; [ 
-        pkg-config 
-        rustc 
-        cargo 
-      ];
-      
-      # Build libwasmvm from source using provided rust code
-      preBuild = ''
-        # We need to build the Rust library from source
-        # The wasmvm git repo is vendored in the wasmd source
-        cd vendor/github.com/CosmWasm/wasmvm/v2
-        make build-rust
-        mkdir -p $out/lib
-        cp internal/api/libwasmvm.*.dylib $out/lib/libwasmvm.dylib || cp libwasmvm.dylib $out/lib/
-        cd -
+      # Download prebuilt binary
+      buildPhase = ''
+        mkdir -p $out/bin
+        
+        # For macOS ARM64 (Apple Silicon)
+        ${pkgs.curl}/bin/curl -L -o $out/bin/wasmd https://github.com/CosmWasm/wasmd/releases/download/v0.31.0/wasmd_0.31.0_darwin_arm64
+        chmod +x $out/bin/wasmd
+        
+        # Make a symlink for clarity
+        ln -s $out/bin/wasmd $out/bin/wasmd
       '';
       
-      # Fix rpath in binaries
-      postInstall = ''
-        # Link the built library
-        for bin in $out/bin/*; do
-          chmod +w $bin
-          ${pkgs.darwin.cctools}/bin/install_name_tool -add_rpath $out/lib $bin
-          ${pkgs.darwin.cctools}/bin/install_name_tool -change @rpath/libwasmvm.dylib $out/lib/libwasmvm.dylib $bin
-        done
-      '';
+      # Skip install phase, we did everything in buildPhase
+      installPhase = "true";
     };
 
     # --- Create a script to run a wasmd test node --- 
@@ -93,7 +75,7 @@
       if [ ! -d "$NODE_HOME/config" ]; then
         echo "Initializing wasmd node configuration in $NODE_HOME..."
         mkdir -p "$NODE_HOME"
-        ${wasmd}/bin/wasmd init "$MONIKER" --chain-id "$CHAIN_ID" --home "$NODE_HOME"
+        ${wasmd-bin}/bin/wasmd init "$MONIKER" --chain-id "$CHAIN_ID" --home "$NODE_HOME"
         
         # Modify config.toml for test environment
         sed -i.bak 's/allow_duplicate_ip = false/allow_duplicate_ip = true/' "$NODE_HOME/config/config.toml"
@@ -102,22 +84,22 @@
         sed -i.bak 's/^timeout_commit = .*$/timeout_commit = "1000ms"/' "$NODE_HOME/config/config.toml"
 
         # Add validator key
-        echo -e "$KEY_MNEMONIC" | ${wasmd}/bin/wasmd keys add "$KEY_NAME" --recover --home "$NODE_HOME"
+        echo -e "$KEY_MNEMONIC" | ${wasmd-bin}/bin/wasmd keys add "$KEY_NAME" --recover --home "$NODE_HOME"
         
         # Get validator address
-        VALIDATOR_ADDR=$(${wasmd}/bin/wasmd keys show "$KEY_NAME" -a --home "$NODE_HOME")
+        VALIDATOR_ADDR=$(${wasmd-bin}/bin/wasmd keys show "$KEY_NAME" -a --home "$NODE_HOME")
         
         # Add genesis account
-        ${wasmd}/bin/wasmd add-genesis-account "$VALIDATOR_ADDR" 10000000000stake --home "$NODE_HOME"
+        ${wasmd-bin}/bin/wasmd add-genesis-account "$VALIDATOR_ADDR" 10000000000stake --home "$NODE_HOME"
         
         # Create validator transaction
-        ${wasmd}/bin/wasmd gentx "$KEY_NAME" 1000000stake --chain-id "$CHAIN_ID" --home "$NODE_HOME" 
+        ${wasmd-bin}/bin/wasmd gentx "$KEY_NAME" 1000000stake --chain-id "$CHAIN_ID" --home "$NODE_HOME" 
         
         # Collect genesis transactions
-        ${wasmd}/bin/wasmd collect-gentxs --home "$NODE_HOME"
+        ${wasmd-bin}/bin/wasmd collect-gentxs --home "$NODE_HOME"
         
         # Validate genesis
-        ${wasmd}/bin/wasmd validate-genesis --home "$NODE_HOME"
+        ${wasmd-bin}/bin/wasmd validate-genesis --home "$NODE_HOME"
       fi
 
       # Define log file path
@@ -125,7 +107,7 @@
 
       # Start the node
       echo "Starting wasmd node... Logs at $LOG_FILE"
-      ${wasmd}/bin/wasmd start \
+      ${wasmd-bin}/bin/wasmd start \
         --home "$NODE_HOME" \
         --rpc.laddr tcp://0.0.0.0:26657 \
         --grpc.address 0.0.0.0:9090 \
@@ -186,7 +168,7 @@
   in {
     # Expose packages
     packages = {
-      wasmd = wasmd;
+      wasmd = wasmd-bin;
       run-wasmd-node = run-wasmd-node;
       test-cosmos-adapter = test-cosmos-adapter;
     };
@@ -194,7 +176,7 @@
     # Create a combined shell for CosmWasm development
     devShells.cosmos = pkgs.mkShell {
       packages = [
-        wasmd
+        wasmd-bin
         run-wasmd-node
         test-cosmos-adapter
         pkgs.jq
