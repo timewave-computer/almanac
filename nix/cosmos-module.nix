@@ -26,13 +26,45 @@
           # Set up GOPATH
           export GOPATH="$HOME/go"
           export PATH="$GOPATH/bin:$PATH"
+          mkdir -p "$GOPATH/bin"
           
           # Tell wasmd to skip checking for libwasmvm
           export WASMVM_BUILD=local
           
-          # Install wasmd via Go directly with build tagging to skip CGo
-          echo "Installing wasmd via go install..."
-          go install -tags "muslc,netgo,ledger,dynamic" github.com/CosmWasm/wasmd/cmd/wasmd@v0.31.0
+          # Create a temporary directory for the build
+          TMP_DIR=$(mktemp -d)
+          cd "$TMP_DIR"
+          
+          echo "Setting up a temporary Go module..."
+          cat > main.go << 'EOF'
+          package main
+
+          import (
+            _ "github.com/CosmWasm/wasmd/cmd/wasmd"
+            "fmt"
+          )
+
+          func main() {
+            fmt.Println("This is a stub module to download wasmd")
+          }
+          EOF
+          
+          go mod init temp-wasmd
+          go mod tidy
+          
+          echo "Downloading wasmd dependencies..."
+          go get github.com/CosmWasm/wasmd/cmd/wasmd@v0.31.0
+          
+          echo "Building wasmd binary..."
+          CGO_ENABLED=0 go build -tags "muslc,netgo,ledger" -o wasmd github.com/CosmWasm/wasmd/cmd/wasmd
+          
+          # Copy the binary to GOPATH/bin
+          cp wasmd "$GOPATH/bin/"
+          chmod +x "$GOPATH/bin/wasmd"
+          
+          # Clean up
+          cd "$HOME"
+          rm -rf "$TMP_DIR"
           
           # Check installation
           if [ -f "$GOPATH/bin/wasmd" ]; then
