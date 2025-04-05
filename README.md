@@ -151,3 +151,32 @@ The project is actively under development.
 ## Credit
 
 - Cover image from [Gaine's New-York pocket almanack for the year 1789](https://www.loc.gov/resource/rbc0001.2022madison98629)
+
+## Cross-Chain Testing
+
+The project now includes full Ethereum contract implementations for testing cross-chain functionality:
+
+1. **Simplified Contract Suite**:
+   - `TestToken`: An ERC20-compatible token for cross-chain transfers
+   - `BaseAccount`: An account abstraction for controlled access
+   - `UniversalGateway`: A gateway for cross-chain message passing
+   - `EthereumProcessor`: A contract for handling cross-chain messages
+
+2. **End-to-End Test Script**:
+   The `scripts/cross_chain_e2e_test.sh` script demonstrates the full Ethereum-side functionality:
+   - Deploys all necessary contracts to an Anvil test node
+   - Configures contracts and their relationships
+   - Tests token transfers through the BaseAccount abstraction
+   - Demonstrates cross-chain message sending and delivery
+   - Verifies correct event emission for indexer integration
+
+3. **Running the Test**:
+   ```bash
+   # Run directly
+   ./scripts/cross_chain_e2e_test.sh
+   
+   # Or using Nix
+   nix run .#cross-chain-e2e-test
+   ```
+
+This implementation provides a foundation for the full cross-chain testing that will incorporate both Ethereum and Cosmos sides.

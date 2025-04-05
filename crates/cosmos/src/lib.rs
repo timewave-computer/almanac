@@ -33,7 +33,7 @@ pub mod contracts;
 
 use provider::{CosmosProvider, CosmosProviderTrait, CosmosBlockStatus};
 use subscription::{CosmosSubscription, CosmosSubscriptionConfig};
-use event::{process_valence_account_event, CosmosEvent};
+use event::{process_valence_account_event, process_valence_processor_event, process_valence_authorization_event, process_valence_library_event, CosmosEvent};
 use tracing::{debug, error, info, trace, warn}; 
 
 /// Configuration for Cosmos event service
@@ -60,6 +60,18 @@ pub struct CosmosEventServiceConfig {
     /// Known Code IDs for Valence Base Account contracts
     #[serde(default)]
     pub valence_account_code_ids: Vec<u64>,
+    
+    /// Known Code IDs for Valence Processor contracts
+    #[serde(default)]
+    pub valence_processor_code_ids: Vec<u64>,
+    
+    /// Known Code IDs for Valence Authorization contracts
+    #[serde(default)]
+    pub valence_authorization_code_ids: Vec<u64>,
+    
+    /// Known Code IDs for Valence Library contracts
+    #[serde(default)]
+    pub valence_library_code_ids: Vec<u64>,
 }
 
 impl Default for CosmosEventServiceConfig {
@@ -72,6 +84,9 @@ impl Default for CosmosEventServiceConfig {
             poll_interval_ms: 1000,
             max_parallel_requests: 5,
             valence_account_code_ids: Vec::new(),
+            valence_processor_code_ids: Vec::new(),
+            valence_authorization_code_ids: Vec::new(),
+            valence_library_code_ids: Vec::new(),
         }
     }
 }
@@ -95,6 +110,15 @@ pub struct CosmosEventService {
 
     /// Set of known Valence Account code IDs for quick lookup
     valence_account_code_id_set: HashSet<u64>,
+    
+    /// Set of known Valence Processor code IDs for quick lookup
+    valence_processor_code_id_set: HashSet<u64>,
+    
+    /// Set of known Valence Authorization code IDs for quick lookup
+    valence_authorization_code_id_set: HashSet<u64>,
+    
+    /// Set of known Valence Library code IDs for quick lookup
+    valence_library_code_id_set: HashSet<u64>,
 }
 
 impl CosmosEventService {
@@ -111,7 +135,14 @@ impl CosmosEventService {
         provider: Arc<dyn CosmosProviderTrait>,
     ) -> Result<Self> {
         let valence_account_code_id_set: HashSet<u64> = config.valence_account_code_ids.iter().cloned().collect();
-        info!(known_valence_code_ids = ?valence_account_code_id_set, "Loaded known Valence Account code IDs");
+        let valence_processor_code_id_set: HashSet<u64> = config.valence_processor_code_ids.iter().cloned().collect();
+        let valence_authorization_code_id_set: HashSet<u64> = config.valence_authorization_code_ids.iter().cloned().collect();
+        let valence_library_code_id_set: HashSet<u64> = config.valence_library_code_ids.iter().cloned().collect();
+        
+        info!(known_valence_account_ids = ?valence_account_code_id_set, "Loaded known Valence Account code IDs");
+        info!(known_valence_processor_ids = ?valence_processor_code_id_set, "Loaded known Valence Processor code IDs");
+        info!(known_valence_auth_ids = ?valence_authorization_code_id_set, "Loaded known Valence Authorization code IDs");
+        info!(known_valence_library_ids = ?valence_library_code_id_set, "Loaded known Valence Library code IDs");
         
         info!("Created Cosmos event service for chain {} with custom provider", config.chain_id);
         
@@ -122,6 +153,9 @@ impl CosmosEventService {
             block_cache: Arc::new(RwLock::new(HashMap::new())),
             storage,
             valence_account_code_id_set,
+            valence_processor_code_id_set,
+            valence_authorization_code_id_set,
+            valence_library_code_id_set,
         })
     }
     
@@ -254,6 +288,110 @@ impl CosmosEventService {
         }
     }
 
+    /// Check if a contract address corresponds to a known Valence Processor code ID.
+    async fn check_if_valence_processor(&self, contract_address: &str) -> Result<bool> {
+        // Prepare the QueryContractInfoRequest
+        let request = cosmwasm_v1::QueryContractInfoRequest {
+            address: contract_address.to_string(),
+        };
+        let request_proto_bytes = request.encode_to_vec();
+
+        // Perform the ABCI query
+        let query_path = "/cosmwasm.wasm.v1.Query/ContractInfo";
+        let response = self.provider.abci_query(Some(query_path.to_string()), request_proto_bytes, None, false).await?;
+
+        if response.code.is_err() {
+            warn!(contract_address=%contract_address, code=%response.code.value(), log=%response.log, "ABCI query for ContractInfo failed");
+            // Treat query failure as "not a valence processor" for robustness
+            return Ok(false); 
+        }
+
+        // Decode the QueryContractInfoResponse
+        match cosmwasm_v1::QueryContractInfoResponse::decode(response.value.as_slice()) {
+            Ok(info) => {
+                // TODO: Compare info.code_id against known Valence Processor code IDs
+                // This requires configuration or fetching known IDs.
+                // Placeholder: assume code ID 2 is the Valence Processor
+                let is_processor = info.code_id == 2;
+                debug!(contract_address=%contract_address, code_id=%info.code_id, is_processor=is_processor, "Checked contract code ID");
+                Ok(is_processor)
+            }
+            Err(e) => {
+                error!(contract_address=%contract_address, error=%e, "Failed to decode ContractInfoResponse");
+                Err(Error::chain("Failed to decode ContractInfoResponse".to_string()))
+            }
+        }
+    }
+    
+    /// Check if a contract address corresponds to a known Valence Authorization code ID.
+    async fn check_if_valence_authorization(&self, contract_address: &str) -> Result<bool> {
+        // Prepare the QueryContractInfoRequest
+        let request = cosmwasm_v1::QueryContractInfoRequest {
+            address: contract_address.to_string(),
+        };
+        let request_proto_bytes = request.encode_to_vec();
+
+        // Perform the ABCI query
+        let query_path = "/cosmwasm.wasm.v1.Query/ContractInfo";
+        let response = self.provider.abci_query(Some(query_path.to_string()), request_proto_bytes, None, false).await?;
+
+        if response.code.is_err() {
+            warn!(contract_address=%contract_address, code=%response.code.value(), log=%response.log, "ABCI query for ContractInfo failed");
+            // Treat query failure as "not a valence authorization" for robustness
+            return Ok(false); 
+        }
+
+        // Decode the QueryContractInfoResponse
+        match cosmwasm_v1::QueryContractInfoResponse::decode(response.value.as_slice()) {
+            Ok(info) => {
+                // TODO: Compare info.code_id against known Valence Authorization code IDs
+                // This requires configuration or fetching known IDs.
+                // Placeholder: assume code ID 3 is the Valence Authorization
+                let is_authorization = info.code_id == 3;
+                debug!(contract_address=%contract_address, code_id=%info.code_id, is_authorization=is_authorization, "Checked contract code ID");
+                Ok(is_authorization)
+            }
+            Err(e) => {
+                error!(contract_address=%contract_address, error=%e, "Failed to decode ContractInfoResponse");
+                Err(Error::chain("Failed to decode ContractInfoResponse".to_string()))
+            }
+        }
+    }
+
+    /// Check if a contract address corresponds to a known Valence Library code ID.
+    async fn check_if_valence_library(&self, contract_address: &str) -> Result<bool> {
+        // Prepare the QueryContractInfoRequest
+        let request = cosmwasm_v1::QueryContractInfoRequest {
+            address: contract_address.to_string(),
+        };
+        let request_proto_bytes = request.encode_to_vec();
+
+        // Perform the ABCI query
+        let query_path = "/cosmwasm.wasm.v1.Query/ContractInfo";
+        let response = self.provider.abci_query(Some(query_path.to_string()), request_proto_bytes, None, false).await?;
+
+        if response.code.is_err() {
+            warn!(contract_address=%contract_address, code=%response.code.value(), log=%response.log, "ABCI query for ContractInfo failed");
+            // Treat query failure as "not a valence library" for robustness
+            return Ok(false); 
+        }
+
+        // Decode the QueryContractInfoResponse
+        match cosmwasm_v1::QueryContractInfoResponse::decode(response.value.as_slice()) {
+            Ok(info) => {
+                // Compare info.code_id against known Valence Library code IDs
+                // Placeholder: assume code ID 4 is the Valence Library
+                let is_library = info.code_id == 4;
+                debug!(contract_address=%contract_address, code_id=%info.code_id, is_library=is_library, "Checked contract code ID");
+                Ok(is_library)
+            }
+            Err(e) => {
+                error!(contract_address=%contract_address, error=%e, "Failed to decode ContractInfoResponse");
+                Err(Error::chain("Failed to decode ContractInfoResponse".to_string()))
+            }
+        }
+    }
+
     /// Process the block and extract Cosmos events
     async fn process_block(&self, block: cosmrs::tendermint::Block, tx_results: Vec<cosmrs::rpc::endpoint::tx::Response>) -> Result<Vec<CosmosEvent>> {
         let mut events = Vec::new();
@@ -293,6 +431,7 @@ impl CosmosEventService {
 
                 if abci_event.kind == "wasm" {
                     if let Some(addr) = &contract_address {
+                        // Check if this is a Valence Account contract
                         match self.check_if_valence_account(addr).await {
                             Ok(true) => {
                                 // If it's a valence account, attempt processing
@@ -303,7 +442,7 @@ impl CosmosEventService {
                                     &tx_hash
                                 ).await {
                                     error!(
-                                        account_id=%cosmos_event.account_id,
+                                        account_id=%format!("{}:{}", self.config.chain_id, addr),
                                         error=%e,
                                         "Failed to process Valence Account event"
                                     );
@@ -311,6 +450,81 @@ impl CosmosEventService {
                             },
                             Ok(false) => {
                                 trace!(contract_address=%addr, "Contract is not a Valence Account.");
+                                
+                                // Check if this is a Valence Processor contract
+                                match self.check_if_valence_processor(addr).await {
+                                    Ok(true) => {
+                                        // If it's a valence processor, attempt processing
+                                        if let Err(e) = process_valence_processor_event(
+                                            &self.storage, 
+                                            &self.config.chain_id, 
+                                            &cosmos_event,
+                                            &tx_hash
+                                        ).await {
+                                            error!(
+                                                processor_id=format!("{}:{}", self.config.chain_id, addr),
+                                                error=%e,
+                                                "Failed to process Valence Processor event"
+                                            );
+                                        }
+                                    },
+                                    Ok(false) => {
+                                        trace!(contract_address=%addr, "Contract is not a Valence Processor.");
+                                        
+                                        // Check if this is a Valence Authorization contract
+                                        match self.check_if_valence_authorization(addr).await {
+                                            Ok(true) => {
+                                                // If it's a valence authorization, attempt processing
+                                                if let Err(e) = process_valence_authorization_event(
+                                                    &self.storage, 
+                                                    &self.config.chain_id, 
+                                                    &cosmos_event,
+                                                    &tx_hash
+                                                ).await {
+                                                    error!(
+                                                        auth_id=format!("{}:{}", self.config.chain_id, addr),
+                                                        error=%e,
+                                                        "Failed to process Valence Authorization event"
+                                                    );
+                                                }
+                                            },
+                                            Ok(false) => {
+                                                trace!(contract_address=%addr, "Contract is not a Valence Authorization.");
+                                                
+                                                // Check if this is a Valence Library contract
+                                                match self.check_if_valence_library(addr).await {
+                                                    Ok(true) => {
+                                                        // If it's a valence library, attempt processing
+                                                        if let Err(e) = process_valence_library_event(
+                                                            &self.storage, 
+                                                            &self.config.chain_id, 
+                                                            &cosmos_event,
+                                                            &tx_hash
+                                                        ).await {
+                                                            error!(
+                                                                library_id=format!("{}:{}", self.config.chain_id, addr),
+                                                                error=%e,
+                                                                "Failed to process Valence Library event"
+                                                            );
+                                                        }
+                                                    },
+                                                    Ok(false) => {
+                                                        trace!(contract_address=%addr, "Contract is not a Valence Library.");
+                                                    },
+                                                    Err(e) => {
+                                                        warn!(contract_address=%addr, error=%e, "Failed to check if contract is Valence Library");
+                                                    }
+                                                }
+                                            },
+                                            Err(e) => {
+                                                warn!(contract_address=%addr, error=%e, "Failed to check if contract is Valence Authorization");
+                                            }
+                                        }
+                                    },
+                                    Err(e) => {
+                                        warn!(contract_address=%addr, error=%e, "Failed to check if contract is Valence Processor");
+                                    }
+                                }
                             },
                             Err(e) => {
                                 warn!(contract_address=%addr, error=%e, "Failed to check if contract is Valence Account");

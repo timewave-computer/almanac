@@ -118,6 +118,55 @@
         '';
       };
 
+      # Gracefully stop running databases
+      stop-databases = pkgs.writeShellApplication {
+        name = "stop-databases";
+        runtimeInputs = with pkgs; [
+          postgresql
+          git
+        ];
+        text = ''
+          # Gracefully stop running database services
+          set -e
+
+          PROJECT_ROOT="$(git rev-parse --show-toplevel)"
+          echo "=== Gracefully Stopping Databases ==="
+
+          # === PostgreSQL shutdown ===
+          export PGDATA="$PROJECT_ROOT/data/postgres"
+          
+          if [ ! -d "$PGDATA" ]; then
+            echo "PostgreSQL data directory not found at $PGDATA"
+            echo "No PostgreSQL instance to stop."
+          elif pg_isready -q; then
+            echo "Stopping PostgreSQL server..."
+            pg_ctl -D "$PGDATA" stop -m fast
+            
+            # Wait for PostgreSQL to stop
+            attempt=0
+            max_attempts=10
+            while pg_isready -q && [ $attempt -lt $max_attempts ]; do
+              attempt=$((attempt+1))
+              echo "Waiting for PostgreSQL to stop... (attempt $attempt/$max_attempts)"
+              sleep 1
+            done
+            
+            if pg_isready -q; then
+              echo "WARNING: PostgreSQL server did not stop gracefully."
+              echo "You may need to manually kill the process."
+            else
+              echo "✓ PostgreSQL server stopped successfully."
+            fi
+          else
+            echo "PostgreSQL server is not running."
+          fi
+
+          # RocksDB is not a server, so nothing to stop
+
+          echo -e "\n=== Database Shutdown Complete ==="
+        '';
+      };
+
       # Test database connectivity and setup
       test-databases = pkgs.writeShellApplication {
         name = "test-databases";
@@ -217,6 +266,89 @@
           echo "All database tests completed successfully."
         '';
       };
+
+      # Wipe databases completely with confirmation
+      wipe-databases = pkgs.writeShellApplication {
+        name = "wipe-databases";
+        runtimeInputs = with pkgs; [
+          postgresql
+          git
+          coreutils # For rm
+        ];
+        text = ''
+          # Completely wipe all database data with confirmation
+          set -e
+
+          PROJECT_ROOT="$(git rev-parse --show-toplevel)"
+          echo "=== ⚠️  DATABASE WIPE OPERATION ⚠️  ==="
+          echo "This operation will COMPLETELY ERASE all database data:"
+          echo "  • PostgreSQL: All databases and tables"
+          echo "  • RocksDB: All stored data"
+          echo ""
+          echo "This operation is IRREVERSIBLE and all data will be PERMANENTLY LOST."
+          echo ""
+          echo -n "To continue, type 'I UNDERSTAND' and press Enter: "
+          read -r CONFIRMATION
+          
+          if [ "$CONFIRMATION" != "I UNDERSTAND" ]; then
+            echo "Operation cancelled."
+            exit 0
+          fi
+
+          echo "Proceeding with database wipe..."
+
+          # First, stop PostgreSQL if it's running
+          export PGDATA="$PROJECT_ROOT/data/postgres"
+          if pg_isready -q; then
+            echo "Stopping PostgreSQL server..."
+            pg_ctl -D "$PGDATA" stop -m fast
+            
+            # Wait for PostgreSQL to stop
+            attempt=0
+            max_attempts=10
+            while pg_isready -q && [ $attempt -lt $max_attempts ]; do
+              attempt=$((attempt+1))
+              echo "Waiting for PostgreSQL to stop... (attempt $attempt/$max_attempts)"
+              sleep 1
+            done
+            
+            if pg_isready -q; then
+              echo "ERROR: Cannot stop PostgreSQL server. Wipe aborted."
+              exit 1
+            fi
+          fi
+
+          # Wipe PostgreSQL data
+          if [ -d "$PGDATA" ]; then
+            echo "Wiping PostgreSQL data directory..."
+            rm -rf "$PGDATA"
+            echo "✓ PostgreSQL data directory removed."
+          else
+            echo "PostgreSQL data directory not found, nothing to remove."
+          fi
+
+          # Wipe RocksDB data
+          ROCKS_PATH="$PROJECT_ROOT/data/rocksdb"
+          if [ -d "$ROCKS_PATH" ]; then
+            echo "Wiping RocksDB data directory..."
+            rm -rf "$ROCKS_PATH"
+            mkdir -p "$ROCKS_PATH"
+            echo "✓ RocksDB data wiped."
+          else
+            echo "RocksDB data directory not found, nothing to remove."
+          fi
+
+          # Clean up environment variables file
+          if [ -f "$PROJECT_ROOT/.db_env" ]; then
+            rm -f "$PROJECT_ROOT/.db_env"
+            echo "✓ Environment variables file removed."
+          fi
+
+          echo -e "\n=== Database Wipe Complete ==="
+          echo "All database data has been removed."
+          echo "Run 'nix run .#init-databases' to initialize fresh databases."
+        '';
+      };
     };
 
     # Apps to execute the packages
@@ -225,9 +357,17 @@
         type = "app";
         program = "${self'.packages.init-databases}/bin/init-databases";
       };
+      stop-databases = {
+        type = "app";
+        program = "${self'.packages.stop-databases}/bin/stop-databases";
+      };
       test-databases = {
         type = "app";
         program = "${self'.packages.test-databases}/bin/test-databases";
+      };
+      wipe-databases = {
+        type = "app";
+        program = "${self'.packages.wipe-databases}/bin/wipe-databases";
       };
     };
   };

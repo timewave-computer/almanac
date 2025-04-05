@@ -35,6 +35,7 @@
       imports = [
         ./nix/cosmos-module.nix
         ./nix/database-module.nix
+        ./nix/cross-chain-module.nix
       ];
       
       systems = ["aarch64-darwin" "x86_64-linux"];
@@ -131,7 +132,9 @@
               echo "  - test-ethereum-adapter-reth: Run tests against reth"
               echo "  (Database)"
               echo "  - init-databases: Initialize PostgreSQL and RocksDB"
+              echo "  - stop-databases: Gracefully stop running databases"
               echo "  - test-databases: Test database connectivity"
+              echo "  - wipe-databases: Completely wipe all database data"
               echo ""
               echo "Available nix run commands:"
               echo "  (Cosmos)"
@@ -144,7 +147,9 @@
               echo "  - nix run .#test-ethereum-adapter-reth"
               echo "  (Database)"
               echo "  - nix run .#init-databases"
+              echo "  - nix run .#stop-databases"
               echo "  - nix run .#test-databases"
+              echo "  - nix run .#wipe-databases"
             '';
           };
 
@@ -216,6 +221,27 @@
             test-ethereum-adapter-reth = {
               type = "app";
               program = "${testEthRethScript}"; # Reference the script derivation
+            };
+            test-valence-contracts = {
+              type = "app";
+              program = "${pkgs.writeShellScript "test-valence-contracts-runner" ''
+                cd ${self}
+                source ${self}/scripts/test-valence-contracts.sh "$@"
+              ''}";
+            };
+            test-valence-real-contracts = {
+              type = "app";
+              program = "${pkgs.writeShellScript "test-valence-real-contracts-runner" ''
+                cd ${self}
+                source ${self}/scripts/test-valence-real-contracts.sh "$@"
+              ''}";
+            };
+            cross-chain-e2e-test = {
+              type = "app";
+              program = "${pkgs.writeShellScript "cross-chain-e2e-test-runner" ''
+                cd ${self}
+                source ${self}/scripts/cross_chain_e2e_test.sh "$@"
+              ''}";
             };
           };
         };
