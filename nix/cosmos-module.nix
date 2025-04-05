@@ -122,22 +122,30 @@
       done
     '';
 
-    # --- Create a script to run Cosmos adapter tests ---
+    # --- Create a script to run Cosmos adapter tests as a regular shell script ---
     test-cosmos-adapter = pkgs.writeShellScriptBin "test-cosmos-adapter" ''
+      #!/usr/bin/env bash
       set -e
 
       # Script to run Cosmos adapter tests against local wasmd node
       echo "Running Cosmos adapter tests..."
 
-      # Make sure we're in the project root directory
-      cd "$(dirname "$0")/.."
-
       # Set environment variables for the tests
       export RUN_COSMOS_TESTS=1
       export COSMOS_TEST_ENDPOINT=http://localhost:26657
 
+      # Check for running wasmd node
+      if ! pgrep -f "wasmd start" > /dev/null; then
+        echo "Warning: No running wasmd node detected!"
+        echo "You should start one with 'run-wasmd-node' before running tests."
+        echo "Press Ctrl+C to cancel, or Enter to continue anyway..."
+        read -r
+      fi
+
+      # Run from the current directory
+      echo "Running tests from: $(pwd)"
+      
       # Run the tests
-      echo "Running tests..."
       cargo test -p indexer-cosmos -- --nocapture
       
       echo "All Cosmos adapter tests completed!"
