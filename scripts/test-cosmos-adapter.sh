@@ -8,9 +8,9 @@ echo "Running Cosmos adapter tests..."
 cd "$(dirname "$0")/.."
 
 # Define expected path for wasmd node - use from nix if available
-if command -v run-wasmd-node &> /dev/null; then
-    echo "Using run-wasmd-node from Nix environment"
-    WASMD_RUN_CMD="run-wasmd-node"
+if command -v wasmd-node &> /dev/null; then
+    echo "Using wasmd-node from Nix environment"
+    WASMD_RUN_CMD="wasmd-node"
 else
     echo "Error: wasmd node command not found"
     echo "Please enter the nix development shell first using:"
@@ -19,18 +19,20 @@ else
 fi
 
 # Start local wasmd node if it's not already running
+WASMD_PID=""
 if ! pgrep -f "wasmd start" > /dev/null; then
     echo "Starting local wasmd node..."
     # Run in background
     $WASMD_RUN_CMD &
     # Give it time to start
     sleep 5
-    # Get the PID from the PID file
-    if [ ! -f "/tmp/wasmd-node.pid" ]; then
+    # Check if the process actually started
+    WASMD_PID_FILE="$HOME/.wasmd-test/wasmd.pid"
+    if [ ! -f "$WASMD_PID_FILE" ]; then
         echo "Error: Failed to start wasmd node (no PID file found)."
         exit 1
     fi
-    WASMD_PID=$(cat /tmp/wasmd-node.pid)
+    WASMD_PID=$(cat "$WASMD_PID_FILE")
     # Check if the process actually started
     if ! kill -0 $WASMD_PID > /dev/null 2>&1; then
       echo "Error: Failed to start wasmd node."
