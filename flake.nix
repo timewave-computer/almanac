@@ -36,6 +36,8 @@
             pkgs.go
             pkgs.curl
             pkgs.gzip
+            pkgs.rustup
+            pkgs.cargo
           ];
           
           shellHook = ''

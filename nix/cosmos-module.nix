@@ -16,28 +16,53 @@
       # Shell script to install wasmd via Go
       wasmd-setup = pkgs.writeShellApplication {
         name = "wasmd-setup";
-        runtimeInputs = with pkgs; [ go cacert jq curl ];
+        runtimeInputs = with pkgs; [ go cacert jq curl git rustup cargo ];
         text = ''
           #!/usr/bin/env bash
           set -euo pipefail
           
-          echo "Installing wasmd v0.31.0 via Go..."
+          echo "Setting up wasmd v0.31.0 development environment..."
           
           # Set up GOPATH
           export GOPATH="$HOME/go"
           export PATH="$GOPATH/bin:$PATH"
           
-          # Download and install libwasmvm for macOS arm64
-          WASMVM_VERSION="v2.0.0"
+          # Create directories
           LIB_PATH="$HOME/.local/lib"
           mkdir -p "$LIB_PATH"
           
+          # Clone and build libwasmvm from source
           if [ ! -f "$LIB_PATH/libwasmvm.dylib" ]; then
-            echo "Downloading libwasmvm ''${WASMVM_VERSION} for macOS arm64..."
-            curl -L "https://github.com/CosmWasm/wasmvm/releases/download/''${WASMVM_VERSION}/libwasmvm.dylib.gz" -o /tmp/libwasmvm.dylib.gz
-            gunzip -f /tmp/libwasmvm.dylib.gz
-            mv /tmp/libwasmvm.dylib "$LIB_PATH/libwasmvm.dylib"
-            echo "✓ libwasmvm.dylib installed to $LIB_PATH/libwasmvm.dylib"
+            echo "Building libwasmvm from source..."
+            
+            # Create a temporary directory for the build
+            TMP_DIR=$(mktemp -d)
+            cd "$TMP_DIR"
+            
+            # Clone the wasmvm repository
+            git clone https://github.com/CosmWasm/wasmvm.git
+            cd wasmvm
+            git checkout v2.0.0
+            
+            # Install Rust if not already installed
+            if ! command -v rustc > /dev/null; then
+              echo "Installing Rust..."
+              curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+              source "$HOME/.cargo/env"
+            fi
+            
+            # Build libwasmvm
+            echo "Building libwasmvm.dylib..."
+            cd libwasmvm
+            cargo build --release
+            
+            # Copy the library to the lib path
+            cp target/release/libwasmvm.dylib "$LIB_PATH/libwasmvm.dylib"
+            echo "✓ libwasmvm.dylib built and installed to $LIB_PATH/libwasmvm.dylib"
+            
+            # Cleanup
+            cd "$HOME"
+            rm -rf "$TMP_DIR"
           else
             echo "✓ libwasmvm.dylib already installed"
           fi
