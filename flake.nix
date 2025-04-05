@@ -6,14 +6,20 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-parts.url = "github:hercules-ci/flake-parts";
     
-    # Input needed for the wasmd build
+    # Input needed for the wasmd build - using a specific commit for stability
     wasmd-src = {
-      url = "github:CosmWasm/wasmd";
+      url = "github:CosmWasm/wasmd/v0.31.0";
+      flake = false;
+    };
+    
+    # Input for the wasmvm library source
+    wasmvm-src = {
+      url = "github:CosmWasm/wasmvm/v2.0.0";
       flake = false;
     };
   };
 
-  outputs = inputs@{ self, nixpkgs, flake-parts, wasmd-src, ... }:
+  outputs = inputs@{ self, nixpkgs, flake-parts, wasmd-src, wasmvm-src, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } {
       # Import our modules
       imports = [

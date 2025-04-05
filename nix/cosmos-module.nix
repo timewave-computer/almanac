@@ -7,6 +7,50 @@
 
   perSystem = { config, self', pkgs, system, ... }:
   let
+    # --- Build libwasmvm separately ---
+    libwasmvm = pkgs.stdenv.mkDerivation {
+      pname = "libwasmvm";
+      version = "2.0.0";
+      
+      src = inputs.wasmvm-src;
+      
+      nativeBuildInputs = [
+        pkgs.rustc
+        pkgs.cargo
+        pkgs.libiconv
+      ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
+        pkgs.darwin.apple_sdk.frameworks.Security
+        pkgs.darwin.apple_sdk.frameworks.CoreFoundation
+      ];
+      
+      buildPhase = ''
+        export RUSTFLAGS="-C target-cpu=native"
+        make build-rust
+      '';
+      
+      installPhase = ''
+        mkdir -p $out/lib
+        
+        # Copy built library to output
+        if [ -f "internal/api/libwasmvm.dylib" ]; then
+          cp internal/api/libwasmvm.dylib $out/lib/
+        elif [ -f "libwasmvm.dylib" ]; then
+          cp libwasmvm.dylib $out/lib/
+        elif [ -f "target/release/libwasmvm.dylib" ]; then
+          cp target/release/libwasmvm.dylib $out/lib/
+        fi
+        
+        # Linux support
+        if [ -f "internal/api/libwasmvm.so" ]; then
+          cp internal/api/libwasmvm.so $out/lib/
+        elif [ -f "libwasmvm.so" ]; then
+          cp libwasmvm.so $out/lib/
+        elif [ -f "target/release/libwasmvm.so" ]; then
+          cp target/release/libwasmvm.so $out/lib/
+        fi
+      '';
+    };
+  
     # --- Build wasmd from source correctly ---
     wasmd = pkgs.buildGoModule {
       pname = "wasmd";
@@ -15,43 +59,39 @@
       vendorHash = "sha256-sQWTbr/blbdK1MFGCgpDhyBi67LnBh/H9VVVRAJQJBA=";
       subPackages = [ "cmd/wasmd" ];
       
-      # Download and extract wasmvm library for Apple Silicon
-      postPatch = ''
+      # Set up build for CGo
+      preBuild = ''
+        # Create lib directory
         mkdir -p $out/lib
         
-        # Download the prebuilt library for Apple Silicon
-        ${pkgs.curl}/bin/curl --cacert ${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt -L \
-          -o libwasmvm_darwin.tar.gz \
-          https://github.com/CosmWasm/wasmvm/releases/download/v2.0.0/libwasmvm_darwin_arm64.tar.gz
-          
-        ${pkgs.gnutar}/bin/tar -xzf libwasmvm_darwin.tar.gz
-        
-        # Copy to output lib directory
-        cp libwasmvm.dylib $out/lib/
-        
-        # Make sure the Go code can find the library
-        sed -i -e 's@".*libwasmvm.dylib"@"libwasmvm.dylib"@g' vendor/github.com/CosmWasm/wasmvm/v*/libwasmvm.go
+        # Copy libwasmvm to output directory
+        cp ${libwasmvm}/lib/* $out/lib/
       '';
       
       # Required for CosmWasm CGo components
       env = {
         CGO_ENABLED = "1";
-        CGO_LDFLAGS = "-L$out/lib";
-        CGO_CFLAGS = "-I$src/vendor/github.com/CosmWasm/wasmvm/v*/internal/api";
+        CGO_LDFLAGS = "-L${libwasmvm}/lib";
       };
-      
-      nativeBuildInputs = with pkgs; [
-        pkg-config
-        cacert
-      ];
       
       # Fix the rpath in the final executable
       postInstall = ''
-        for bin in $out/bin/*; do
-          chmod +w $bin
-          ${pkgs.darwin.cctools}/bin/install_name_tool -add_rpath $out/lib $bin
-          ${pkgs.darwin.cctools}/bin/install_name_tool -change @rpath/libwasmvm.dylib $out/lib/libwasmvm.dylib $bin
-        done
+        # Fix rpath for macOS binaries
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+          for bin in $out/bin/*; do
+            chmod +w $bin
+            ${pkgs.darwin.cctools}/bin/install_name_tool -add_rpath $out/lib $bin
+            ${pkgs.darwin.cctools}/bin/install_name_tool -change @rpath/libwasmvm.dylib $out/lib/libwasmvm.dylib $bin
+          done
+        fi
+        
+        # Fix rpath for Linux binaries
+        if [[ "$OSTYPE" == "linux"* ]]; then
+          for bin in $out/bin/*; do
+            chmod +w $bin
+            ${pkgs.patchelf}/bin/patchelf --set-rpath "${libwasmvm}/lib:$out/lib" $bin
+          done
+        fi
       '';
     };
 
@@ -161,7 +201,7 @@
       done
     '';
 
-    # --- Create a script to run Cosmos adapter tests as a regular shell script ---
+    # --- Create a script to run Cosmos adapter tests --- 
     test-cosmos-adapter = pkgs.writeShellScriptBin "test-cosmos-adapter" ''
       #!/usr/bin/env bash
       set -e
@@ -193,6 +233,7 @@
     # Expose packages
     packages = {
       wasmd = wasmd;
+      libwasmvm = libwasmvm;
       run-wasmd-node = run-wasmd-node;
       test-cosmos-adapter = test-cosmos-adapter;
     };
