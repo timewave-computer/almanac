@@ -24,16 +24,24 @@
 
       # Define perSystem configuration
       perSystem = { config, self', pkgs, ... }: {
-        # Add Git to the default devShell
-        devShells.default.packages = [ pkgs.git ];
-        
-        # Override shellHook to provide useful information
-        devShells.default.shellHook = ''
-          echo "=== Almanac Development Environment ==="
-          echo "Available commands:"
-          echo "  - run-wasmd-node: Start a local wasmd node for testing"
-          echo "  - test-cosmos-adapter: Run cosmos adapter tests against local node"
-        '';
+        # Create the default development shell
+        devShells.default = pkgs.mkShell {
+          packages = [ 
+            pkgs.git 
+            # Include essential cosmos packages
+            self'.packages.wasmd
+            self'.packages.run-wasmd-node
+            self'.packages.test-cosmos-adapter
+            pkgs.jq
+          ];
+          
+          shellHook = ''
+            echo "=== Almanac Development Environment ==="
+            echo "Available commands:"
+            echo "  - run-wasmd-node: Start a local wasmd node for testing"
+            echo "  - test-cosmos-adapter: Run cosmos adapter tests against local node"
+          '';
+        };
       };
     };
 }

@@ -142,14 +142,6 @@
       
       echo "All Cosmos adapter tests completed!"
     '';
-
-    # The CosmWasm tools we want to provide
-    cosmosTools = [
-      wasmd
-      run-wasmd-node
-      test-cosmos-adapter
-      pkgs.jq
-    ];
   in {
     # Expose packages
     packages = {
@@ -157,8 +149,22 @@
       run-wasmd-node = run-wasmd-node;
       test-cosmos-adapter = test-cosmos-adapter;
     };
-
-    # Add CosmWasm tools to default devShell
-    devShells.default.packages = cosmosTools;
+    
+    # Create a combined shell for CosmWasm development
+    devShells.cosmos = pkgs.mkShell {
+      packages = [
+        wasmd
+        run-wasmd-node
+        test-cosmos-adapter
+        pkgs.jq
+      ];
+      
+      shellHook = ''
+        echo "=== Almanac CosmWasm Development Shell ==="
+        echo "Available commands:"
+        echo "  - run-wasmd-node: Start a local wasmd node for testing"
+        echo "  - test-cosmos-adapter: Run cosmos adapter tests against local node"
+      '';
+    };
   };
 }
