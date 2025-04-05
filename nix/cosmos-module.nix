@@ -16,15 +16,15 @@
       # Install wasmd via Go
       wasmd-setup = pkgs.stdenv.mkDerivation {
         name = "wasmd-setup";
-        src = ./scripts/wasmd-setup;
+        src = ./scripts;
         
         buildInputs = with pkgs; [ go cacert jq curl git ];
         nativeBuildInputs = [ pkgs.makeWrapper ];
         
         installPhase = ''
           mkdir -p $out/bin
-          cp ./wasmd-setup.sh $out/bin/wasmd-setup
-          cp ./wasmd-dummy.sh $out/bin/wasmd-dummy
+          cp wasmd-setup/wasmd-setup.sh $out/bin/wasmd-setup
+          cp wasmd-setup/wasmd-dummy.sh $out/bin/wasmd-dummy
           chmod +x $out/bin/wasmd-setup
           chmod +x $out/bin/wasmd-dummy
           
@@ -36,14 +36,14 @@
       # Run a wasmd test node
       wasmd-node = pkgs.stdenv.mkDerivation {
         name = "wasmd-node";
-        src = ./scripts/wasmd-node;
+        src = ./scripts;
         
         buildInputs = with pkgs; [ jq procps ];
         nativeBuildInputs = [ pkgs.makeWrapper ];
         
         installPhase = ''
           mkdir -p $out/bin
-          cp ./wasmd-node.sh $out/bin/wasmd-node
+          cp wasmd-node/wasmd-node.sh $out/bin/wasmd-node
           chmod +x $out/bin/wasmd-node
           
           wrapProgram $out/bin/wasmd-node \
@@ -54,14 +54,14 @@
       # Run cosmos adapter tests against local node
       test-cosmos-adapter = pkgs.stdenv.mkDerivation {
         name = "test-cosmos-adapter";
-        src = ./scripts/test-cosmos-adapter;
+        src = ./scripts;
         
         buildInputs = with pkgs; [ jq procps curl cargo rustc pkg-config ];
         nativeBuildInputs = [ pkgs.makeWrapper ];
         
         installPhase = ''
           mkdir -p $out/bin
-          cp ./test-cosmos-adapter.sh $out/bin/test-cosmos-adapter
+          cp test-cosmos-adapter/test-cosmos-adapter.sh $out/bin/test-cosmos-adapter
           chmod +x $out/bin/test-cosmos-adapter
           
           wrapProgram $out/bin/test-cosmos-adapter \

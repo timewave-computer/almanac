@@ -8,8 +8,16 @@ export GOPATH="$HOME/go"
 export PATH="$GOPATH/bin:$PATH"
 mkdir -p "$GOPATH/bin"
 
+# Find the wasmd-dummy script from the nix store
+WASMD_DUMMY=$(command -v wasmd-dummy || echo "")
+
+if [ -z "$WASMD_DUMMY" ]; then
+  echo "Error: wasmd-dummy script not found in PATH"
+  exit 1
+fi
+
 # Install our custom dummy wasmd script
-cp "$(dirname "$0")/wasmd-dummy.sh" "$GOPATH/bin/wasmd"
+cp "$WASMD_DUMMY" "$GOPATH/bin/wasmd"
 chmod +x "$GOPATH/bin/wasmd"
 
 # Check installation
