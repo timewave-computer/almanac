@@ -14,6 +14,36 @@
       src = inputs.wasmd-src;
       vendorHash = "sha256-sQWTbr/blbdK1MFGCgpDhyBi67LnBh/H9VVVRAJQJBA=";
       subPackages = [ "cmd/wasmd" ];
+      
+      # Required CGo flags for wasmvm
+      CGO_ENABLED = 1;
+      
+      # Build the wasmvm library
+      preBuild = ''
+        export LEDGER_ENABLED=false
+        
+        # Build wasmvm library
+        cd go/pkg/mod/github.com/!cosm!wasm/wasmvm/v2*
+        make build-rust
+        
+        # Copy libwasmvm to lib path
+        mkdir -p $out/lib
+        cp internal/api/libwasmvm.*.dylib $out/lib/libwasmvm.dylib
+        cd -
+      '';
+      
+      # Set rpath to find the library at runtime
+      postInstall = ''
+        # Fix rpath for libwasmvm
+        for bin in $out/bin/*; do
+          chmod +w $bin
+          install_name_tool -add_rpath $out/lib $bin
+          install_name_tool -change @rpath/libwasmvm.dylib $out/lib/libwasmvm.dylib $bin
+        done
+      '';
+      
+      # Ensure go can find C libraries
+      nativeBuildInputs = with pkgs; [ pkg-config rustc cargo ];
     };
 
     # --- Create a script to run a wasmd test node --- 
