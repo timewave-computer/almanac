@@ -39,7 +39,7 @@
             echo "✓ wasmd installed successfully at $GOPATH/bin/wasmd"
             echo ""
             echo "Testing wasmd installation..."
-            $GOPATH/bin/wasmd version || echo "Note: wasmd version command may not work without libwasmvm"
+            "$GOPATH/bin/wasmd" version || echo "Note: wasmd version command may not work without libwasmvm"
             echo ""
             echo "To use wasmd, use the wasmd-node command which sets up the right environment."
           else
