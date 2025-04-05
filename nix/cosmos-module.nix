@@ -1,20 +1,11 @@
-{ inputs, lib, ... }:
+# This module adds CosmWasm development tools to the flake
+{ inputs, ... }:
 {
-  options = {
-    perSystem = lib.mkOption {
-      type = lib.types.functionTo (lib.types.submoduleWith {
-        modules = [{
-          options.cosmos.packages = lib.mkOption {
-            type = lib.types.listOf lib.types.package;
-            description = "CosmWasm development packages";
-            default = [];
-          };
-        }];
-      });
-    };
+  flake = {
+    # Define flake-level outputs if needed 
   };
 
-  config.perSystem = { config, pkgs, ... }:
+  perSystem = { config, self', pkgs, system, ... }:
   let
     # --- Build wasmd from source --- 
     wasmd = pkgs.buildGoModule {
@@ -39,6 +30,7 @@
       GREEN='\033[0;32m'
       YELLOW='\033[0;33m'
       BLUE='\033[0;34m'
+      RED='\033[0;31m'
       NC='\033[0m' # No Color
       
       echo -e "''${BLUE}Setting up wasmd test node at $NODE_HOME''${NC}"
@@ -151,22 +143,22 @@
       echo "All Cosmos adapter tests completed!"
     '';
 
-    # Define the CosmWasm packages
-    cosmosPackages = [
+    # The CosmWasm tools we want to provide
+    cosmosTools = [
       wasmd
       run-wasmd-node
       test-cosmos-adapter
       pkgs.jq
     ];
   in {
-    # Expose packages created in this module
+    # Expose packages
     packages = {
-      inherit wasmd;
+      wasmd = wasmd;
       run-wasmd-node = run-wasmd-node;
       test-cosmos-adapter = test-cosmos-adapter;
     };
 
-    # Populate the cosmos.packages option
-    cosmos.packages = cosmosPackages;
+    # Add CosmWasm tools to default devShell
+    devShells.default.packages = cosmosTools;
   };
 }
