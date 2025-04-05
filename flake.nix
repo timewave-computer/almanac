@@ -1,47 +1,48 @@
-# This file defines a Nix flake for a CosmWasm development environment.
+# This file defines a Nix flake for the Almanac project with CosmWasm support.
 {
-  description = "Almanac Project Root (using CosmWasm module)";
+  description = "Almanac Project Root";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    # REMOVED flake-utils
     flake-parts.url = "github:hercules-ci/flake-parts";
     
-    # Inputs required by ./nix/cosmos-module.nix
+    # Input needed for the wasmd build
     wasmd-src = {
       url = "github:CosmWasm/wasmd";
       flake = false;
     };
-    # cosmos-nix = { url = "github:informalsystems/cosmos.nix"; };
-    
-    # REMOVED cosmwasm-dev input
   };
 
-  outputs = inputs@{ self, nixpkgs, flake-parts, ... }:
+  outputs = inputs@{ self, nixpkgs, flake-parts, wasmd-src, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } {
-      # Import the module definition
+      # Import our modules
       imports = [
         ./nix/cosmos-module.nix
       ];
       
-      systems = ["aarch64-darwin" "x86_64-linux"]; # Specify systems for flake-parts
+      systems = ["aarch64-darwin" "x86_64-linux"];
 
-      # Define perSystem configuration (devShell merged from module)
-      perSystem = { config, pkgs, ... }:
-      {
-        # Define the main dev shell
-        # Packages from the module (like wasmd, jq) are automatically included
+      # Define perSystem configuration
+      perSystem = { config, self', pkgs, ... }: {
+        # Default dev shell with cosmos tools
         devShells.default = pkgs.mkShell {
-          # Add packages defined directly in the root flake
+          # Include required packages
           packages = [ 
             pkgs.git 
-          ] ++ config.devShells.packages; # Include packages from imported module(s)
+            # Directly include the cosmos packages
+            self'.packages.wasmd
+            self'.packages.run-wasmd-node
+            self'.packages.test-cosmos-adapter
+            pkgs.jq
+          ];
           
-          shellHook = ''echo "=== Almanac Root Shell (Module) ==="'';
+          shellHook = ''
+            echo "=== Almanac Development Environment ==="
+            echo "Available commands:"
+            echo "  - run-wasmd-node: Start a local wasmd node for testing"
+            echo "  - test-cosmos-adapter: Run cosmos adapter tests against local node"
+          '';
         };
-
-        # Expose packages defined in the module (like wasmd)
-        packages = config.packages;
       };
     };
 }
