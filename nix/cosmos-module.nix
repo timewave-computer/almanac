@@ -149,7 +149,7 @@ EOF
       # Shell script to run a wasmd test node
       wasmd-node = pkgs.writeShellApplication {
         name = "wasmd-node";
-        runtimeInputs = with pkgs; [ jq ];
+        runtimeInputs = with pkgs; [ jq procps ];
         text = ''
           #!/usr/bin/env bash
           set -euo pipefail
@@ -234,40 +234,71 @@ EOF
       # Script to run cosmos adapter tests against local node
       test-cosmos-adapter = pkgs.writeShellApplication {
         name = "test-cosmos-adapter";
-        runtimeInputs = with pkgs; [ jq ];
+        runtimeInputs = with pkgs; [ jq procps curl cargo rustc pkg-config ];
         text = ''
           #!/usr/bin/env bash
           set -euo pipefail
           
-          # Set up paths
-          export GOPATH="$HOME/go"
-          export PATH="$GOPATH/bin:$PATH"
+          # Script to run Cosmos adapter tests against local wasmd node
+          echo "Running Cosmos adapter tests..."
           
-          # Check if a wasmd node is running
-          PID_FILE="$HOME/.wasmd-test/wasmd.pid"
-          if [ ! -f "$PID_FILE" ]; then
-            echo "No wasmd node PID file found at $PID_FILE"
-            echo "Please start a wasmd node first with: wasmd-node"
-            exit 1
+          # Make sure we're in the project root directory
+          cd "$(dirname "$0")/.."
+          
+          # Define expected path for wasmd node - use from nix if available
+          if command -v wasmd-node &> /dev/null; then
+              echo "Using wasmd-node from Nix environment"
+              WASMD_RUN_CMD="wasmd-node"
+          else
+              echo "Error: wasmd node command not found"
+              echo "Please enter the nix development shell first using:"
+              echo "  nix develop"
+              exit 1
           fi
           
-          PID=$(cat "$PID_FILE")
-          if ! ps -p "$PID" > /dev/null; then
-            echo "wasmd node process with PID $PID is not running"
-            echo "Please start a wasmd node first with: wasmd-node"
-            exit 1
+          # Start local wasmd node if it's not already running
+          WASMD_PID=""
+          if ! pgrep -f "wasmd start" > /dev/null; then
+              echo "Starting local wasmd node..."
+              # Run in background
+              $WASMD_RUN_CMD &
+              WASMD_NODE_PID=$!
+              # Give it time to start
+              sleep 5
+              # Check if the process actually started
+              WASMD_PID_FILE="$HOME/.wasmd-test/wasmd.pid"
+              if [ ! -f "$WASMD_PID_FILE" ]; then
+                  echo "Error: Failed to start wasmd node (no PID file found)."
+                  kill $WASMD_NODE_PID 2>/dev/null || true
+                  exit 1
+              fi
+              WASMD_PID=$(cat "$WASMD_PID_FILE")
+              # Check if the process actually started
+              if ! kill -0 $WASMD_PID > /dev/null 2>&1; then
+                echo "Error: Failed to start wasmd node."
+                kill $WASMD_NODE_PID 2>/dev/null || true
+                exit 1
+              fi
+              echo "wasmd node started with PID $WASMD_PID"
+              # Register cleanup function to kill wasmd node on exit
+              function cleanup {
+                  echo "Stopping wasmd node..."
+                  kill $WASMD_PID || true # Use || true to ignore error if already stopped
+              }
+              trap cleanup EXIT
+          else
+              echo "Using already running wasmd node"
           fi
           
-          echo "Running Cosmos adapter tests against local wasmd node..."
+          # Set environment variables for tests
+          export RUN_COSMOS_TESTS=1
+          export COSMOS_TEST_ENDPOINT=http://localhost:26657
           
-          # Set necessary environment variables
-          export COSMOS_RPC_URL="http://localhost:26657"
+          # Run the tests
+          echo "Running tests from directory: $(pwd)"
+          cargo test -p indexer-cosmos -- --nocapture
           
-          # TODO: Run the actual test command here
-          echo "Running tests..."
-          echo "(Test command placeholder - implement actual test command)"
-          
-          echo "Tests completed."
+          echo "All Cosmos adapter tests completed!"
         '';
       };
     };
