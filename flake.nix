@@ -29,12 +29,7 @@
           # Include required packages
           packages = [ 
             pkgs.git 
-            # Directly include the cosmos packages
-            self'.packages.wasmd
-            self'.packages.run-wasmd-node
-            self'.packages.test-cosmos-adapter
-            pkgs.jq
-          ];
+          ] ++ config.cosmos.packages;
           
           shellHook = ''
             echo "=== Almanac Development Environment ==="

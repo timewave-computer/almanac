@@ -1,6 +1,20 @@
-{ inputs, ... }:
+{ inputs, lib, ... }:
 {
-  perSystem = { config, self', pkgs, system, ... }:
+  options = {
+    perSystem = lib.mkOption {
+      type = lib.types.functionTo (lib.types.submoduleWith {
+        modules = [{
+          options.cosmos.packages = lib.mkOption {
+            type = lib.types.listOf lib.types.package;
+            description = "CosmWasm development packages";
+            default = [];
+          };
+        }];
+      });
+    };
+  };
+
+  config.perSystem = { config, pkgs, ... }:
   let
     # --- Build wasmd from source --- 
     wasmd = pkgs.buildGoModule {
@@ -136,6 +150,14 @@
       
       echo "All Cosmos adapter tests completed!"
     '';
+
+    # Define the CosmWasm packages
+    cosmosPackages = [
+      wasmd
+      run-wasmd-node
+      test-cosmos-adapter
+      pkgs.jq
+    ];
   in {
     # Expose packages created in this module
     packages = {
@@ -144,12 +166,7 @@
       test-cosmos-adapter = test-cosmos-adapter;
     };
 
-    # Packages to include in the devShell by default
-    devShells.default.packages = [
-      wasmd
-      run-wasmd-node
-      test-cosmos-adapter
-      pkgs.jq
-    ];
+    # Populate the cosmos.packages option
+    cosmos.packages = cosmosPackages;
   };
 }
