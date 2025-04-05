@@ -34,6 +34,8 @@
             self'.packages.test-cosmos-adapter
             pkgs.jq
             pkgs.go
+            pkgs.curl
+            pkgs.gzip
           ];
           
           shellHook = ''
