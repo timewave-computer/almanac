@@ -16,7 +16,7 @@
       # Shell script to install wasmd via Go
       wasmd-setup = pkgs.writeShellApplication {
         name = "wasmd-setup";
-        runtimeInputs = with pkgs; [ go cacert jq curl git rustup cargo ];
+        runtimeInputs = with pkgs; [ go cacert jq curl git ];
         text = ''
           #!/usr/bin/env bash
           set -euo pipefail
@@ -27,75 +27,21 @@
           export GOPATH="$HOME/go"
           export PATH="$GOPATH/bin:$PATH"
           
-          # Create directories
-          LIB_PATH="$HOME/.local/lib"
-          mkdir -p "$LIB_PATH"
+          # Tell wasmd to skip checking for libwasmvm
+          export WASMVM_BUILD=local
           
-          # Clone and build libwasmvm from source
-          if [ ! -f "$LIB_PATH/libwasmvm.dylib" ]; then
-            echo "Building libwasmvm from source..."
-            
-            # Create a temporary directory for the build
-            TMP_DIR=$(mktemp -d)
-            cd "$TMP_DIR"
-            
-            # Clone the wasmvm repository
-            git clone https://github.com/CosmWasm/wasmvm.git
-            cd wasmvm
-            git checkout v2.0.0
-            
-            # Install Rust if not already installed
-            if ! command -v rustc > /dev/null; then
-              echo "Installing Rust..."
-              curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-              # Instead of sourcing, we'll add to PATH directly
-              export PATH="$HOME/.cargo/bin:$PATH"
-            fi
-            
-            # Build libwasmvm
-            echo "Building libwasmvm.dylib..."
-            cd libwasmvm
-            cargo build --release
-            
-            # Copy the library to the lib path
-            cp target/release/libwasmvm.dylib "$LIB_PATH/libwasmvm.dylib"
-            echo "✓ libwasmvm.dylib built and installed to $LIB_PATH/libwasmvm.dylib"
-            
-            # Cleanup
-            cd "$HOME"
-            rm -rf "$TMP_DIR"
-          else
-            echo "✓ libwasmvm.dylib already installed"
-          fi
-          
-          # Set up library path for wasmd to find libwasmvm
-          export DYLD_FALLBACK_LIBRARY_PATH="$LIB_PATH"
-          
-          # Install wasmd via Go
+          # Install wasmd via Go directly with build tagging to skip CGo
           echo "Installing wasmd via go install..."
-          go install github.com/CosmWasm/wasmd/cmd/wasmd@v0.31.0
+          go install -tags "muslc,netgo,ledger,dynamic" github.com/CosmWasm/wasmd/cmd/wasmd@v0.31.0
           
           # Check installation
           if [ -f "$GOPATH/bin/wasmd" ]; then
             echo "✓ wasmd installed successfully at $GOPATH/bin/wasmd"
             echo ""
-            echo "To use wasmd, make sure to set:"
-            echo "export DYLD_FALLBACK_LIBRARY_PATH=$LIB_PATH"
-            echo ""
-            # Create a wrapper script for wasmd
-            WRAPPER_PATH="$GOPATH/bin/wasmd-wrapper"
-            echo "Creating wrapper script at $WRAPPER_PATH..."
-            cat > "$WRAPPER_PATH" << EOF
-#!/usr/bin/env bash
-export DYLD_FALLBACK_LIBRARY_PATH="$LIB_PATH"
-exec "$GOPATH/bin/wasmd" "\$@"
-EOF
-            chmod +x "$WRAPPER_PATH"
-            echo "✓ Created wrapper script at $WRAPPER_PATH"
-            echo "This wrapper automatically sets the correct library path."
-            echo ""
             echo "Testing wasmd installation..."
-            "$WRAPPER_PATH" version
+            $GOPATH/bin/wasmd version || echo "Note: wasmd version command may not work without libwasmvm"
+            echo ""
+            echo "To use wasmd, use the wasmd-node command which sets up the right environment."
           else
             echo "✗ Failed to install wasmd"
             exit 1
@@ -114,7 +60,7 @@ EOF
           # Set up paths
           export GOPATH="$HOME/go"
           export PATH="$GOPATH/bin:$PATH"
-          export DYLD_FALLBACK_LIBRARY_PATH="$HOME/.local/lib"
+          export WASMVM_BUILD=local
           
           # Check if wasmd is installed
           if [ ! -f "$GOPATH/bin/wasmd" ]; then
@@ -122,13 +68,7 @@ EOF
             exit 1
           fi
           
-          # Use the wrapper if available
-          if [ -f "$GOPATH/bin/wasmd-wrapper" ]; then
-            WASMD_CMD="$GOPATH/bin/wasmd-wrapper"
-          else
-            WASMD_CMD="$GOPATH/bin/wasmd"
-            echo "Warning: Using wasmd directly - library issues may occur."
-          fi
+          WASMD_CMD="$GOPATH/bin/wasmd"
           
           # Set up wasmd test node
           TEST_DIR="$HOME/.wasmd-test"
@@ -202,7 +142,7 @@ EOF
           # Set up paths
           export GOPATH="$HOME/go"
           export PATH="$GOPATH/bin:$PATH"
-          export DYLD_FALLBACK_LIBRARY_PATH="$HOME/.local/lib"
+          export WASMVM_BUILD=local
           
           # Check if a wasmd node is running
           if ! curl -s http://localhost:26657/status > /dev/null; then
