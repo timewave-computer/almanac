@@ -40,7 +40,6 @@
           package main
 
           import (
-            _ "github.com/CosmWasm/wasmd/cmd/wasmd"
             "fmt"
           )
 
@@ -50,10 +49,9 @@
           EOF
           
           go mod init temp-wasmd
-          go mod tidy
           
           echo "Downloading wasmd dependencies..."
-          go get github.com/CosmWasm/wasmd/cmd/wasmd@v0.31.0
+          go get github.com/CosmWasm/wasmd@v0.31.0
           
           echo "Building wasmd binary..."
           CGO_ENABLED=0 go build -tags "muslc,netgo,ledger" -o wasmd github.com/CosmWasm/wasmd/cmd/wasmd
