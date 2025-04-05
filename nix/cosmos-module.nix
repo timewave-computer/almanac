@@ -7,43 +7,49 @@
 
   perSystem = { config, self', pkgs, system, ... }:
   let
-    # --- Build wasmd from source --- 
+    # --- Build wasmd from source ---
     wasmd = pkgs.buildGoModule {
       pname = "wasmd";
-      version = "src"; 
+      version = "0.31.0"; 
       src = inputs.wasmd-src;
       vendorHash = "sha256-sQWTbr/blbdK1MFGCgpDhyBi67LnBh/H9VVVRAJQJBA=";
       subPackages = [ "cmd/wasmd" ];
       
-      # Required CGo flags for wasmvm
-      CGO_ENABLED = 1;
+      # Required for CosmWasm CGo components
+      env = {
+        CGO_ENABLED = "1";
+        LEDGER_ENABLED = "false";
+      };
       
-      # Build the wasmvm library
-      preBuild = ''
-        export LEDGER_ENABLED=false
+      nativeBuildInputs = with pkgs; [ 
+        pkg-config 
+        rustc 
+        cargo 
+      ];
+      
+      # Use a different approach for libwasmvm
+      # Let's use the CosmWasm-provided download script
+      postPatch = ''
+        # Update go.mod if needed for apple silicon
+        ${pkgs.gnused}/bin/sed -i 's|github.com/CosmWasm/wasmvm/v2 v2.0.0|github.com/CosmWasm/wasmvm/v2 v2.0.0|g' go.mod
         
-        # Build wasmvm library
-        cd go/pkg/mod/github.com/!cosm!wasm/wasmvm/v2*
-        make build-rust
-        
-        # Copy libwasmvm to lib path
+        # Create lib directory in the output
         mkdir -p $out/lib
-        cp internal/api/libwasmvm.*.dylib $out/lib/libwasmvm.dylib
-        cd -
+        
+        # Download and extract libwasmvm directly from CosmWasm release
+        ${pkgs.curl}/bin/curl -L -o libwasmvm.tar.gz https://github.com/CosmWasm/wasmvm/releases/download/v2.0.0/libwasmvm_darwin_arm64.tar.gz
+        ${pkgs.gnutar}/bin/tar -xzf libwasmvm.tar.gz
+        cp libwasmvm.dylib $out/lib/
       '';
       
-      # Set rpath to find the library at runtime
+      # Fix rpath in binaries
       postInstall = ''
-        # Fix rpath for libwasmvm
         for bin in $out/bin/*; do
           chmod +w $bin
-          install_name_tool -add_rpath $out/lib $bin
-          install_name_tool -change @rpath/libwasmvm.dylib $out/lib/libwasmvm.dylib $bin
+          ${pkgs.darwin.cctools}/bin/install_name_tool -add_rpath $out/lib $bin
+          ${pkgs.darwin.cctools}/bin/install_name_tool -change @rpath/libwasmvm.dylib $out/lib/libwasmvm.dylib $bin
         done
       '';
-      
-      # Ensure go can find C libraries
-      nativeBuildInputs = with pkgs; [ pkg-config rustc cargo ];
     };
 
     # --- Create a script to run a wasmd test node --- 
