@@ -4,8 +4,8 @@ set -euo pipefail
 # Script to run Cosmos adapter tests against local wasmd node
 echo "Running Cosmos adapter tests..."
 
-# Make sure we're in the project root directory
-cd "$(dirname "$0")/../../.."
+# Stay in the current directory where the tests are
+# We don't need to change directory as it might cause issues
 
 # Define expected path for wasmd node - use from nix if available
 if command -v wasmd-node &> /dev/null; then
@@ -56,8 +56,13 @@ fi
 export RUN_COSMOS_TESTS=1
 export COSMOS_TEST_ENDPOINT=http://localhost:26657
 
-# Run the tests
-echo "Running tests from directory: $(pwd)"
-cargo test -p indexer-cosmos -- --nocapture
+# Run the tests - let the user specify the package or run default tests
+if [ $# -gt 0 ]; then
+    echo "Running specified test command: cargo test $@"
+    cargo test "$@"
+else
+    echo "Running default cosmos tests: cargo test -p indexer-cosmos -- --nocapture"
+    cargo test -p indexer-cosmos -- --nocapture
+fi
 
 echo "All Cosmos adapter tests completed!" 
