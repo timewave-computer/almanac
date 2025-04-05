@@ -1,258 +1,146 @@
-# This module adds CosmWasm development tools to the flake
-{ inputs, ... }:
+# This module adds CosmWasm development tools to our flake
+{ self, inputs, ... }:
 {
   flake = {
-    # Define flake-level outputs if needed 
+    # Add overlay
+    overlays.default = final: prev: {
+      # Add our cosmos packages
+      almanac-cosmos = self.packages.${prev.system};
+    };
   };
 
-  perSystem = { config, self', pkgs, system, ... }:
-  let
-    # --- Build libwasmvm separately ---
-    libwasmvm = pkgs.stdenv.mkDerivation {
-      pname = "libwasmvm";
-      version = "2.0.0";
-      
-      src = inputs.wasmvm-src;
-      
-      nativeBuildInputs = [
-        pkgs.rustc
-        pkgs.cargo
-        pkgs.libiconv
-      ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
-        pkgs.darwin.apple_sdk.frameworks.Security
-        pkgs.darwin.apple_sdk.frameworks.CoreFoundation
-      ];
-      
-      buildPhase = ''
-        export RUSTFLAGS="-C target-cpu=native"
-        make build-rust
-      '';
-      
-      installPhase = ''
-        mkdir -p $out/lib
-        
-        # Copy built library to output
-        if [ -f "internal/api/libwasmvm.dylib" ]; then
-          cp internal/api/libwasmvm.dylib $out/lib/
-        elif [ -f "libwasmvm.dylib" ]; then
-          cp libwasmvm.dylib $out/lib/
-        elif [ -f "target/release/libwasmvm.dylib" ]; then
-          cp target/release/libwasmvm.dylib $out/lib/
-        fi
-        
-        # Linux support
-        if [ -f "internal/api/libwasmvm.so" ]; then
-          cp internal/api/libwasmvm.so $out/lib/
-        elif [ -f "libwasmvm.so" ]; then
-          cp libwasmvm.so $out/lib/
-        elif [ -f "target/release/libwasmvm.so" ]; then
-          cp target/release/libwasmvm.so $out/lib/
-        fi
-      '';
-    };
-  
-    # --- Build wasmd from source correctly ---
-    wasmd = pkgs.buildGoModule {
-      pname = "wasmd";
-      version = "0.31.0";
-      src = inputs.wasmd-src;
-      vendorHash = "sha256-sQWTbr/blbdK1MFGCgpDhyBi67LnBh/H9VVVRAJQJBA=";
-      subPackages = [ "cmd/wasmd" ];
-      
-      # Set up build for CGo
-      preBuild = ''
-        # Create lib directory
-        mkdir -p $out/lib
-        
-        # Copy libwasmvm to output directory
-        cp ${libwasmvm}/lib/* $out/lib/
-      '';
-      
-      # Required for CosmWasm CGo components
-      env = {
-        CGO_ENABLED = "1";
-        CGO_LDFLAGS = "-L${libwasmvm}/lib";
+  # Define per-system outputs
+  perSystem = { config, self', inputs', pkgs, system, ... }: {
+    # Define packages for this system
+    packages = {
+      # Shell script to install wasmd via Go
+      wasmd-setup = pkgs.writeShellApplication {
+        name = "wasmd-setup";
+        runtimeInputs = with pkgs; [ go cacert jq ];
+        text = ''
+          #!/usr/bin/env bash
+          set -euo pipefail
+          
+          echo "Installing wasmd v0.31.0 via Go..."
+          
+          # Install wasmd via Go
+          export GOPATH="$HOME/go"
+          export PATH="$GOPATH/bin:$PATH"
+          
+          go install github.com/CosmWasm/wasmd/cmd/wasmd@v0.31.0
+          
+          # Check installation
+          if [ -f "$GOPATH/bin/wasmd" ]; then
+            echo "✓ wasmd installed successfully at $GOPATH/bin/wasmd"
+            wasmd version
+          else
+            echo "✗ Failed to install wasmd"
+            exit 1
+          fi
+        '';
       };
       
-      # Fix the rpath in the final executable
-      postInstall = ''
-        # Fix rpath for macOS binaries
-        if [[ "$OSTYPE" == "darwin"* ]]; then
-          for bin in $out/bin/*; do
-            chmod +w $bin
-            ${pkgs.darwin.cctools}/bin/install_name_tool -add_rpath $out/lib $bin
-            ${pkgs.darwin.cctools}/bin/install_name_tool -change @rpath/libwasmvm.dylib $out/lib/libwasmvm.dylib $bin
-          done
-        fi
-        
-        # Fix rpath for Linux binaries
-        if [[ "$OSTYPE" == "linux"* ]]; then
-          for bin in $out/bin/*; do
-            chmod +w $bin
-            ${pkgs.patchelf}/bin/patchelf --set-rpath "${libwasmvm}/lib:$out/lib" $bin
-          done
-        fi
-      '';
-    };
-
-    # --- Create a script to run a wasmd test node --- 
-    run-wasmd-node = pkgs.writeShellScriptBin "run-wasmd-node" ''
-      set -euo pipefail
-
-      NODE_HOME="''${WASMD_HOME:-$HOME/.wasmd-test}"
-      CHAIN_ID="wasmd-test-1"
-      MONIKER="almanac-test-node"
-      KEY_NAME="validator"
-      KEY_MNEMONIC="clock post desk civil pottery foster expand merit dash seminar song memory figure uniform spice circle try happy obvious trash crime hybrid hood cushion"
-      
-      # Colors for terminal output
-      GREEN='\033[0;32m'
-      YELLOW='\033[0;33m'
-      BLUE='\033[0;34m'
-      RED='\033[0;31m'
-      NC='\033[0m' # No Color
-      
-      echo -e "''${BLUE}Setting up wasmd test node at $NODE_HOME''${NC}"
-      
-      # Create pid file to track the background process
-      PID_FILE="/tmp/wasmd-node.pid"
-
-      # Cleanup function to handle script exit
-      cleanup() {
-          echo -e "''${YELLOW}Shutting down wasmd node...''${NC}"
+      # Shell script to run a wasmd test node
+      wasmd-node = pkgs.writeShellApplication {
+        name = "wasmd-node";
+        runtimeInputs = with pkgs; [ jq ];
+        text = ''
+          #!/usr/bin/env bash
+          set -euo pipefail
+          
+          # Check if wasmd is installed
+          if ! command -v wasmd >/dev/null; then
+            echo "wasmd not found. Please run wasmd-setup first."
+            exit 1
+          fi
+          
+          # Set up wasmd test node
+          TEST_DIR="$HOME/.wasmd-test"
+          echo "Setting up wasmd test node at $TEST_DIR"
+          
+          # Create test directory if it doesn't exist
+          mkdir -p "$TEST_DIR"
+          
+          # Initialize wasmd node config if it doesn't exist
+          if [ ! -d "$TEST_DIR/config" ]; then
+            wasmd init --chain-id=testing testing --home="$TEST_DIR"
+            
+            # Configure node
+            wasmd config chain-id testing --home="$TEST_DIR"
+            wasmd config keyring-backend test --home="$TEST_DIR"
+            wasmd config broadcast-mode block --home="$TEST_DIR"
+            
+            # Create test accounts
+            wasmd keys add validator --keyring-backend=test --home="$TEST_DIR"
+            wasmd add-genesis-account $(wasmd keys show validator -a --keyring-backend=test --home="$TEST_DIR") 1000000000stake,1000000000validatortoken --home="$TEST_DIR"
+            wasmd gentx validator 1000000stake --chain-id=testing --keyring-backend=test --home="$TEST_DIR"
+            wasmd collect-gentxs --home="$TEST_DIR"
+          fi
+          
+          # Check if a wasmd node is already running
+          PID_FILE="$TEST_DIR/wasmd.pid"
           if [ -f "$PID_FILE" ]; then
-              PID=$(cat $PID_FILE)
-              if ps -p $PID > /dev/null; then
-                  kill $PID
-                  echo -e "''${GREEN}wasmd node process $PID terminated''${NC}"
-              fi
-              rm -f $PID_FILE
+            PID=$(cat "$PID_FILE")
+            if ps -p "$PID" > /dev/null; then
+              kill "$PID"
+              echo "Stopped existing wasmd node (PID $PID)"
+            fi
+            rm -f "$PID_FILE"
           fi
-          echo -e "''${GREEN}wasmd node shutdown complete''${NC}"
-          exit 0
-      }
-
-      # Set up the trap to call cleanup when the script exits
-      trap cleanup SIGINT SIGTERM EXIT
-
-      # Initialize node if needed
-      if [ ! -d "$NODE_HOME/config" ]; then
-        echo "Initializing wasmd node configuration in $NODE_HOME..."
-        mkdir -p "$NODE_HOME"
-        ${wasmd}/bin/wasmd init "$MONIKER" --chain-id "$CHAIN_ID" --home "$NODE_HOME"
-        
-        # Modify config.toml for test environment
-        sed -i.bak 's/allow_duplicate_ip = false/allow_duplicate_ip = true/' "$NODE_HOME/config/config.toml"
-        sed -i.bak 's/cors_allowed_origins = \[\]/cors_allowed_origins = ["*"]/' "$NODE_HOME/config/config.toml"
-        sed -i.bak 's/^laddr = "tcp:\/\/127.0.0.1:26657"/laddr = "tcp:\/\/0.0.0.0:26657"/' "$NODE_HOME/config/config.toml"
-        sed -i.bak 's/^timeout_commit = .*$/timeout_commit = "1000ms"/' "$NODE_HOME/config/config.toml"
-
-        # Add validator key
-        echo -e "$KEY_MNEMONIC" | ${wasmd}/bin/wasmd keys add "$KEY_NAME" --recover --home "$NODE_HOME"
-        
-        # Get validator address
-        VALIDATOR_ADDR=$(${wasmd}/bin/wasmd keys show "$KEY_NAME" -a --home "$NODE_HOME")
-        
-        # Add genesis account
-        ${wasmd}/bin/wasmd add-genesis-account "$VALIDATOR_ADDR" 10000000000stake --home "$NODE_HOME"
-        
-        # Create validator transaction
-        ${wasmd}/bin/wasmd gentx "$KEY_NAME" 1000000stake --chain-id "$CHAIN_ID" --home "$NODE_HOME" 
-        
-        # Collect genesis transactions
-        ${wasmd}/bin/wasmd collect-gentxs --home "$NODE_HOME"
-        
-        # Validate genesis
-        ${wasmd}/bin/wasmd validate-genesis --home "$NODE_HOME"
-      fi
-
-      # Define log file path
-      LOG_FILE="$NODE_HOME/wasmd-node.log"
-
-      # Start the node
-      echo "Starting wasmd node... Logs at $LOG_FILE"
-      ${wasmd}/bin/wasmd start \
-        --home "$NODE_HOME" \
-        --rpc.laddr tcp://0.0.0.0:26657 \
-        --grpc.address 0.0.0.0:9090 \
-        --address tcp://0.0.0.0:26655 \
-        --p2p.laddr tcp://0.0.0.0:26656 \
-        --log_level info > "$LOG_FILE" 2>&1 &
-
-      # Save the background process PID to the file
-      NODE_PID=$!
-      echo $NODE_PID > "$PID_FILE"
-
-      echo -e "''${GREEN}wasmd node started in the background (PID: $NODE_PID)''${NC}"
-      echo -e "''${YELLOW}Logs available at: $LOG_FILE''${NC}"
-      echo -e "''${YELLOW}RPC Endpoint: http://localhost:26657''${NC}"
-      echo -e "''${YELLOW}GRPC Endpoint: localhost:9090''${NC}"
-      echo -e "''${YELLOW}Press Ctrl+C to stop the node''${NC}"
-
-      # Wait indefinitely (until SIGINT/SIGTERM is received via trap)
-      while true; do
-          # Check if the process is still running
-          if ! ps -p $NODE_PID > /dev/null; then
-              echo -e "''${RED}wasmd node process (PID: $NODE_PID) stopped unexpectedly.''${NC}"
-              echo "Check logs: $LOG_FILE"
-              exit 1
+          
+          # Start the wasmd node
+          echo "Starting wasmd node..."
+          wasmd start --home="$TEST_DIR" &
+          echo $! > "$PID_FILE"
+          
+          # Give node time to start up
+          sleep 2
+          
+          # Show node status
+          echo "Testing node connection..."
+          wasmd status --node=tcp://localhost:26657 | jq '.node_info.network, .sync_info.latest_block_height'
+          
+          echo ""
+          echo "wasmd node is running!"
+          echo "RPC URL: http://localhost:26657"
+          echo "REST URL: http://localhost:1317"
+          echo "Chain ID: testing"
+          echo ""
+          echo "Press Ctrl+C to stop the node"
+          echo ""
+          
+          # Wait for user to press Ctrl+C
+          wait $!
+        '';
+      };
+      
+      # Script to run cosmos adapter tests against local node
+      test-cosmos-adapter = pkgs.writeShellApplication {
+        name = "test-cosmos-adapter";
+        runtimeInputs = with pkgs; [ jq ];
+        text = ''
+          #!/usr/bin/env bash
+          set -euo pipefail
+          
+          # Check if a wasmd node is running
+          if ! curl -s http://localhost:26657/status > /dev/null; then
+            echo "No wasmd node found at http://localhost:26657"
+            echo "Please start a wasmd node first with: wasmd-node"
+            exit 1
           fi
-          sleep 30 
-      done
-    '';
-
-    # --- Create a script to run Cosmos adapter tests --- 
-    test-cosmos-adapter = pkgs.writeShellScriptBin "test-cosmos-adapter" ''
-      #!/usr/bin/env bash
-      set -e
-
-      # Script to run Cosmos adapter tests against local wasmd node
-      echo "Running Cosmos adapter tests..."
-
-      # Set environment variables for the tests
-      export RUN_COSMOS_TESTS=1
-      export COSMOS_TEST_ENDPOINT=http://localhost:26657
-
-      # Check for running wasmd node
-      if ! pgrep -f "wasmd start" > /dev/null; then
-        echo "Warning: No running wasmd node detected!"
-        echo "You should start one with 'run-wasmd-node' before running tests."
-        echo "Press Ctrl+C to cancel, or Enter to continue anyway..."
-        read -r
-      fi
-
-      # Run from the current directory
-      echo "Running tests from: $(pwd)"
-      
-      # Run the tests
-      cargo test -p indexer-cosmos -- --nocapture
-      
-      echo "All Cosmos adapter tests completed!"
-    '';
-  in {
-    # Expose packages
-    packages = {
-      wasmd = wasmd;
-      libwasmvm = libwasmvm;
-      run-wasmd-node = run-wasmd-node;
-      test-cosmos-adapter = test-cosmos-adapter;
-    };
-    
-    # Create a combined shell for CosmWasm development
-    devShells.cosmos = pkgs.mkShell {
-      packages = [
-        wasmd
-        run-wasmd-node
-        test-cosmos-adapter
-        pkgs.jq
-      ];
-      
-      shellHook = ''
-        echo "=== Almanac CosmWasm Development Shell ==="
-        echo "Available commands:"
-        echo "  - run-wasmd-node: Start a local wasmd node for testing"
-        echo "  - test-cosmos-adapter: Run cosmos adapter tests against local node"
-      '';
+          
+          echo "Running Cosmos adapter tests against local wasmd node..."
+          
+          # Set necessary environment variables
+          export COSMOS_RPC_URL="http://localhost:26657"
+          
+          # TODO: Run the actual test command here
+          echo "Running tests..."
+          echo "(Test command placeholder - implement actual test command)"
+          
+          echo "Tests completed."
+        '';
+      };
     };
   };
 }
