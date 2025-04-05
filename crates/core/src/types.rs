@@ -121,6 +121,9 @@ pub struct ApiConfig {
     /// Enable REST API
     pub enable_rest: bool,
     
+    /// Enable WebSocket subscriptions
+    pub enable_websocket: bool,
+    
     /// Additional API configuration parameters
     pub params: HashMap<String, String>,
 } 

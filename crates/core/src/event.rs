@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::time::SystemTime;
+use std::any::Any;
 
 /// Common trait for all events
 pub trait Event: Debug + Send + Sync {
@@ -27,6 +28,9 @@ pub trait Event: Debug + Send + Sync {
 
     /// Raw event data
     fn raw_data(&self) -> &[u8];
+    
+    /// Convert to Any for downcasting
+    fn as_any(&self) -> &dyn Any;
 }
 
 // Implement Event for Box<dyn Event> to solve the trait bound issues
@@ -61,6 +65,10 @@ impl Event for Box<dyn Event> {
 
     fn raw_data(&self) -> &[u8] {
         (**self).raw_data()
+    }
+    
+    fn as_any(&self) -> &dyn Any {
+        (**self).as_any()
     }
 }
 

@@ -21,7 +21,7 @@ license = "MIT OR Apache-2.0"
 indexer-common = { path = "crates/common" }
 indexer-core = { path = "crates/core" }
 indexer-ethereum = { path = "crates/ethereum" }
-indexer-cosmos = { path = "crates/cosmos" }
+indexer-cosmos = { path = "crates/cosmos", features = ["contracts"] }
 indexer-storage = { path = "crates/storage" }
 indexer-api = { path = "crates/api" }
 tokio = { workspace = true }
@@ -75,6 +75,11 @@ async-graphql-axum = "6.0"
 # CLI
 clap = { version = "4.4", features = ["derive"] }
 tracing-subscriber = "0.3"
+
+# Add chrono dependency specifically for indexer-cosmos if not using workspace dependency
+# If chrono is already a workspace dependency, this isn't strictly needed
+# but can be explicit. Let's check workspace deps first.
+chrono = "0.4"
 
 [profile.release]
 opt-level = 3

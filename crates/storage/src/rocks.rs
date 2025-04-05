@@ -2,6 +2,7 @@
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::any::Any;
 
 use async_trait::async_trait;
 use indexer_common::{BlockStatus, Error, Result};
@@ -9,9 +10,11 @@ use indexer_core::event::Event;
 use rocksdb::{Options, DB, WriteBatch, IteratorMode, Direction, BlockBasedOptions};
 use serde::{Deserialize, Serialize};
 use tracing::debug;
+use serde_json;
 
 use crate::EventFilter;
 use crate::Storage;
+use crate::{ValenceAccountInfo, ValenceAccountLibrary, ValenceAccountExecution, ValenceAccountState};
 
 /// Configuration for RocksDB storage
 #[derive(Debug, Clone)]
@@ -301,6 +304,169 @@ impl Storage for RocksStorage {
         }
         
         Ok(filtered_events)
+    }
+
+    // --- Valence Account Storage Methods ---
+
+    async fn store_valence_account_instantiation(
+        &self,
+        account_info: ValenceAccountInfo,
+        initial_libraries: Vec<ValenceAccountLibrary>,
+    ) -> Result<()> {
+        let mut batch = self.create_write_batch();
+
+        let account_id_key = Key::new("va", format!("{}:{}", account_info.chain_id, account_info.contract_address));
+        let owner_key = Key::new("va_owner_idx", format!("{}:{}", account_info.current_owner.as_deref().unwrap_or("_"), account_id_key.id));
+        let libs_key = Key::new("va_libs", account_id_key.id.clone());
+
+        let state = ValenceAccountState {
+            current_owner: account_info.current_owner.clone(),
+            libraries: initial_libraries.iter().map(|l| l.library_address.clone()).collect(),
+        };
+        let state_json = serde_json::to_vec(&state)?;
+
+        // Store main account state (owner + libraries combined for simpler updates)
+        batch.put(&libs_key, &state_json);
+
+        // Add owner index
+        if account_info.current_owner.is_some() {
+             batch.put(&owner_key, &[1]);
+        }
+
+        // Add library indexes
+        for lib in initial_libraries {
+            let lib_idx_key = Key::new("va_lib_idx", format!("{}:{}", lib.library_address, account_id_key.id));
+            batch.put(&lib_idx_key, &[1]);
+        }
+
+        // Persist account info (primarily for potential recovery/rebuild, state is in libs_key)
+        // Consider if this is necessary if Postgres is the source of truth
+        // let info_json = serde_json::to_vec(&account_info)?;
+        // batch.put(&account_id_key, &info_json); // Maybe skip this if PG is source of truth
+
+        self.write_batch(batch)?;
+        Ok(())
+    }
+
+    async fn store_valence_library_approval(
+        &self,
+        account_id: &str, // format: "<chain_id>:<contract_address>"
+        library_info: ValenceAccountLibrary,
+        _update_block: u64, // Rocks only stores latest state
+        _update_tx: &str,
+    ) -> Result<()> {
+        let libs_key = Key::new("va_libs", account_id);
+
+        // Read-Modify-Write: Get current state, add library, write back
+        // NOTE: This is not atomic across reads/writes. Assumes single-threaded indexer access for now.
+        let current_state_bytes = self.get(&libs_key)?;
+        let mut state: ValenceAccountState = match current_state_bytes {
+            Some(bytes) => serde_json::from_slice(&bytes)?,
+            None => return Err(Error::NotFound(format!("Valence account state not found for ID: {}", account_id))),
+        };
+
+        let library_address = library_info.library_address;
+        if !state.libraries.contains(&library_address) {
+            state.libraries.push(library_address.clone());
+            state.libraries.sort(); // Keep it sorted for consistency
+
+            let state_json = serde_json::to_vec(&state)?;
+            let lib_idx_key = Key::new("va_lib_idx", format!("{}:{}", library_address, account_id));
+
+            let mut batch = self.create_write_batch();
+            batch.put(&libs_key, &state_json);
+            batch.put(&lib_idx_key, &[1]);
+            self.write_batch(batch)?;
+        }
+        Ok(())
+    }
+
+    async fn store_valence_library_removal(
+        &self,
+        account_id: &str,
+        library_address: &str,
+        _update_block: u64,
+        _update_tx: &str,
+    ) -> Result<()> {
+         let libs_key = Key::new("va_libs", account_id);
+
+        // Read-Modify-Write
+        let current_state_bytes = self.get(&libs_key)?;
+        let mut state: ValenceAccountState = match current_state_bytes {
+            Some(bytes) => serde_json::from_slice(&bytes)?,
+            None => return Err(Error::NotFound(format!("Valence account state not found for ID: {}", account_id))),
+        };
+
+        let initial_len = state.libraries.len();
+        state.libraries.retain(|lib| lib != library_address);
+
+        if state.libraries.len() < initial_len { // Only write if something changed
+            let state_json = serde_json::to_vec(&state)?;
+            let lib_idx_key = Key::new("va_lib_idx", format!("{}:{}", library_address, account_id));
+
+            let mut batch = self.create_write_batch();
+            batch.put(&libs_key, &state_json);
+            batch.delete(&lib_idx_key);
+            self.write_batch(batch)?;
+        }
+        Ok(())
+    }
+
+    async fn store_valence_ownership_update(
+        &self,
+        account_id: &str,
+        new_owner: Option<String>,
+        _new_pending_owner: Option<String>,      // Not storing pending state in RocksDB for now
+        _new_pending_expiry: Option<u64>,
+        _update_block: u64,
+        _update_tx: &str,
+    ) -> Result<()> {
+        let libs_key = Key::new("va_libs", account_id);
+
+        // Read-Modify-Write
+        let current_state_bytes = self.get(&libs_key)?;
+        let mut state: ValenceAccountState = match current_state_bytes {
+            Some(bytes) => serde_json::from_slice(&bytes)?,
+            None => return Err(Error::NotFound(format!("Valence account state not found for ID: {}", account_id))),
+        };
+
+        let old_owner_opt = state.current_owner.clone();
+
+        if state.current_owner != new_owner {
+            state.current_owner = new_owner.clone();
+            let state_json = serde_json::to_vec(&state)?;
+
+            let mut batch = self.create_write_batch();
+            batch.put(&libs_key, &state_json);
+
+            // Update owner index
+            if let Some(old_owner) = old_owner_opt {
+                let old_owner_key = Key::new("va_owner_idx", format!("{}:{}", old_owner, account_id));
+                batch.delete(&old_owner_key);
+            }
+            if let Some(new_owner_addr) = new_owner {
+                 let new_owner_key = Key::new("va_owner_idx", format!("{}:{}", new_owner_addr, account_id));
+                 batch.put(&new_owner_key, &[1]);
+            }
+            self.write_batch(batch)?;
+        }
+        Ok(())
+    }
+
+    async fn store_valence_execution(
+        &self,
+        _execution_info: ValenceAccountExecution, // Not storing execution history in RocksDB
+    ) -> Result<()> {
+        // RocksDB is for latest state, execution history goes to Postgres
+        Ok(())
+    }
+
+    async fn get_valence_account_state(&self, account_id: &str) -> Result<Option<ValenceAccountState>> {
+        let libs_key = Key::new("va_libs", account_id);
+        match self.get(&libs_key)? {
+            Some(bytes) => Ok(Some(serde_json::from_slice(&bytes)?)),
+            None => Ok(None),
+        }
     }
 }
 
@@ -613,6 +779,10 @@ impl Event for MockEvent {
     
     fn raw_data(&self) -> &[u8] {
         &self.raw_data
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 

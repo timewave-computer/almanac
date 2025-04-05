@@ -33,7 +33,7 @@ To restore query safety without using macros, we will adopt the `sqlx prepare` w
 
 ### Development and Schema Change Workflow
 
-1. Start a local database (e.g., via Docker).
+1. Start a local database via Nix
 2. Apply all migrations using `refinery`, `sqlx migrate`, or similar.
 3. Run:
    ```bash

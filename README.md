@@ -1,12 +1,12 @@
 # Almanac: Cross-Chain Indexer
 
-A high-performance cross-chain indexer designed to track Valence protocol contracts and related blockchain state across multiple chains, currently supporting Ethereum and Cosmos chains, but extensible to others in the future.
+A high-performance indexer designed to track Valence protocol contracts and related blockchain state across multiple chains. Almanac currently supports Ethereum and Cosmos chains, with easy extensibility to others in the future.
 
 ![](./almanac.png)
 
 ## Project Overview
 
-Almanac is a unified solution for tracking Valence contracts and associated state across different blockchains. It handles various chain finality conditions with appropriate determinism classifications. The system employs a hybrid storage architecture using RocksDB for high-performance paths and PostgreSQL for complex queries. This makes it appropriate for use with both cross-chain strategy operations and client UI development.
+Almanac enables tracking Valence programs and the state associated with related contracts across different blockchains. For non-BFT chains it handles chain finality conditions with appropriate determinism classifications. The system employs a hybrid storage architecture using RocksDB for high-performance paths and PostgreSQL for complex queries. This makes it appropriate for use with both cross-chain strategy operations and client UI development.
 
 - **Multi-chain support**: Ethereum and Cosmos chains with plans for Solana and Move-based chains
 - **Hybrid storage architecture**:

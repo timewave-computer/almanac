@@ -1,5 +1,7 @@
 /// Common test utilities for storage tests
 use std::time::{Duration, SystemTime};
+use std::sync::Arc;
+use std::any::Any;
 
 use indexer_core::event::Event;
 use async_trait::async_trait;
@@ -85,6 +87,10 @@ impl Event for MockEvent {
     
     fn raw_data(&self) -> &[u8] {
         &self.raw_data
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 

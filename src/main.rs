@@ -15,6 +15,7 @@ use indexer_core::types::{ApiConfig, ChainId, EventFilter};
 use indexer_ethereum::EthereumEventService;
 use indexer_cosmos::CosmosEventService;
 use indexer_storage::{rocks::RocksStorage, rocks::RocksConfig};
+use indexer_storage::migrations::schema::{InMemorySchemaRegistry, ContractSchemaRegistry};
 use indexer_storage::migrations::MigrationRegistry;
 
 /// A wrapper around any event service that makes EventType = Box<dyn Event>
@@ -168,6 +169,7 @@ async fn main() -> Result<()> {
             let storage_config = RocksConfig {
                 path: "./data/rocks".to_string(),
                 create_if_missing: true,
+                cache_size_mb: 128,
             };
             
             let storage = Arc::new(RocksStorage::new(storage_config)?);
@@ -226,16 +228,21 @@ async fn main() -> Result<()> {
             let services = registry.get_services();
             
             if let Some(service) = services.first() {
+                // Initialize schema registry
+                let schema_registry = Arc::new(InMemorySchemaRegistry::new());
+                
                 // Initialize API server
                 let api_config = ApiConfig {
                     host: api_host,
                     port: api_port,
                     enable_graphql: true,
                     enable_rest: true,
+                    enable_websocket: true,
                     params: HashMap::new(), // Empty parameters
                 };
                 
-                let api_server = ApiServer::new(api_config, service.clone());
+                let api_server = ApiServer::from_config(&api_config, service.clone(), schema_registry.clone())
+                    .expect("Failed to create API server");
                 
                 // Start API server
                 tokio::spawn(async move {

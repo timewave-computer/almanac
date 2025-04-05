@@ -1,6 +1,8 @@
 /// Storage synchronization implementation for multi-store consistency
-use std::sync::Arc;
-use std::time::Duration;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+use std::any::Any;
 
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
@@ -346,6 +348,10 @@ impl Event for SyncEvent {
     fn raw_data(&self) -> &[u8] {
         &[]
     }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 }
 
 /// Extension trait for Box<dyn Event> to add cloning capabilities
@@ -412,5 +418,9 @@ impl Event for ClonedEvent {
     
     fn raw_data(&self) -> &[u8] {
         &self.raw_data
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 } 

@@ -1,424 +1,47 @@
+# This file defines a Nix flake for a CosmWasm development environment.
 {
-  description = "Cross-Chain Indexer";
+  description = "Almanac Project Root (using CosmWasm module)";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    flake-utils.url = "github:numtide/flake-utils";
-    rust-overlay = {
-      url = "github:oxalica/rust-overlay";
-      inputs.nixpkgs.follows = "nixpkgs";
+    # REMOVED flake-utils
+    flake-parts.url = "github:hercules-ci/flake-parts";
+    
+    # Inputs required by ./nix/cosmos-module.nix
+    wasmd-src = {
+      url = "github:CosmWasm/wasmd";
+      flake = false;
     };
-    foundry = {
-      url = "github:shazow/foundry.nix/monthly";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
+    # cosmos-nix = { url = "github:informalsystems/cosmos.nix"; };
+    
+    # REMOVED cosmwasm-dev input
   };
 
-  outputs = { self, nixpkgs, flake-utils, rust-overlay, foundry }:
-    flake-utils.lib.eachDefaultSystem (system:
-      let
-        overlays = [ 
-          (import rust-overlay)
-          foundry.overlay
-        ];
-        pkgs = import nixpkgs { inherit system overlays; };
-        
-        # Define macOS deployment target
-        darwinDeploymentTarget = "11.0";
-        
-        # Rust package with stable toolchain
-        rustToolchain = pkgs.rust-bin.stable.latest.default.override {
-          extensions = [ "rust-src" "rustfmt" "clippy" ];
-        };
+  outputs = inputs@{ self, nixpkgs, flake-parts, ... }:
+    flake-parts.lib.mkFlake { inherit inputs; } {
+      # Import the module definition
+      imports = [
+        ./nix/cosmos-module.nix
+      ];
+      
+      systems = ["aarch64-darwin" "x86_64-linux"]; # Specify systems for flake-parts
 
-        # Common script environment
-        commonScriptEnv = {
-          MACOSX_DEPLOYMENT_TARGET = darwinDeploymentTarget;
-          SOURCE_DATE_EPOCH = "1672531200";
-          DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/indexer";
-          ROCKSDB_PATH = "./data/rocksdb";
-          ETH_RPC_URL = "http://localhost:8545";
-          RETH_DATA_DIR = "./data/reth";
-          COSMOS_RPC_URL = "http://localhost:26657";
-        };
-      in
+      # Define perSystem configuration (devShell merged from module)
+      perSystem = { config, pkgs, ... }:
       {
-        # Development shell
+        # Define the main dev shell
+        # Packages from the module (like wasmd, jq) are automatically included
         devShells.default = pkgs.mkShell {
-          buildInputs = with pkgs; [
-            # Rust toolchain
-            rustToolchain
-            
-            # Build dependencies
-            rocksdb
-            postgresql_15
-            
-            # Database utilities
-            postgresql_15.lib
-            pgcli
-            
-            # Ethereum dependencies
-            foundry-bin  # Includes Anvil, Forge, Cast
-            
-            # Development tools
-            jq
-            curl
-          ];
+          # Add packages defined directly in the root flake
+          packages = [ 
+            pkgs.git 
+          ] ++ config.devShells.packages; # Include packages from imported module(s)
           
-          # Set environment variables
-          shellHook = ''
-            # Set environment variables
-            export MACOSX_DEPLOYMENT_TARGET="${darwinDeploymentTarget}"
-            export SOURCE_DATE_EPOCH="1672531200"
-            
-            # Set database environment variables
-            export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/indexer"
-            export ROCKSDB_PATH="./data/rocksdb"
-            export ETH_RPC_URL="http://localhost:8545"
-            export RETH_DATA_DIR="./data/reth"
-            export COSMOS_RPC_URL="http://localhost:26657"
-            
-            # Ensure directories exist
-            mkdir -p ./data/rocksdb
-            mkdir -p ./data/reth
-            mkdir -p ./data/postgres
-            mkdir -p ./logs
-            
-            echo "=== Cross-Chain Indexer Development Shell ==="
-            echo "Available commands:"
-            echo "  nix run .#start-postgres     - Start PostgreSQL server"
-            echo "  nix run .#start-anvil        - Start Ethereum test node (Anvil)"
-            echo "  nix run .#run-ufo-node       - Start UFO node"
-            echo "  nix run .#deploy-contracts   - Deploy test contracts to Anvil"
-            echo "  nix run .#mint-tokens        - Mint tokens to an Ethereum address"
-            echo "  nix run .#ufo-mint-tokens    - Mint tokens to a Cosmos address"
-            echo "  nix run .#e2e-test           - Run Ethereum end-to-end test"
-            echo "  nix run .#ufo-e2e-test       - Run UFO end-to-end test"
-            echo "  nix run .#prepare-sqlx       - Prepare SQL migrations for sqlx"
-            echo "  nix run .#setup-test-nodes   - Configure test nodes for development"
-            echo "  nix run .#test-nodes         - Test node configuration"
-            echo "  nix run .#connect-live-nodes - Test connection to live network nodes"
-            echo "  nix run .#run-all-nodes      - Start all nodes for development"
-            echo "  nix run .#storage-benchmarks - Run storage benchmark tests" 
-            echo "  nix run .#run-storage-benchmarks - Run storage benchmark tests"
-          '';
+          shellHook = ''echo "=== Almanac Root Shell (Module) ==="'';
         };
-        
-        # Packages
-        packages = {
-          default = pkgs.writeScriptBin "cargo-check" ''
-            #!/usr/bin/env bash
-            export MACOSX_DEPLOYMENT_TARGET="${darwinDeploymentTarget}"
-            export SOURCE_DATE_EPOCH="1672531200"
-            ${pkgs.cargo}/bin/cargo check "$@"
-          '';
-          
-          # Test node configuration
-          setup-test-nodes = pkgs.writeShellScriptBin "setup-test-nodes" ''
-            #!/usr/bin/env bash
-            set -euo pipefail
-            
-            cd "$PWD"
-            ./scripts/setup-test-nodes.sh "$@"
-          '';
-          
-          # Test node verification
-          test-nodes = pkgs.writeShellScriptBin "test-nodes" ''
-            #!/usr/bin/env bash
-            set -euo pipefail
-            
-            cd "$PWD"
-            ./scripts/test-nodes.sh "$@"
-          '';
-          
-          # Live node connectivity
-          connect-live-nodes = pkgs.writeShellScriptBin "connect-live-nodes" ''
-            #!/usr/bin/env bash
-            set -euo pipefail
-            
-            cd "$PWD"
-            ./scripts/connect-live-nodes.sh "$@"
-          '';
-          
-          # Storage benchmark tests
-          storage-benchmarks = pkgs.writeShellScriptBin "storage-benchmarks" ''
-            #!/usr/bin/env bash
-            set -euo pipefail
-            
-            cd "$PWD"
-            export IN_NIX_SHELL=1
-            ./scripts/run-storage-benchmarks.sh "$@"
-          '';
-          
-          # Postgres management
-          start-postgres = pkgs.writeShellScriptBin "start-postgres" ''
-            #!/usr/bin/env bash
-            set -euo pipefail
-            
-            echo "=== Starting PostgreSQL Server ==="
-            
-            # Setup variables
-            PG_DATA_DIR="./data/postgres/pgdata"
-            PG_LISTEN_ADDR="127.0.0.1"
-            PG_PORT=5432
-            PG_LOG_FILE="./data/postgres/logfile"
-            
-            # Check if PostgreSQL is already running
-            if ${pkgs.postgresql_15}/bin/pg_isready -h $PG_LISTEN_ADDR -p $PG_PORT > /dev/null 2>&1; then
-              echo "PostgreSQL server is already running on $PG_LISTEN_ADDR:$PG_PORT"
-              
-              # Create database if it doesn't exist
-              export PGPASSWORD=postgres
-              ${pkgs.postgresql_15}/bin/createdb -h $PG_LISTEN_ADDR -p $PG_PORT -U postgres indexer 2>/dev/null || true
-              
-              echo "Database URL: $DATABASE_URL"
-              exit 0
-            fi
-            
-            # Initialize PostgreSQL if needed
-            if [ ! -d "$PG_DATA_DIR" ]; then
-              echo "Initializing PostgreSQL database cluster..."
-              mkdir -p "$PG_DATA_DIR"
-              ${pkgs.postgresql_15}/bin/initdb -D "$PG_DATA_DIR" --username=postgres --pwfile=<(echo "postgres") --auth=trust
-              
-              # Configure PostgreSQL
-              echo "listen_addresses = '$PG_LISTEN_ADDR'" >> "$PG_DATA_DIR/postgresql.conf"
-              echo "port = $PG_PORT" >> "$PG_DATA_DIR/postgresql.conf"
-              
-              echo "PostgreSQL database cluster initialized"
-            fi
-            
-            # Check for and remove stale lock files
-            if [ -f "$PG_DATA_DIR/postmaster.pid" ]; then
-              echo "Found stale lock file, removing..."
-              rm -f "$PG_DATA_DIR/postmaster.pid"
-            fi
-            
-            # Start PostgreSQL
-            echo "Starting PostgreSQL server..."
-            mkdir -p "$(dirname "$PG_LOG_FILE")"
-            ${pkgs.postgresql_15}/bin/pg_ctl -D "$PG_DATA_DIR" -l "$PG_LOG_FILE" start
-            
-            # Wait for PostgreSQL to start
-            echo "Waiting for PostgreSQL to start..."
-            for i in {1..30}; do
-              if ${pkgs.postgresql_15}/bin/pg_isready -h $PG_LISTEN_ADDR -p $PG_PORT > /dev/null 2>&1; then
-                echo "PostgreSQL server started"
-                break
-              fi
-              sleep 1
-              if [ $i -eq 30 ]; then
-                echo "Failed to start PostgreSQL server"
-                echo "Check the log file: $PG_LOG_FILE"
-                exit 1
-              fi
-            done
-            
-            # Create database if it doesn't exist
-            export PGPASSWORD=postgres
-            ${pkgs.postgresql_15}/bin/createdb -h $PG_LISTEN_ADDR -p $PG_PORT -U postgres indexer 2>/dev/null || true
-            
-            echo "PostgreSQL server started"
-            echo "Database URL: $DATABASE_URL"
-          '';
 
-          # Ethereum node management 
-          start-anvil = pkgs.writeShellScriptBin "start-anvil" ''
-            #!/usr/bin/env bash
-            set -euo pipefail
-            
-            echo "Starting Ethereum node (Anvil)..."
-            ${pkgs.foundry-bin}/bin/anvil \
-              --host 0.0.0.0 \
-              --accounts 10 \
-              --balance 10000 \
-              --gas-limit 30000000 \
-              --block-time 1
-          '';
-          
-          # UFO node scripts
-          run-ufo-node = pkgs.writeShellScriptBin "run-ufo-node" ''
-            #!/usr/bin/env bash
-            set -euo pipefail
-            
-            cd "$PWD"
-            ./scripts/run-ufo-node.sh "$@"
-          '';
-          
-          # Contract scripts
-          deploy-contracts = pkgs.writeShellScriptBin "deploy-contracts" ''
-            #!/usr/bin/env bash
-            set -euo pipefail
-            
-            cd "$PWD"
-            ./scripts/deploy-contracts.sh "$@"
-          '';
-          
-          # Token management scripts
-          mint-tokens = pkgs.writeShellScriptBin "mint-tokens" ''
-            #!/usr/bin/env bash
-            set -euo pipefail
-            
-            cd "$PWD"
-            ./scripts/mint-tokens.sh "$@"
-          '';
-          
-          ufo-mint-tokens = pkgs.writeShellScriptBin "ufo-mint-tokens" ''
-            #!/usr/bin/env bash
-            set -euo pipefail
-            
-            cd "$PWD"
-            ./scripts/ufo-mint-tokens.sh "$@"
-          '';
-          
-          # Test scripts
-          e2e-test = pkgs.writeShellScriptBin "e2e-test" ''
-            #!/usr/bin/env bash
-            set -euo pipefail
-            
-            cd "$PWD"
-            ./scripts/e2e-test.sh "$@"
-          '';
-          
-          ufo-e2e-test = pkgs.writeShellScriptBin "ufo-e2e-test" ''
-            #!/usr/bin/env bash
-            set -euo pipefail
-            
-            cd "$PWD"
-            ./scripts/ufo-e2e-test.sh "$@"
-          '';
-
-          # SQL preparation script
-          prepare-sqlx = pkgs.writeShellScriptBin "prepare-sqlx" ''
-            #!/usr/bin/env bash
-            set -euo pipefail
-            
-            cd "$PWD"
-            ./scripts/prepare-sqlx.sh "$@"
-          '';
-          
-          # Run all nodes in development
-          run-all-nodes = pkgs.writeShellScriptBin "run-all-nodes" ''
-            #!/usr/bin/env bash
-            set -euo pipefail
-            
-            echo "Starting all nodes for development..."
-            
-            # Start PostgreSQL
-            ${self.packages.${system}.start-postgres}/bin/start-postgres &
-            PG_PID=$!
-            echo "PostgreSQL started with PID: $PG_PID"
-            
-            # Wait for PostgreSQL to be ready
-            sleep 3
-            
-            # Start Ethereum node
-            ${pkgs.foundry-bin}/bin/anvil \
-              --host 0.0.0.0 \
-              --accounts 10 \
-              --balance 10000 \
-              --gas-limit 30000000 \
-              --block-time 1 > ./logs/anvil.log 2>&1 &
-            ANVIL_PID=$!
-            echo "Anvil started with PID: $ANVIL_PID"
-            
-            # Wait for Anvil to be ready
-            sleep 3
-            
-            # Deploy contracts
-            ./scripts/deploy-contracts.sh > ./logs/deploy.log 2>&1
-            
-            # Start UFO node
-            ./scripts/run-ufo-node.sh --block-time 100 > ./logs/ufo.log 2>&1 &
-            UFO_PID=$!
-            echo "UFO node started with PID: $UFO_PID"
-            
-            echo "All nodes started"
-            echo "Press Ctrl+C to stop all nodes"
-            
-            # Setup trap to kill all processes
-            function cleanup {
-              echo "Stopping all nodes..."
-              kill $PG_PID || true
-              kill $ANVIL_PID || true
-              kill $UFO_PID || true
-              wait
-              echo "All nodes stopped"
-            }
-            
-            trap cleanup EXIT
-            
-            # Wait for Ctrl+C
-            while true; do
-              sleep 1
-            done
-          '';
-        };
-        
-        # Apps
-        apps = {
-          # Infrastructure
-          start-postgres = flake-utils.lib.mkApp {
-            drv = self.packages.${system}.start-postgres;
-          };
-          
-          start-anvil = flake-utils.lib.mkApp {
-            drv = pkgs.writeShellScriptBin "start-anvil" ''
-              ${pkgs.foundry-bin}/bin/anvil -p 8545 "$@"
-            '';
-          };
-          
-          setup-test-nodes = flake-utils.lib.mkApp {
-            drv = self.packages.${system}.setup-test-nodes;
-          };
-          
-          test-nodes = flake-utils.lib.mkApp {
-            drv = self.packages.${system}.test-nodes;
-          };
-          
-          connect-live-nodes = flake-utils.lib.mkApp {
-            drv = self.packages.${system}.connect-live-nodes;
-          };
-          
-          run-all-nodes = flake-utils.lib.mkApp {
-            drv = self.packages.${system}.run-all-nodes;
-          };
-          
-          run-storage-benchmarks = flake-utils.lib.mkApp {
-            drv = self.packages.${system}.storage-benchmarks;
-          };
-          
-          # Development tools
-          deploy-contracts = {
-            type = "app";
-            program = "${self.packages.${system}.deploy-contracts}/bin/deploy-contracts";
-          };
-          
-          mint-tokens = {
-            type = "app";
-            program = "${self.packages.${system}.mint-tokens}/bin/mint-tokens";
-          };
-          
-          ufo-mint-tokens = {
-            type = "app";
-            program = "${self.packages.${system}.ufo-mint-tokens}/bin/ufo-mint-tokens";
-          };
-          
-          e2e-test = {
-            type = "app";
-            program = "${self.packages.${system}.e2e-test}/bin/e2e-test";
-          };
-          
-          ufo-e2e-test = {
-            type = "app";
-            program = "${self.packages.${system}.ufo-e2e-test}/bin/ufo-e2e-test";
-          };
-          
-          prepare-sqlx = {
-            type = "app";
-            program = "${self.packages.${system}.prepare-sqlx}/bin/prepare-sqlx";
-          };
-        };
-      }
-    );
+        # Expose packages defined in the module (like wasmd)
+        packages = config.packages;
+      };
+    };
 }

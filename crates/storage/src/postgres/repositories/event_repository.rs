@@ -1,7 +1,8 @@
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::any::Any;
 
 use async_trait::async_trait;
-use sqlx::{Pool, Postgres, Row};
+use sqlx::{Pool, Postgres};
 use sqlx::FromRow;
 
 use indexer_core::event::{Event, EventMetadata};
@@ -142,6 +143,11 @@ impl Event for EventWrapper {
     
     fn raw_data(&self) -> &[u8] {
         &self.raw_data
+    }
+
+    // Added implementation for as_any
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 

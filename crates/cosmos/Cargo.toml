@@ -6,32 +6,38 @@ authors.workspace = true
 repository.workspace = true
 license.workspace = true
 
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+default = []
+# Define the contracts feature flag
+contracts = []
+
 [dependencies]
 # Indexer core
 indexer-core = { path = "../core" }
 indexer-common = { path = "../common" }
 
 # Async runtime
+async-trait.workspace = true
 tokio.workspace = true
 futures.workspace = true
-async-trait = "0.1.77"
 
 # Cosmos specific
-cosmrs.workspace = true
-
-# Crypto
-sha2 = "0.10.8"
-hex = "0.4.3"
-uuid = { version = "1.6.0", features = ["v4", "serde"] }
+cosmrs = { version = "0.15.0", features = ["rpc"] }
+sha2 = "0.10.7"
 
 # Serialization
 serde.workspace = true
-serde_json.workspace = true
+serde_json = "1.0"
 
 # Logging and error handling
 tracing.workspace = true
-thiserror.workspace = true
 anyhow.workspace = true
+uuid = { version = "1.4", features = ["v4", "serde"] }
+base64 = "0.22"
 
 [dev-dependencies]
-mockall = "0.11.4" 
+mockall = "0.11.4"
+rand = "0.8.5"
+tokio = { version = "1.0", features = ["full", "test-util"] } 

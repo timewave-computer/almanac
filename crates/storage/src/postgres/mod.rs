@@ -5,12 +5,13 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use indexer_common::{Error, Result, BlockStatus};
 use indexer_core::event::Event;
-use sqlx::{Pool, Postgres};
-use tracing::info;
+use sqlx::{Pool, Postgres, types::Json, Transaction};
+use tracing::{debug, info, instrument};
 
 use crate::EventFilter;
 use crate::Storage;
 use crate::migrations::initialize_database;
+use crate::{ValenceAccountInfo, ValenceAccountLibrary, ValenceAccountExecution, ValenceAccountState};
 
 pub mod repositories;
 pub mod migrations;
@@ -192,6 +193,238 @@ impl Storage for PostgresStorage {
             .collect();
         
         Ok(filtered_events)
+    }
+
+    #[instrument(skip(self, account_info, initial_libraries), fields(account_id = %account_info.id))]
+    async fn store_valence_account_instantiation(
+        &self,
+        account_info: ValenceAccountInfo,
+        initial_libraries: Vec<ValenceAccountLibrary>,
+    ) -> Result<()> {
+        let mut tx = self.pool.begin().await?;
+
+        // Insert into valence_accounts
+        sqlx::query!(
+            r#"
+            INSERT INTO valence_accounts (id, chain_id, contract_address, created_at_block, created_at_tx, current_owner, pending_owner, pending_owner_expiry, last_updated_block, last_updated_tx)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            ON CONFLICT (id) DO UPDATE SET
+                current_owner = EXCLUDED.current_owner, -- Allow re-instantiation/update if needed?
+                pending_owner = EXCLUDED.pending_owner,
+                pending_owner_expiry = EXCLUDED.pending_owner_expiry,
+                last_updated_block = EXCLUDED.last_updated_block,
+                last_updated_tx = EXCLUDED.last_updated_tx;
+            "#,
+            account_info.id,
+            account_info.chain_id,
+            account_info.contract_address,
+            account_info.created_at_block as i64,
+            account_info.created_at_tx,
+            account_info.current_owner,
+            account_info.pending_owner,
+            account_info.pending_owner_expiry.map(|v| v as i64),
+            account_info.last_updated_block as i64,
+            account_info.last_updated_tx
+        )
+        .execute(&mut *tx)
+        .await?;
+
+        // Insert initial libraries
+        for lib in initial_libraries {
+            sqlx::query!(
+                r#"
+                INSERT INTO valence_account_libraries (account_id, library_address, approved_at_block, approved_at_tx)
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (account_id, library_address) DO NOTHING; -- Ignore if already approved
+                "#,
+                lib.account_id,
+                lib.library_address,
+                lib.approved_at_block as i64,
+                lib.approved_at_tx
+            )
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        tx.commit().await?;
+        debug!(account_id = %account_info.id, "Stored Valence account instantiation");
+        Ok(())
+    }
+
+    #[instrument(skip(self, library_info), fields(account_id = %account_id, library = %library_info.library_address))]
+    async fn store_valence_library_approval(
+        &self,
+        account_id: &str,
+        library_info: ValenceAccountLibrary,
+        update_block: u64,
+        update_tx: &str,
+    ) -> Result<()> {
+        let mut tx = self.pool.begin().await?;
+
+        // Insert library approval
+        sqlx::query!(
+            r#"
+            INSERT INTO valence_account_libraries (account_id, library_address, approved_at_block, approved_at_tx)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (account_id, library_address) DO NOTHING; -- Ignore if already approved
+            "#,
+            account_id,
+            library_info.library_address,
+            library_info.approved_at_block as i64,
+            library_info.approved_at_tx
+        )
+        .execute(&mut *tx)
+        .await?;
+
+        // Update account's last_updated timestamp
+        sqlx::query!(
+            r#"
+            UPDATE valence_accounts
+            SET last_updated_block = $1, last_updated_tx = $2
+            WHERE id = $3;
+            "#,
+            update_block as i64,
+            update_tx,
+            account_id
+        )
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+        debug!(account_id = %account_id, library = %library_info.library_address, "Stored Valence library approval");
+        Ok(())
+    }
+
+    #[instrument(skip(self), fields(account_id = %account_id, library = %library_address))]
+    async fn store_valence_library_removal(
+        &self,
+        account_id: &str,
+        library_address: &str,
+        update_block: u64,
+        update_tx: &str,
+    ) -> Result<()> {
+        let mut tx = self.pool.begin().await?;
+
+        // Remove library
+        sqlx::query!(
+            r#"
+            DELETE FROM valence_account_libraries
+            WHERE account_id = $1 AND library_address = $2;
+            "#,
+            account_id,
+            library_address
+        )
+        .execute(&mut *tx)
+        .await?;
+
+        // Update account's last_updated timestamp
+         sqlx::query!(
+            r#"
+            UPDATE valence_accounts
+            SET last_updated_block = $1, last_updated_tx = $2
+            WHERE id = $3;
+            "#,
+            update_block as i64,
+            update_tx,
+            account_id
+        )
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+        debug!(account_id = %account_id, library = %library_address, "Stored Valence library removal");
+        Ok(())
+    }
+
+    #[instrument(skip(self, new_owner, new_pending_owner), fields(account_id = %account_id))]
+    async fn store_valence_ownership_update(
+        &self,
+        account_id: &str,
+        new_owner: Option<String>,
+        new_pending_owner: Option<String>,
+        new_pending_expiry: Option<u64>,
+        update_block: u64,
+        update_tx: &str,
+    ) -> Result<()> {
+        sqlx::query!(
+            r#"
+            UPDATE valence_accounts
+            SET current_owner = $1, pending_owner = $2, pending_owner_expiry = $3, last_updated_block = $4, last_updated_tx = $5
+            WHERE id = $6;
+            "#,
+            new_owner,
+            new_pending_owner,
+            new_pending_expiry.map(|v| v as i64),
+            update_block as i64,
+            update_tx,
+            account_id
+        )
+        .execute(&self.pool) // Can run outside tx if simple update
+        .await?;
+        debug!(account_id = %account_id, "Stored Valence ownership update");
+        Ok(())
+    }
+
+    #[instrument(skip(self, execution_info), fields(account_id = %execution_info.account_id, tx_hash = %execution_info.tx_hash))]
+    async fn store_valence_execution(
+        &self,
+        execution_info: ValenceAccountExecution,
+    ) -> Result<()> {
+        // Convert SystemTime to chrono::DateTime<Utc> for sqlx
+        let executed_at_chrono = chrono::DateTime::from(execution_info.executed_at);
+
+        sqlx::query!(
+            r#"
+            INSERT INTO valence_account_executions (account_id, chain_id, block_number, tx_hash, executor_address, message_index, correlated_event_ids, raw_msgs, payload, executed_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
+            "#,
+            execution_info.account_id,
+            execution_info.chain_id,
+            execution_info.block_number as i64,
+            execution_info.tx_hash,
+            execution_info.executor_address,
+            execution_info.message_index,
+            execution_info.correlated_event_ids.as_deref(), // Convert Option<Vec<String>> to Option<&[String]>
+            execution_info.raw_msgs.map(Json), // Wrap Option<Value> in Option<Json<Value>>
+            execution_info.payload,
+            executed_at_chrono
+        )
+        .execute(&self.pool)
+        .await?;
+        debug!(account_id = %execution_info.account_id, tx_hash=%execution_info.tx_hash, "Stored Valence execution");
+        Ok(())
+    }
+
+    #[instrument(skip(self), fields(account_id = %account_id))]
+    async fn get_valence_account_state(&self, account_id: &str) -> Result<Option<ValenceAccountState>> {
+        // Fetch current owner
+        let owner_result = sqlx::query!(
+            "SELECT current_owner FROM valence_accounts WHERE id = $1",
+            account_id
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        let Some(owner_record) = owner_result else {
+            // Account doesn't exist
+            return Ok(None);
+        };
+        let current_owner = owner_record.current_owner;
+
+        // Fetch current libraries
+        let libraries_result = sqlx::query!(
+            "SELECT library_address FROM valence_account_libraries WHERE account_id = $1",
+            account_id
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let libraries = libraries_result.into_iter().map(|rec| rec.library_address).collect();
+
+        Ok(Some(ValenceAccountState {
+            current_owner,
+            libraries,
+        }))
     }
 }
 

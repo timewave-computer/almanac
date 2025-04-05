@@ -19,6 +19,45 @@ pub use migrations::schema::{
     ContractSchemaRegistry
 };
 
+// Add structs to pass Valence data around
+// Could also define these in indexer-cosmos or a new valence-types crate
+
+#[derive(Debug, Clone)]
+pub struct ValenceAccountInfo {
+    pub id: String,                         // Unique ID (e.g., chain_id + contract_address)
+    pub chain_id: String,
+    pub contract_address: String,
+    pub created_at_block: u64,
+    pub created_at_tx: String,
+    pub current_owner: Option<String>,
+    pub pending_owner: Option<String>,
+    pub pending_owner_expiry: Option<u64>,
+    pub last_updated_block: u64,
+    pub last_updated_tx: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ValenceAccountLibrary {
+    pub account_id: String,
+    pub library_address: String,
+    pub approved_at_block: u64,
+    pub approved_at_tx: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ValenceAccountExecution {
+    pub account_id: String,
+    pub chain_id: String,
+    pub block_number: u64,
+    pub tx_hash: String,
+    pub executor_address: String,
+    pub message_index: i32, // Assuming i32 fits message index
+    pub correlated_event_ids: Option<Vec<String>>,
+    pub raw_msgs: Option<serde_json::Value>,
+    pub payload: Option<String>,
+    pub executed_at: std::time::SystemTime,
+}
+
 /// Storage backend for indexer
 #[async_trait]
 pub trait Storage: Send + Sync + 'static {
@@ -39,6 +78,62 @@ pub trait Storage: Send + Sync + 'static {
     
     /// Get events with specific block status
     async fn get_events_with_status(&self, filters: Vec<EventFilter>, status: BlockStatus) -> Result<Vec<Box<dyn Event>>>;
+
+    // --- Valence Account Storage Methods ---
+
+    /// Stores the initial information for a newly instantiated Valence account.
+    /// Also stores the initial list of approved libraries.
+    async fn store_valence_account_instantiation(
+        &self,
+        account_info: ValenceAccountInfo,
+        initial_libraries: Vec<ValenceAccountLibrary>,
+    ) -> Result<()>;
+
+    /// Adds a library to an existing Valence account's approved list.
+    async fn store_valence_library_approval(
+        &self,
+        account_id: &str,
+        library_info: ValenceAccountLibrary,
+        update_block: u64,
+        update_tx: &str,
+    ) -> Result<()>;
+
+    /// Removes a library from an existing Valence account's approved list.
+    async fn store_valence_library_removal(
+        &self,
+        account_id: &str,
+        library_address: &str,
+        update_block: u64,
+        update_tx: &str,
+    ) -> Result<()>;
+
+    /// Updates the ownership details (owner, pending owner, expiry) of a Valence account.
+    async fn store_valence_ownership_update(
+        &self,
+        account_id: &str,
+        new_owner: Option<String>,
+        new_pending_owner: Option<String>,
+        new_pending_expiry: Option<u64>,
+        update_block: u64,
+        update_tx: &str,
+    ) -> Result<()>;
+
+    /// Stores a record of an execution triggered by a Valence account.
+    async fn store_valence_execution(
+        &self,
+        execution_info: ValenceAccountExecution,
+    ) -> Result<()>;
+
+    /// Retrieves the current state of a Valence account (owner, libraries).
+    /// Needed for calculating updates (e.g., removing old owner index).
+    async fn get_valence_account_state(&self, account_id: &str) -> Result<Option<ValenceAccountState>>;
+}
+
+/// Represents the current state needed for updates (primarily for RocksDB logic)
+#[derive(Debug, Clone)]
+pub struct ValenceAccountState {
+    pub current_owner: Option<String>,
+    pub libraries: Vec<String>,
 }
 
 /// Default implementations for Storage trait methods
