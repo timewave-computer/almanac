@@ -6,20 +6,14 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-parts.url = "github:hercules-ci/flake-parts";
     
-    # Input needed for the wasmd build - using a specific commit for stability
+    # Input needed for flake reference (not used directly anymore)
     wasmd-src = {
       url = "github:CosmWasm/wasmd/v0.31.0";
       flake = false;
     };
-    
-    # Input for the wasmvm library source
-    wasmvm-src = {
-      url = "github:CosmWasm/wasmvm/v2.0.0";
-      flake = false;
-    };
   };
 
-  outputs = inputs@{ self, nixpkgs, flake-parts, wasmd-src, wasmvm-src, ... }:
+  outputs = inputs@{ self, nixpkgs, flake-parts, wasmd-src, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } {
       # Import our modules
       imports = [
@@ -35,17 +29,26 @@
           packages = [ 
             pkgs.git 
             # Include essential cosmos packages
-            self'.packages.wasmd
-            self'.packages.run-wasmd-node
+            self'.packages.wasmd-setup
+            self'.packages.wasmd-node
             self'.packages.test-cosmos-adapter
             pkgs.jq
+            pkgs.go
           ];
           
           shellHook = ''
             echo "=== Almanac Development Environment ==="
             echo "Available commands:"
-            echo "  - run-wasmd-node: Start a local wasmd node for testing"
+            echo "  - wasmd-setup: Install wasmd from source via Go"
+            echo "  - wasmd-node: Start a local wasmd node for testing"
             echo "  - test-cosmos-adapter: Run cosmos adapter tests against local node"
+            
+            # Check if wasmd is already installed
+            if [ -f "$HOME/go/bin/wasmd" ]; then
+              echo "✓ wasmd is already installed"
+            else
+              echo "ℹ Run 'wasmd-setup' to install wasmd"
+            fi
           '';
         };
       };
