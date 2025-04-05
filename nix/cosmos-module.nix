@@ -72,7 +72,8 @@
             
             # Create test accounts
             wasmd keys add validator --keyring-backend=test --home="$TEST_DIR"
-            wasmd add-genesis-account $(wasmd keys show validator -a --keyring-backend=test --home="$TEST_DIR") 1000000000stake,1000000000validatortoken --home="$TEST_DIR"
+            VALIDATOR_ADDR=$(wasmd keys show validator -a --keyring-backend=test --home="$TEST_DIR")
+            wasmd add-genesis-account "$VALIDATOR_ADDR" 1000000000stake,1000000000validatortoken --home="$TEST_DIR"
             wasmd gentx validator 1000000stake --chain-id=testing --keyring-backend=test --home="$TEST_DIR"
             wasmd collect-gentxs --home="$TEST_DIR"
           fi
