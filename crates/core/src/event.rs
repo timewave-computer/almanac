@@ -11,6 +11,10 @@ pub trait Event: Debug + Send + Sync {
     /// Chain from which the event originated
     fn chain(&self) -> &str;
 
+    /// Optional address associated with the event (e.g., contract address).
+    /// Returns None if the event type doesn't have a relevant address.
+    fn address(&self) -> Option<&str> { None } // Default implementation returns None
+
     /// Block number or height at which the event occurred
     fn block_number(&self) -> u64;
 
@@ -41,6 +45,10 @@ impl Event for Box<dyn Event> {
 
     fn chain(&self) -> &str {
         (**self).chain()
+    }
+
+    fn address(&self) -> Option<&str> {
+        (**self).address()
     }
 
     fn block_number(&self) -> u64 {

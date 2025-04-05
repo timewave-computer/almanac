@@ -70,14 +70,14 @@ Run the storage synchronization test:
 cargo test -p indexer-storage --test storage_sync
 ```
 
-Test the Ethereum adapter:
+Test the Ethereum adapter against Anvil:
 ```bash
-./scripts/test-ethereum-adapter.sh
+nix run .#test-ethereum-adapter-anvil
 ```
 
 Test the Cosmos adapter:
 ```bash
-./scripts/test-cosmos-adapter.sh
+nix run .#test-cosmos-adapter
 ```
 
 Test chain reorganization handling:
@@ -87,15 +87,19 @@ Test chain reorganization handling:
 
 ## Available Commands
 
-The following commands are available within the Nix development shell:
+The following commands are available:
 
-- `nix run .#start-postgres` - Start PostgreSQL server
-- `nix run .#start-anvil` - Start Ethereum test node (Anvil)
-- `nix run .#run-ufo-node` - Start UFO node for Cosmos testing
-- `nix run .#setup-test-nodes` - Configure test nodes for development
-- `nix run .#test-nodes` - Test node configuration
-- `nix run .#connect-live-nodes` - Test connection to live network nodes
-- `nix run .#run-all-nodes` - Start all nodes for development
+**Cosmos:**
+- `nix run .#wasmd-node`: Start a local wasmd node for testing
+- `nix run .#test-cosmos-adapter`: Run cosmos adapter tests against the local node
+
+**Ethereum:**
+- `nix run .#start-anvil`: Start local Ethereum test node (Anvil)
+- `nix run .#start-reth`: Start Reth Ethereum node (requires config)
+- `nix run .#test-ethereum-adapter-anvil`: Run tests against local Anvil node
+- `nix run .#test-ethereum-adapter-reth`: Run tests against local Reth node
+
+These commands are also available directly within the Nix development shell (`nix develop`).
 
 ## Architecture
 
@@ -126,7 +130,7 @@ The indexer follows a modular architecture:
                 │                     │
     ┌───────────▼────────┐   ┌────────▼──────────┐
     │  RocksDB Layer     │   │  PostgreSQL Layer │
-    │  (Performance)     │   │  (Query Richness) │
+    │  (Performance)     │   │   (Rick Queries)  │
     └────────────────────┘   └───────────────────┘
 ```
 

@@ -12,6 +12,7 @@ license.workspace = true
 # Indexer core
 indexer-core = { path = "../core" }
 indexer-common = { path = "../common" }
+indexer-storage = { path = "../storage" }
 
 # Async runtime
 async-trait.workspace = true

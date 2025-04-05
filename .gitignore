@@ -36,7 +36,7 @@ deployments/
 # Runtime
 data/
 logs/
-.sqlx/
+# .sqlx/ # Keep sqlx offline data
 target/
 
 # Testing
@@ -55,3 +55,13 @@ cache/
 work/
 lib/
 .cursor/
+
+# Database
+.db_env
+.sqlx/
+$TMPDIR/
+
+# Reth Source (if cloned locally)
+/reth-src/
+
+valence-protocol/

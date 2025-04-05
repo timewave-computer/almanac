@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 
 use indexer_core::event::Event;
 use indexer_common::{BlockStatus, Result};
@@ -127,13 +128,73 @@ pub trait Storage: Send + Sync + 'static {
     /// Retrieves the current state of a Valence account (owner, libraries).
     /// Needed for calculating updates (e.g., removing old owner index).
     async fn get_valence_account_state(&self, account_id: &str) -> Result<Option<ValenceAccountState>>;
+
+    // --- Additional Valence Account State Methods (often RocksDB specific for history) ---
+
+    /// Sets the current state of a Valence account.
+    async fn set_valence_account_state(&self, account_id: &str, state: &ValenceAccountState) -> Result<()>;
+
+    /// Deletes the current state of a Valence account.
+    async fn delete_valence_account_state(&self, account_id: &str) -> Result<()>;
+
+    /// Stores the historical state of a Valence account at a specific block.
+    async fn set_historical_valence_account_state(
+        &self,
+        account_id: &str,
+        block_number: u64,
+        state: &ValenceAccountState,
+    ) -> Result<()>;
+
+    /// Retrieves the historical state of a Valence account at a specific block.
+    async fn get_historical_valence_account_state(
+        &self,
+        account_id: &str,
+        block_number: u64,
+    ) -> Result<Option<ValenceAccountState>>;
+
+    /// Deletes the historical state of a Valence account at a specific block.
+    async fn delete_historical_valence_account_state(
+        &self,
+        account_id: &str,
+        block_number: u64,
+    ) -> Result<()>;
+
+    /// Sets the latest block number for which historical state is stored for an account.
+    async fn set_latest_historical_valence_block(
+        &self,
+        account_id: &str,
+        block_number: u64,
+    ) -> Result<()>;
+
+    /// Retrieves the latest block number for which historical state is stored for an account.
+    async fn get_latest_historical_valence_block(&self, account_id: &str) -> Result<Option<u64>>;
+
+    /// Deletes the record of the latest historical block for an account.
+    async fn delete_latest_historical_valence_block(&self, account_id: &str) -> Result<()>;
 }
 
-/// Represents the current state needed for updates (primarily for RocksDB logic)
-#[derive(Debug, Clone)]
+/// Represents the latest known state of a Valence account in storage.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ValenceAccountState {
+    /// The unique identifier for the account (e.g., "<chain_id>:<contract_address>").
+    pub account_id: String,
+    /// The chain ID the account belongs to.
+    pub chain_id: String,
+    /// The contract address of the account.
+    pub address: String,
+    /// The current owner address (if any).
     pub current_owner: Option<String>,
+    /// The pending owner address (if any).
+    pub pending_owner: Option<String>,
+    /// Timestamp when the pending ownership expires (if applicable).
+    pub pending_owner_expiry: Option<u64>,
+    /// List of currently approved library addresses.
+    #[serde(default)] // Ensure empty vec if missing during deserialization
     pub libraries: Vec<String>,
+    /// The block number at which this state was last updated.
+    pub last_update_block: u64,
+    /// The transaction hash of the last update.
+    pub last_update_tx: String,
 }
 
 /// Default implementations for Storage trait methods

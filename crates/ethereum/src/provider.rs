@@ -1,12 +1,14 @@
-use ethers::providers::Provider;
-use ethers::providers::{Http, Ws};
-use ethers::types::{BlockId, BlockNumber, BlockTag, Transaction, U64};
+use ethers::prelude::*;
+use ethers::providers::{Http, Provider, Ws};
+use ethers::middleware::Middleware;
+use ethers::types::{BlockId, BlockNumber, Transaction, U64, H256, Block};
 use indexer_common::{Error, Result};
 use std::sync::Arc;
 use tracing::{debug, error, info, warn};
 use futures::StreamExt;
 
 /// Ethereum provider types
+#[derive(Debug, Clone)]
 pub enum EthereumProvider {
     /// HTTP provider
     Http(Arc<Provider<Http>>),
@@ -67,12 +69,12 @@ impl EthereumProvider {
     pub async fn new(config: EthereumProviderConfig) -> Result<Self> {
         if config.use_websocket {
             let ws_provider = Provider::<Ws>::connect(&config.rpc_url).await
-                .map_err(|e| Error::chain(format!("Failed to connect to Ethereum node via WebSocket: {}", e)))?;
+                .map_err(|e| Error::generic(format!("Failed to connect to Ethereum node via WebSocket: {}", e)))?;
             
             Ok(Self::Websocket(Arc::new(ws_provider)))
         } else {
             let http_provider = Provider::<Http>::try_from(&config.rpc_url)
-                .map_err(|e| Error::chain(format!("Failed to create Ethereum HTTP provider: {}", e)))?;
+                .map_err(|e| Error::generic(format!("Failed to create Ethereum HTTP provider: {}", e)))?;
             
             Ok(Self::Http(Arc::new(http_provider)))
         }
@@ -80,27 +82,27 @@ impl EthereumProvider {
 
     /// Get a block by number with a specific status requirement
     pub async fn get_block_by_status(&self, status: BlockStatus) -> Result<(ethers::types::Block<ethers::types::Transaction>, u64)> {
-        let block_tag = match status {
-            BlockStatus::Confirmed => BlockTag::Latest,
-            BlockStatus::Safe => BlockTag::Safe,
-            BlockStatus::Justified => BlockTag::Finalized, // Ethereum RPC doesn't expose "justified" directly
-            BlockStatus::Finalized => BlockTag::Finalized,
+        let block_number_enum = match status {
+            BlockStatus::Confirmed => BlockNumber::Latest,
+            BlockStatus::Safe => BlockNumber::Safe,
+            BlockStatus::Justified => BlockNumber::Finalized,
+            BlockStatus::Finalized => BlockNumber::Finalized,
         };
         
         let block = match self {
             EthereumProvider::Http(provider) => {
                 provider
-                    .get_block_with_txs(BlockId::Number(BlockNumber::BlockTag(block_tag)))
+                    .get_block_with_txs(BlockId::Number(block_number_enum))
                     .await
-                    .map_err(|e| Error::chain(format!("Failed to get block: {}", e)))?
-                    .ok_or_else(|| Error::chain(format!("Block with status {:?} not found", status)))?
+                    .map_err(|e| Error::generic(format!("Failed to get block: {}", e)))?
+                    .ok_or_else(|| Error::generic(format!("Block with status {:?} not found", status)))?
             }
             EthereumProvider::Websocket(provider) => {
                 provider
-                    .get_block_with_txs(BlockId::Number(BlockNumber::BlockTag(block_tag)))
+                    .get_block_with_txs(BlockId::Number(block_number_enum))
                     .await
-                    .map_err(|e| Error::chain(format!("Failed to get block: {}", e)))?
-                    .ok_or_else(|| Error::chain(format!("Block with status {:?} not found", status)))?
+                    .map_err(|e| Error::generic(format!("Failed to get block: {}", e)))?
+                    .ok_or_else(|| Error::generic(format!("Block with status {:?} not found", status)))?
             }
         };
         
@@ -113,26 +115,26 @@ impl EthereumProvider {
         match self {
             EthereumProvider::Http(provider) => {
                 let block = provider
-                    .get_block(BlockNumber::Finalized)
+                    .get_block(BlockId::Number(BlockNumber::Finalized))
                     .await
-                    .map_err(|e| Error::chain(format!("Failed to get finalized block: {}", e)))?
-                    .ok_or_else(|| Error::chain("Finalized block not found"))?;
+                    .map_err(|e| Error::generic(format!("Failed to get finalized block: {}", e)))?
+                    .ok_or_else(|| Error::generic("Finalized block not found"))?;
                 
                 let number = block.number
-                    .ok_or_else(|| Error::chain("Finalized block has no number"))?
+                    .ok_or_else(|| Error::generic("Finalized block has no number"))?
                     .as_u64();
                 
                 Ok(number)
             }
             EthereumProvider::Websocket(provider) => {
                 let block = provider
-                    .get_block(BlockNumber::Finalized)
+                    .get_block(BlockId::Number(BlockNumber::Finalized))
                     .await
-                    .map_err(|e| Error::chain(format!("Failed to get finalized block: {}", e)))?
-                    .ok_or_else(|| Error::chain("Finalized block not found"))?;
+                    .map_err(|e| Error::generic(format!("Failed to get finalized block: {}", e)))?
+                    .ok_or_else(|| Error::generic("Finalized block not found"))?;
                 
                 let number = block.number
-                    .ok_or_else(|| Error::chain("Finalized block has no number"))?
+                    .ok_or_else(|| Error::generic("Finalized block has no number"))?
                     .as_u64();
                 
                 Ok(number)
@@ -145,26 +147,26 @@ impl EthereumProvider {
         match self {
             EthereumProvider::Http(provider) => {
                 let block = provider
-                    .get_block(BlockNumber::Safe)
+                    .get_block(BlockId::Number(BlockNumber::Safe))
                     .await
-                    .map_err(|e| Error::chain(format!("Failed to get safe block: {}", e)))?
-                    .ok_or_else(|| Error::chain("Safe block not found"))?;
+                    .map_err(|e| Error::generic(format!("Failed to get safe block: {}", e)))?
+                    .ok_or_else(|| Error::generic("Safe block not found"))?;
                 
                 let number = block.number
-                    .ok_or_else(|| Error::chain("Safe block has no number"))?
+                    .ok_or_else(|| Error::generic("Safe block has no number"))?
                     .as_u64();
                 
                 Ok(number)
             }
             EthereumProvider::Websocket(provider) => {
                 let block = provider
-                    .get_block(BlockNumber::Safe)
+                    .get_block(BlockId::Number(BlockNumber::Safe))
                     .await
-                    .map_err(|e| Error::chain(format!("Failed to get safe block: {}", e)))?
-                    .ok_or_else(|| Error::chain("Safe block not found"))?;
+                    .map_err(|e| Error::generic(format!("Failed to get safe block: {}", e)))?
+                    .ok_or_else(|| Error::generic("Safe block not found"))?;
                 
                 let number = block.number
-                    .ok_or_else(|| Error::chain("Safe block has no number"))?
+                    .ok_or_else(|| Error::generic("Safe block has no number"))?
                     .as_u64();
                 
                 Ok(number)
@@ -177,13 +179,13 @@ impl EthereumProvider {
         match self {
             EthereumProvider::Http(provider) => {
                 let block_number = provider.get_block_number().await
-                    .map_err(|e| Error::chain(format!("Failed to get latest block number: {}", e)))?;
+                    .map_err(|e| Error::generic(format!("Failed to get latest block number: {}", e)))?;
                 
                 Ok(block_number.as_u64())
             }
             EthereumProvider::Websocket(provider) => {
                 let block_number = provider.get_block_number().await
-                    .map_err(|e| Error::chain(format!("Failed to get latest block number: {}", e)))?;
+                    .map_err(|e| Error::generic(format!("Failed to get latest block number: {}", e)))?;
                 
                 Ok(block_number.as_u64())
             }
@@ -197,15 +199,15 @@ impl EthereumProvider {
                 provider
                     .get_block_with_txs(BlockId::Number(number.into()))
                     .await
-                    .map_err(|e| Error::chain(format!("Failed to get block {}: {}", number, e)))?
-                    .ok_or_else(|| Error::chain(format!("Block {} not found", number)))
+                    .map_err(|e| Error::generic(format!("Failed to get block {}: {}", number, e)))?
+                    .ok_or_else(|| Error::generic(format!("Block {} not found", number)))
             }
             EthereumProvider::Websocket(provider) => {
                 provider
                     .get_block_with_txs(BlockId::Number(number.into()))
                     .await
-                    .map_err(|e| Error::chain(format!("Failed to get block {}: {}", number, e)))?
-                    .ok_or_else(|| Error::chain(format!("Block {} not found", number)))
+                    .map_err(|e| Error::generic(format!("Failed to get block {}: {}", number, e)))?
+                    .ok_or_else(|| Error::generic(format!("Block {} not found", number)))
             }
         }
     }
@@ -213,7 +215,7 @@ impl EthereumProvider {
     /// Get blocks in a range
     pub async fn get_blocks_in_range(&self, from_block: u64, to_block: u64) -> Result<Vec<ethers::types::Block<Transaction>>> {
         if from_block > to_block {
-            return Err(Error::validation("from_block must be less than or equal to to_block"));
+            return Err(Error::generic(format!("from_block must be less than or equal to to_block")));
         }
         
         let batch_size = 10; // Fetch 10 blocks at a time to avoid overloading the node
@@ -231,9 +233,9 @@ impl EthereumProvider {
                             provider_clone
                                 .get_block_with_txs(BlockId::Number(block_num.into()))
                                 .await
-                                .map_err(|e| Error::chain(format!("Failed to get block {}: {}", block_num, e)))
+                                .map_err(|e| Error::generic(format!("Failed to get block {}: {}", block_num, e)))
                                 .and_then(|block_opt| {
-                                    block_opt.ok_or_else(|| Error::chain(format!("Block {} not found", block_num)))
+                                    block_opt.ok_or_else(|| Error::generic(format!("Block {} not found", block_num)))
                                 })
                         }));
                     }
@@ -243,9 +245,9 @@ impl EthereumProvider {
                             provider_clone
                                 .get_block_with_txs(BlockId::Number(block_num.into()))
                                 .await
-                                .map_err(|e| Error::chain(format!("Failed to get block {}: {}", block_num, e)))
+                                .map_err(|e| Error::generic(format!("Failed to get block {}: {}", block_num, e)))
                                 .and_then(|block_opt| {
-                                    block_opt.ok_or_else(|| Error::chain(format!("Block {} not found", block_num)))
+                                    block_opt.ok_or_else(|| Error::generic(format!("Block {} not found", block_num)))
                                 })
                         }));
                     }
@@ -277,5 +279,109 @@ impl EthereumProvider {
         }
         
         Ok(blocks)
+    }
+
+    // Get block details by number (e.g., Latest, Safe, Finalized)
+    async fn get_block_by_number_enum(&self, block_number: BlockNumber) -> Result<Option<Block<H256>>> {
+        let block_id = BlockId::Number(block_number);
+        match self {
+            EthereumProvider::Websocket(provider) => {
+                provider
+                    .get_block(block_id)
+                    .await
+                    .map_err(|e| Error::generic(format!("Failed to get block by number enum: {}", e)))
+            }
+            EthereumProvider::Http(provider) => {
+                provider
+                    .get_block(block_id)
+                    .await
+                    .map_err(|e| Error::generic(format!("Failed to get block by number enum: {}", e)))
+            }
+        }
+    }
+
+    // Get block details with transactions by number enum
+    async fn get_block_with_txs_by_number_enum(&self, block_number: BlockNumber) -> Result<Option<Block<Transaction>>> {
+        let block_id = BlockId::Number(block_number);
+        match self {
+            EthereumProvider::Websocket(provider) => {
+                provider
+                    .get_block_with_txs(block_id)
+                    .await
+                    .map_err(|e| Error::generic(format!("Failed to get block with txs by number enum: {}", e)))
+            }
+            EthereumProvider::Http(provider) => {
+                provider
+                    .get_block_with_txs(block_id)
+                    .await
+                    .map_err(|e| Error::generic(format!("Failed to get block with txs by number enum: {}", e)))
+            }
+        }
+    }
+
+    // Renamed methods previously using BlockTag
+    async fn get_block(&self, block_number: BlockNumber) -> Result<Option<Block<H256>>> {
+        let block_id = BlockId::Number(block_number);
+        match self {
+            EthereumProvider::Websocket(provider) => {
+                provider
+                    .get_block(block_id)
+                    .await
+                    .map_err(|e| Error::generic(format!("Failed to get block by number enum: {}", e)))
+            }
+            EthereumProvider::Http(provider) => {
+                provider
+                    .get_block(block_id)
+                    .await
+                    .map_err(|e| Error::generic(format!("Failed to get block by number enum: {}", e)))
+            }
+        }
+    }
+
+    async fn get_block_with_txs(&self, block_number: BlockNumber) -> Result<Option<Block<Transaction>>> {
+        let block_id = BlockId::Number(block_number);
+        match &self {
+            EthereumProvider::Websocket(provider) => {
+                provider
+                    .get_block_with_txs(block_id)
+                    .await
+                    .map_err(|e| Error::generic(format!("Failed to get block with txs by number enum: {}", e)))
+            }
+            EthereumProvider::Http(provider) => {
+                provider
+                    .get_block_with_txs(block_id)
+                    .await
+                    .map_err(|e| Error::generic(format!("Failed to get block with txs by number enum: {}", e)))
+            }
+        }
+    }
+
+    async fn get_block_number(&self) -> Result<u64> {
+        match &self {
+            EthereumProvider::Websocket(provider) => provider
+                .get_block_number()
+                .await
+                .map_err(|e| Error::generic(format!("Websocket provider error: {}", e)))
+                .map(|n| n.as_u64()),
+            EthereumProvider::Http(provider) => provider
+                .get_block_number()
+                .await
+                .map_err(|e| Error::generic(format!("HTTP provider error: {}", e)))
+                .map(|n| n.as_u64()),
+        }
+    }
+
+    async fn get_block_with_txs_by_number(&self, block_number: u64) -> Result<Option<Block<Transaction>>> {
+        let block_id = BlockId::Number(block_number.into());
+        match &self {
+            EthereumProvider::Websocket(provider) => provider
+                .get_block_with_txs(block_id)
+                .await
+                .map_err(|e| Error::generic(format!("Websocket provider error: {}", e))),
+            EthereumProvider::Http(provider) => provider
+                .get_block_with_txs(block_id)
+                .await
+                .map_err(|e| Error::generic(format!("HTTP provider error: {}", e))),
+        }
     }
 } 

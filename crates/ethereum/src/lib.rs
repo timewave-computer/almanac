@@ -1,19 +1,24 @@
 /// Ethereum event service implementation
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::SystemTime;
+use std::str::FromStr;
+use std::pin::Pin;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use ethers::middleware::Middleware;
 use ethers::providers::{Http, Provider, Ws};
-use ethers::types::{BlockNumber, Filter, H256};
+use ethers::types::{BlockNumber, Filter, H256, Log};
 use indexer_common::{BlockStatus, Error, Result};
 use indexer_core::event::Event;
-use indexer_core::service::{EventService, EventSubscription, BoxedEventService};
+use indexer_storage::Storage;
+use indexer_core::service::{EventService, EventSubscription};
 use indexer_core::types::{ChainId, EventFilter};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
+use ethers::abi::{Address, RawLog};
 
 mod provider;
 mod event;
@@ -80,6 +85,9 @@ pub struct EthereumEventService {
     
     /// Block cache
     block_cache: Arc<RwLock<HashMap<u64, ethers::types::Block<ethers::types::Transaction>>>>,
+    
+    /// Optional storage backend
+    storage: Option<Arc<dyn Storage + Send + Sync>>,
 }
 
 impl EthereumEventService {
@@ -106,6 +114,7 @@ impl EthereumEventService {
             event_processor: Arc::new(RwLock::new(event_processor)),
             config,
             block_cache: Arc::new(RwLock::new(HashMap::new())),
+            storage: None,
         };
         
         // Check connection
@@ -186,83 +195,139 @@ impl EthereumEventService {
         Ok(result_blocks)
     }
     
-    /// Fetch logs for a block range with filters
-    pub async fn fetch_logs(&self, from_block: u64, to_block: u64, filters: &[EventFilter]) -> Result<Vec<Box<dyn Event>>> {
-        // Prepare filter
-        let mut addresses = Vec::new();
-        
-        // Collect addresses from filters
-        for filter in filters {
-            addresses.extend(filter.addresses.iter().map(|addr| {
-                ethers::types::Address::from_str(addr)
-                    .map_err(|e| Error::validation(format!("Invalid address {}: {}", addr, e)))
-            }).collect::<Result<Vec<_>>>()?);
-        }
-        
-        // Create a filter for the block range
-        let filter = Filter::new()
-            .from_block(from_block)
-            .to_block(to_block)
-            .address(addresses);
-        
-        // Fetch logs
-        let logs = match &*self.provider {
-            EthereumProvider::Http(provider) => {
-                provider.get_logs(&filter).await
-                    .map_err(|e| Error::chain(format!("Failed to get logs: {}", e)))?
-            }
-            EthereumProvider::Websocket(provider) => {
-                provider.get_logs(&filter).await
-                    .map_err(|e| Error::chain(format!("Failed to get logs: {}", e)))?
-            }
-        };
-        
-        // Fetch corresponding blocks
-        let blocks = self.fetch_blocks(from_block, to_block).await?;
-        
-        // Create a map of block numbers to blocks for quick lookup
-        let block_map: HashMap<u64, &ethers::types::Block<ethers::types::Transaction>> = blocks
+    /// Helper to fetch logs based on combined filters
+    async fn fetch_logs(
+        &self,
+        from_block: u64,
+        to_block: u64,
+        filters: &[EventFilter],
+    ) -> Result<Vec<Box<dyn Event>>> {
+        debug!(from = from_block, to = to_block, num_filters = filters.len(), "Fetching logs");
+
+        // Determine the overall block range required by the filters
+        let min_block_opt = filters
             .iter()
-            .filter_map(|block| {
-                block.number.map(|num| (num.as_u64(), block))
-            })
-            .collect();
-        
-        // Process logs into events
-        let processor = self.event_processor.read().await;
-        let mut events = Vec::new();
-        
+            .filter_map(|f| f.block_range.map(|(min, _)| min))
+            .min();
+        let max_block_opt = filters
+            .iter()
+            .filter_map(|f| f.block_range.map(|(_, max)| max))
+            .max();
+
+        // Combine with function arguments
+        let final_from_block = min_block_opt.map_or(from_block, |min_f| std::cmp::max(from_block, min_f));
+        let final_to_block = max_block_opt.map_or(to_block, |max_f| std::cmp::min(to_block, max_f));
+
+        // Check if range is valid
+        if final_from_block > final_to_block {
+            warn!(final_from=%final_from_block, final_to=%final_to_block, "Invalid block range after applying filters, returning empty.");
+            return Ok(Vec::new());
+        }
+
+        // Convert u64 block numbers to ethers::types::U64 for the filter
+        let from_block_ethers = BlockNumber::Number(final_from_block.into());
+        let to_block_ethers = BlockNumber::Number(final_to_block.into());
+
+        // Extract unique addresses from all filters
+        let addresses: Vec<Address> = filters
+            .iter()
+            .filter_map(|f| f.custom_filters.get("address")) // Assuming address is in custom_filters
+            .filter_map(|addr_str| Address::from_str(addr_str).ok()) // Parse and ignore errors for now
+            .collect::<HashSet<_>>() // Collect into HashSet for dedup
+            .into_iter()
+            .collect(); // Convert back to Vec
+
+        // Create the base filter
+        let mut filter = Filter::new()
+            .from_block(from_block_ethers)
+            .to_block(to_block_ethers);
+
+        if !addresses.is_empty() {
+            filter = filter.address(addresses);
+        }
+
+        // TODO: Add topic filtering based on filter.event_types if ABIs are available
+
+        debug!(?filter, "Constructed ethers log filter");
+
+        // Execute the get_logs call
+        let logs = match &*self.provider { // Dereference Arc to access inner provider
+            EthereumProvider::Websocket(provider) => provider
+                .get_logs(&filter)
+                .await
+                .map_err(|e| Error::generic(format!("Websocket provider error fetching logs: {}", e)))?,
+            EthereumProvider::Http(provider) => provider
+                .get_logs(&filter)
+                .await
+                .map_err(|e| Error::generic(format!("HTTP provider error fetching logs: {}", e)))?,
+        };
+
+        debug!("Fetched {} logs", logs.len());
+
+        // Group logs by block number to fetch blocks efficiently
+        let mut logs_by_block: HashMap<u64, Vec<Log>> = HashMap::new();
         for log in logs {
-            let block_number = log.block_number.unwrap_or_default().as_u64();
-            
-            if let Some(block) = block_map.get(&block_number) {
-                let tx_hash = log.transaction_hash.unwrap_or_default();
-                
-                // Get transaction receipt (typically not needed for most use cases)
-                let receipt = None;
-                
-                // Process the log
-                match processor.process_log(log, block, receipt) {
-                    Ok(event) => {
-                        // Check if the event matches any of the filters
-                        let matches = filters.is_empty() || filters.iter().any(|f| processor.matches_filter(&event, f));
-                        
-                        if matches {
-                            events.push(Box::new(event) as Box<dyn Event>);
+            if let Some(block_num) = log.block_number {
+                logs_by_block.entry(block_num.as_u64()).or_default().push(log);
+            }
+        }
+
+        // Fetch the required blocks
+        let block_numbers: Vec<u64> = logs_by_block.keys().cloned().collect();
+        // Fetch blocks only if there are logs
+        let blocks_map: HashMap<u64, ethers::types::Block<ethers::types::Transaction>> = if !block_numbers.is_empty() {
+             self.fetch_blocks(
+                 *block_numbers.iter().min().unwrap_or(&final_from_block),
+                 *block_numbers.iter().max().unwrap_or(&final_to_block)
+             ).await?
+             .into_iter()
+             .filter_map(|b| b.number.map(|n| (n.as_u64(), b)))
+             .collect()
+        } else {
+            HashMap::new()
+        };
+
+        // Convert logs to events
+        let mut events: Vec<Box<dyn Event>> = Vec::new();
+        let processor = self.event_processor.read().await; // Acquire read lock before loop/filter
+        for (block_num, block_logs) in logs_by_block {
+             if let Some(block) = blocks_map.get(&block_num) {
+                 for log in block_logs {
+                    // process_log now returns Result<EthereumEvent>
+                    match processor.process_log(log, block, None) { // Pass reference to block, None for receipt
+                        Ok(event) => events.push(Box::new(event)), // Handle Result correctly
+                        Err(e) => {
+                            error!(log_block=?block_num, log_index=?log.log_index, tx_hash=?log.transaction_hash, "Failed to process log: {}", e);
+                            // Decide if one error should stop all processing
                         }
                     }
-                    Err(e) => {
-                        error!("Error processing log: {}", e);
-                        continue;
-                    }
-                }
-            } else {
-                warn!("Block {} not found for log", block_number);
-                continue;
-            }
+                 }
+             } else {
+                 warn!(block_num=%block_num, "Could not find block data for logs in block, skipping.");
+             }
         }
-        
-        Ok(events)
+        drop(processor); // Drop read lock after parsing logs
+
+        // Apply remaining filters (those not handled by get_logs)
+        // Re-acquiring lock for filtering
+        let processor_for_filter = self.event_processor.read().await;
+        let filtered_events: Vec<Box<dyn Event>> = events // Collect type is correct
+            .into_iter()
+            .filter(|event| {
+                 // Re-apply all filters for simplicity
+                 filters.iter().all(|f| {
+                     // Downcast event to EthereumEvent for matches_filter
+                     if let Some(eth_event) = event.as_any().downcast_ref::<EthereumEvent>() {
+                         processor_for_filter.matches_filter(eth_event, f)
+                     } else {
+                         false // Should not happen if only EthereumEvent is produced
+                     }
+                 })
+            })
+            .collect();
+        drop(processor_for_filter); // Drop read lock after filtering
+
+        Ok(filtered_events)
     }
 }
 
@@ -277,13 +342,15 @@ impl EventService for EthereumEventService {
     async fn get_events(&self, filters: Vec<EventFilter>) -> Result<Vec<Box<dyn Event>>> {
         // Get the block range from filters
         let latest_block = self.get_latest_block().await?;
+        
+        // Determine range using block_range field
         let from_block = filters.iter()
-            .filter_map(|f| f.from_block)
+            .filter_map(|f| f.block_range.map(|(min, _)| min)) // Use block_range
             .min()
             .unwrap_or(latest_block.saturating_sub(100)); // Default to last 100 blocks
         
         let to_block = filters.iter()
-            .filter_map(|f| f.to_block)
+            .filter_map(|f| f.block_range.map(|(_, max)| max)) // Use block_range
             .max()
             .unwrap_or(latest_block);
         
@@ -291,49 +358,22 @@ impl EventService for EthereumEventService {
         self.fetch_logs(from_block, to_block, &filters).await
     }
     
-    async fn subscribe(&self) -> Result<Box<dyn EventSubscription>> {
-        // Create a WebSocket provider if we're using HTTP
-        match &*self.provider {
-            EthereumProvider::Http(_) => {
-                if !self.config.use_websocket {
-                    return Err(Error::validation(
-                        "WebSocket connection required for subscription. Set use_websocket: true in the config."
-                    ));
-                }
-                
-                // Create a new provider config with WebSocket
-                let provider_config = EthereumProviderConfig {
-                    rpc_url: self.config.rpc_url.clone(),
-                    use_websocket: true,
-                    ..Default::default()
-                };
-                
-                // Create a WebSocket provider
-                let ws_provider = EthereumProvider::new(provider_config).await?;
-                
-                // Extract the WebSocket provider
-                match ws_provider {
-                    EthereumProvider::Websocket(provider) => {
-                        // Create a subscription
-                        let subscription = EthereumSubscription::new(
-                            Arc::try_unwrap(provider).unwrap_or_else(|arc| (*arc).clone()),
-                            self.chain_id.clone()
-                        ).await?;
-                        
-                        Ok(Box::new(subscription))
-                    }
-                    _ => Err(Error::internal("Failed to create WebSocket provider")),
-                }
-            }
-            EthereumProvider::Websocket(provider) => {
-                // Create a subscription with the existing WebSocket provider
-                let subscription = EthereumSubscription::new(
-                    provider.clone(),
-                    self.chain_id.clone()
-                ).await?;
-                
+    async fn subscribe(&self) -> Result<Box<dyn EventSubscription>> { // Use EventSubscription
+        info!("Subscribing to Ethereum events");
+
+        // Subscription requires a Websocket provider
+        match &*self.provider { // Dereference Arc to check variant
+            EthereumProvider::Websocket(provider_arc) => { // provider_arc is Arc<Provider<Ws>>
+                // Clone the Arc for the subscription task
+                let provider_clone = Arc::clone(provider_arc);
+                let chain_id = ChainId(self.config.chain_id.clone()); // Use tuple struct constructor
+                let subscription = EthereumSubscription::new(provider_clone, chain_id)
+                    .await?;
                 Ok(Box::new(subscription))
             }
+            EthereumProvider::Http(_) => Err(Error::generic( 
+                "Event subscription requires a Websocket provider".to_string(),
+            )),
         }
     }
     

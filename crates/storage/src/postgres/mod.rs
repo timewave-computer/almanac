@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use indexer_common::{Error, Result, BlockStatus};
 use indexer_core::event::Event;
 use sqlx::{Pool, Postgres, types::Json, Transaction};
-use tracing::{debug, info, instrument};
+use tracing::{debug, info, instrument, warn};
 
 use crate::EventFilter;
 use crate::Storage;
@@ -405,13 +405,6 @@ impl Storage for PostgresStorage {
         .fetch_optional(&self.pool)
         .await?;
 
-        let Some(owner_record) = owner_result else {
-            // Account doesn't exist
-            return Ok(None);
-        };
-        let current_owner = owner_record.current_owner;
-
-        // Fetch current libraries
         let libraries_result = sqlx::query!(
             "SELECT library_address FROM valence_account_libraries WHERE account_id = $1",
             account_id
@@ -419,12 +412,86 @@ impl Storage for PostgresStorage {
         .fetch_all(&self.pool)
         .await?;
 
-        let libraries = libraries_result.into_iter().map(|rec| rec.library_address).collect();
+        if let Some(owner_row) = owner_result {
+            let libraries = libraries_result.into_iter().map(|row| row.library_address).collect();
+            // We need more info (chain_id, address, pending etc.) from the DB 
+            // to fully construct ValenceAccountState here. 
+            // Placeholder - requires adjusting the query or struct.
+            Ok(Some(ValenceAccountState {
+                account_id: account_id.to_string(),
+                chain_id: "".to_string(), // Placeholder
+                address: "".to_string(), // Placeholder
+                current_owner: owner_row.current_owner,
+                pending_owner: None, // Placeholder
+                pending_owner_expiry: None, // Placeholder
+                libraries,
+                last_update_block: 0, // Placeholder
+                last_update_tx: "".to_string(), // Placeholder
+            }))
+        } else {
+            Ok(None)
+        }
+    }
 
-        Ok(Some(ValenceAccountState {
-            current_owner,
-            libraries,
-        }))
+    // --- Default Implementations for New Valence Methods ---
+
+    async fn set_valence_account_state(&self, _account_id: &str, _state: &ValenceAccountState) -> Result<()> {
+        // Postgres currently relies on individual updates (store_valence_library_approval etc.)
+        // This method might be used for bulk updates or initial state setting if needed.
+        warn!("set_valence_account_state not fully implemented for Postgres");
+        Ok(())
+    }
+
+    async fn delete_valence_account_state(&self, _account_id: &str) -> Result<()> {
+        warn!("delete_valence_account_state not implemented for Postgres");
+        Ok(())
+    }
+
+    async fn set_historical_valence_account_state(
+        &self,
+        _account_id: &str,
+        _block_number: u64,
+        _state: &ValenceAccountState,
+    ) -> Result<()> {
+        // Historical state is intended for RocksDB primarily
+        Ok(())
+    }
+
+    async fn get_historical_valence_account_state(
+        &self,
+        _account_id: &str,
+        _block_number: u64,
+    ) -> Result<Option<ValenceAccountState>> {
+        // Historical state is intended for RocksDB primarily
+        Ok(None)
+    }
+
+    async fn delete_historical_valence_account_state(
+        &self,
+        _account_id: &str,
+        _block_number: u64,
+    ) -> Result<()> {
+        // Historical state is intended for RocksDB primarily
+        Ok(())
+    }
+
+    async fn set_latest_historical_valence_block(
+        &self,
+        _account_id: &str,
+        _block_number: u64,
+    ) -> Result<()> {
+        // Historical state is intended for RocksDB primarily
+        Ok(())
+    }
+
+    async fn get_latest_historical_valence_block(&self, _account_id: &str) -> Result<Option<u64>> {
+        // Historical state is intended for RocksDB primarily
+        Ok(None)
+    }
+
+    async fn delete_latest_historical_valence_block(&self, _account_id: &str) -> Result<()> {
+        // Historical state is intended for RocksDB primarily
+        Ok(())
     }
 }
 

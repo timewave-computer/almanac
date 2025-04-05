@@ -12,7 +12,7 @@ use tracing::{debug, error, info, warn};
 use indexer_core::event::Event;
 use indexer_core::types::EventFilter;
 
-/// Ethereum-specific event data
+/// Represents an Ethereum event with decoded parameters.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct EthereumEvent {
     /// Unique identifier for the event
@@ -30,19 +30,19 @@ pub struct EthereumEvent {
     /// Transaction hash
     pub tx_hash: String,
 
-    /// Timestamp
+    /// Timestamp (Unix seconds)
     pub timestamp: u64,
 
-    /// Event type
+    /// Event type (usually the signature hash or decoded name)
     pub event_type: String,
 
     /// Contract address where the event was emitted
     pub address: String,
 
-    /// Topics of the event
+    /// Topics of the event (hex strings)
     pub topics: Vec<String>,
 
-    /// Data of the event
+    /// Data of the event (bytes)
     pub data: Vec<u8>,
 
     /// Log index within the block
@@ -51,8 +51,9 @@ pub struct EthereumEvent {
     /// Transaction index within the block
     pub tx_index: u64,
 
-    /// Raw event data
-    pub raw_data: Vec<u8>,
+    /// Raw event data (Original ethers Log struct)
+    #[serde(skip)]
+    pub raw_log: Log,
     
     /// Decoded parameters (if ABI is available)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -75,10 +76,9 @@ impl fmt::Debug for EthereumEvent {
             .field("event_type", &self.event_type)
             .field("address", &self.address)
             .field("topics", &self.topics)
-            .field("data", &format!("<{} bytes>", self.data.len()))
+            .field("data_len", &self.data.len())
             .field("log_index", &self.log_index)
             .field("tx_index", &self.tx_index)
-            .field("raw_data", &format!("<{} bytes>", self.raw_data.len()))
             .field("decoded_params", &self.decoded_params)
             .field("contract_name", &self.contract_name)
             .finish()
@@ -114,12 +114,12 @@ impl Event for EthereumEvent {
         &self.event_type
     }
 
-    fn address(&self) -> &str {
-        &self.address
+    fn address(&self) -> Option<&str> {
+        Some(&self.address)
     }
 
     fn raw_data(&self) -> &[u8] {
-        &self.raw_data
+        &self.raw_log.data
     }
     
     fn as_any(&self) -> &dyn std::any::Any {
@@ -243,37 +243,61 @@ impl EthereumEventProcessor {
             data: log.data.to_vec(),
             log_index,
             tx_index,
-            raw_data,
+            raw_log: log,
             decoded_params,
             contract_name,
         })
     }
     
-    /// Check if an event matches a filter
+    /// Check if an event matches a filter based on indexer_core::types::EventFilter
     pub fn matches_filter(&self, event: &EthereumEvent, filter: &EventFilter) -> bool {
-        // Check event type
-        if !filter.event_types.is_empty() && !filter.event_types.contains(&event.event_type) {
-            return false;
+        // Check chain_id (exact match)
+        if let Some(filter_chain_id) = &filter.chain_id {
+             if filter_chain_id != &event.chain {
+                 return false;
+             }
         }
         
-        // Check addresses
-        if !filter.addresses.is_empty() && !filter.addresses.contains(&event.address) {
-            return false;
+        // Check chain name (exact match, case sensitive)
+        if let Some(filter_chain_name) = &filter.chain {
+             if filter_chain_name != &event.chain {
+                 // Assuming event.chain stores the name used for filtering
+                 return false;
+             }
         }
         
-        // Check block number range
-        if let Some(from_block) = filter.from_block {
-            if event.block_number < from_block {
+        // Check block range
+        if let Some((min_block, max_block)) = filter.block_range {
+            if event.block_number < min_block || event.block_number > max_block {
                 return false;
             }
         }
         
-        if let Some(to_block) = filter.to_block {
-            if event.block_number > to_block {
+        // Check time range (Unix seconds)
+        if let Some((min_time, max_time)) = filter.time_range {
+            if event.timestamp < min_time || event.timestamp > max_time {
+                 return false;
+            }
+        }
+        
+        // Check event types (matches if event.event_type is in the list)
+        if let Some(event_types) = &filter.event_types {
+            if !event_types.is_empty() && !event_types.contains(&event.event_type) {
                 return false;
             }
         }
         
+        // Check custom filters (specifically looking for "address")
+        if let Some(filter_address) = filter.custom_filters.get("address") {
+            // Perform case-insensitive comparison for Ethereum addresses
+            if !event.address.eq_ignore_ascii_case(filter_address) {
+                 return false;
+            }
+        }
+        
+        // TODO: Implement matching for other custom_filters if needed
+
+        // If all checks passed, the event matches the filter
         true
     }
     
@@ -350,7 +374,7 @@ impl EthereumEvent {
             data: log.data.to_vec(),
             log_index,
             tx_index,
-            raw_data,
+            raw_log: log,
             decoded_params: None,
             contract_name: None,
         }

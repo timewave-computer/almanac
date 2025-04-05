@@ -17,6 +17,7 @@ contracts = []
 # Indexer core
 indexer-core = { path = "../core" }
 indexer-common = { path = "../common" }
+indexer-storage = { path = "../storage" }
 
 # Async runtime
 async-trait.workspace = true
@@ -24,7 +25,7 @@ tokio.workspace = true
 futures.workspace = true
 
 # Cosmos specific
-cosmrs = { version = "0.15.0", features = ["rpc"] }
+cosmrs = { version = "0.16.0", features = ["rpc"] }
 sha2 = "0.10.7"
 
 # Serialization
@@ -37,7 +38,13 @@ anyhow.workspace = true
 uuid = { version = "1.4", features = ["v4", "serde"] }
 base64 = "0.22"
 
+# Cosmos SDK Proto
+cosmos-sdk-proto = { version = "0.20.0", features = ["cosmwasm"] }
+
+# Tendermint RPC
+tendermint-rpc = { version = "0.34.0", features = ["http-client", "websocket-client"] }
+
 [dev-dependencies]
 mockall = "0.11.4"
 rand = "0.8.5"
-tokio = { version = "1.0", features = ["full", "test-util"] } 
+tokio = { version = "1.0", features = ["full", "test-util"] }

@@ -20,28 +20,31 @@ pub struct EthereumSubscription {
     chain_id: ChainId,
     
     /// Ethereum provider
-    provider: Provider<Ws>,
+    provider: Arc<Provider<Ws>>,
     
     /// Block subscription
     block_stream: Mutex<Pin<Box<dyn Stream<Item = Block<H256>> + Send>>>,
     
     /// Event processor
-    event_processor: EthereumEventProcessor,
+    event_processor: Arc<EthereumEventProcessor>,
 }
 
 impl EthereumSubscription {
     /// Create a new Ethereum subscription
-    pub async fn new(provider: Provider<Ws>, chain_id: ChainId) -> Result<Self> {
-        let block_stream = provider.subscribe_blocks().await
-            .map_err(|e| CommonError::generic(format!("Failed to subscribe to blocks: {}", e)))?;
+    pub async fn new(provider: Arc<Provider<Ws>>, chain_id: ChainId) -> Result<Self> {
+        // Clone the provider Arc specifically for the stream subscription
+        let provider_for_stream = provider.clone(); 
+        let block_stream = provider_for_stream.subscribe_blocks().await
+            .map_err(|e| indexer_common::Error::generic(format!("Failed to subscribe to blocks: {}", e)))?;
         
-        let event_processor = EthereumEventProcessor::new(chain_id.0.clone());
+        // The event processor likely needs the chain_id string, not the struct
+        let event_processor = EthereumEventProcessor::new(chain_id.0.clone()); 
         
         Ok(Self {
             chain_id,
             provider,
             block_stream: Mutex::new(Box::pin(block_stream)),
-            event_processor,
+            event_processor: Arc::new(event_processor),
         })
     }
     
@@ -52,7 +55,7 @@ impl EthereumSubscription {
             .address(Vec::<ethers::types::Address>::new());
         
         let logs = self.provider.get_logs(&filter).await
-            .map_err(|e| CommonError::generic(format!("Failed to get logs: {}", e)))?;
+            .map_err(|e| indexer_common::Error::generic(format!("Failed to get logs: {}", e)))?;
         
         Ok(logs)
     }
@@ -60,8 +63,8 @@ impl EthereumSubscription {
     /// Get the full block with transactions
     async fn get_full_block(&self, block_hash: H256) -> Result<Block<Transaction>> {
         let block = self.provider.get_block_with_txs(block_hash).await
-            .map_err(|e| CommonError::generic(format!("Failed to get block: {}", e)))?
-            .ok_or_else(|| CommonError::generic("Block not found"))?;
+            .map_err(|e| indexer_common::Error::generic(format!("Failed to get block: {}", e)))?
+            .ok_or_else(|| indexer_common::Error::generic("Block not found"))?;
         
         Ok(block)
     }
@@ -69,8 +72,8 @@ impl EthereumSubscription {
     /// Get transaction receipt
     async fn get_transaction_receipt(&self, tx_hash: H256) -> Result<TransactionReceipt> {
         let receipt = self.provider.get_transaction_receipt(tx_hash).await
-            .map_err(|e| CommonError::generic(format!("Failed to get transaction receipt: {}", e)))?
-            .ok_or_else(|| CommonError::generic("Transaction receipt not found"))?;
+            .map_err(|e| indexer_common::Error::generic(format!("Failed to get transaction receipt: {}", e)))?
+            .ok_or_else(|| indexer_common::Error::generic("Transaction receipt not found"))?;
         
         Ok(receipt)
     }

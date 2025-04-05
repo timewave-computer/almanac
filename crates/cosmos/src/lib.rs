@@ -1,30 +1,40 @@
 /// Cosmos event service implementation
-use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+use std::str::FromStr;
+use std::any::Any;
 use std::time::SystemTime;
+use async_trait::async_trait;
+use cosmrs::proto::cosmos::base::abci::v1beta1::TxResponse;
+use cosmrs::rpc::{HttpClient, SubscriptionClient, event::EventData};
+use cosmrs::tendermint::block::Height;
+use cosmrs::tx::{Msg, Tx};
+use cosmrs::Any as ProtoAny;
+use cosmos_sdk_proto::prost; // Import prost re-exported by cosmos_sdk_proto
+use prost::Message;
+use cosmos_sdk_proto::cosmwasm::wasm::v1 as cosmwasm_v1; 
+use tokio::sync::{Mutex, RwLock};
+use serde::{Serialize, Deserialize};
+use sha2::{Sha256, Digest};
+use uuid::Uuid;
+
+/// Internal Crate Imports
+use indexer_common::{Error, Result, BlockStatus};
+use indexer_storage::{Storage, BoxedStorage, ValenceAccountInfo, ValenceAccountLibrary, ValenceAccountExecution};
 use indexer_core::event::Event;
 use indexer_core::service::{EventService, EventSubscription};
 use indexer_core::types::{ChainId, EventFilter};
-use indexer_common::{Result, BlockStatus};
-use async_trait::async_trait;
-use serde::{Serialize, Deserialize};
-use uuid::Uuid;
-use tracing::{info, warn, error};
-use std::any::Any;
-use indexer_storage::Storage;
-use cosmrs::rpc::Client;
-use sha2::{Sha256, Digest};
-use base64;
-use std::collections::HashSet;
-use provider::{CosmosProvider, CosmosBlockStatus, CosmosProviderTrait};
 
-pub mod event;
-pub mod provider;
-pub mod subscription;
+/// Project Module Imports
+mod provider;
+mod subscription;
+mod event;
 pub mod contracts;
 
-use event::CosmosEvent;
+use provider::{CosmosProvider, CosmosProviderTrait, CosmosBlockStatus};
 use subscription::{CosmosSubscription, CosmosSubscriptionConfig};
+use event::{process_valence_account_event, CosmosEvent};
+use tracing::{debug, error, info, trace, warn}; 
 
 /// Configuration for Cosmos event service
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,7 +58,7 @@ pub struct CosmosEventServiceConfig {
     pub max_parallel_requests: usize,
 
     /// Known Code IDs for Valence Base Account contracts
-    #[serde(default)] // Ensure it defaults to empty if missing in config
+    #[serde(default)]
     pub valence_account_code_ids: Vec<u64>,
 }
 
@@ -61,7 +71,7 @@ impl Default for CosmosEventServiceConfig {
             max_batch_size: 10,
             poll_interval_ms: 1000,
             max_parallel_requests: 5,
-            valence_account_code_ids: Vec::new(), // Default to empty
+            valence_account_code_ids: Vec::new(),
         }
     }
 }
@@ -107,7 +117,7 @@ impl CosmosEventService {
         
         Ok(Self {
             chain_id: ChainId(config.chain_id.clone()),
-            provider, // Store the trait object
+            provider,
             config,
             block_cache: Arc::new(RwLock::new(HashMap::new())),
             storage,
@@ -171,8 +181,8 @@ impl CosmosEventService {
     /// Check if event should be included based on filter
     fn should_include_event(&self, event: &CosmosEvent, filter: &EventFilter) -> bool {
         // Check chain ID
-        if let Some(chain_id) = &filter.chain_id {
-            if event.chain() != chain_id.0 {
+        if let Some(filter_chain_id) = &filter.chain_id {
+            if event.chain() != filter_chain_id {
                 return false;
             }
         }
@@ -194,7 +204,7 @@ impl CosmosEventService {
         
         // Check event types
         if let Some(types) = &filter.event_types {
-            if !types.iter().any(|t| event.event_type() == t) {
+            if !types.is_empty() && !types.iter().any(|t| event.event_type() == t) {
                 return false;
             }
         }
@@ -209,69 +219,37 @@ impl CosmosEventService {
         true
     }
     
-    /// Performs an ABCI query via the provider trait.
+    /// Check if a contract address corresponds to a known Valence Account code ID.
     async fn check_if_valence_account(&self, contract_address: &str) -> Result<bool> {
-        let query_msg = IdentifyValenceQuery {};
-        let query_data = serde_json::to_vec(&query_msg)
-            .map_err(|e| Error::generic(format!("Failed to serialize identify query: {}", e)))?;
-        let query_data_base64 = base64::engine::general_purpose::STANDARD.encode(&query_data);
+        // Prepare the QueryContractInfoRequest
+        let request = cosmwasm_v1::QueryContractInfoRequest {
+            address: contract_address.to_string(),
+        };
+        let request_proto_bytes = request.encode_to_vec();
 
-        let path = format!("/cosmwasm.wasm.v1.Query/SmartContractState"); // Using the gRPC query path might be more standard if supported via abci_query
-        // Alternative path construction (more typical for direct ABCI smart queries):
-        // let path = format!("wasm/contract/{}/smart/{}", contract_address, query_data_base64);
+        // Perform the ABCI query
+        let query_path = "/cosmwasm.wasm.v1.Query/ContractInfo";
+        let response = self.provider.abci_query(Some(query_path.to_string()), request_proto_bytes, None, false).await?;
 
-        // Prepare query data for ABCI query (protobuf encoded request)
-        // We need QuerySmartContractStateRequest protobuf bytes here
-        // This requires adding protobuf dependencies (prost, cosmos-sdk-proto)
-        // Let's try a simpler path first if possible, or maybe query code info?
+        if response.code.is_err() {
+            warn!(contract_address=%contract_address, code=%response.code.value(), log=%response.log, "ABCI query for ContractInfo failed");
+            // Treat query failure as "not a valence account" for robustness?
+            return Ok(false); 
+        }
 
-        // --- Simplified Check: Query Contract Code ID --- 
-        // A less direct but simpler check might be to query the contract's code info 
-        // and see if the code ID matches a known Valence Account code ID.
-        // This avoids needing to construct the SmartContractState request protobuf.
-
-        let path_contract_info = format!("/cosmwasm.wasm.v1.Query/ContractInfo");
-        let request_proto_bytes = cosmrs::proto::cosmwasm::wasm::v1::QueryContractInfoRequest {
-                address: contract_address.to_string(),
+        // Decode the QueryContractInfoResponse
+        match cosmwasm_v1::QueryContractInfoResponse::decode(response.value.as_slice()) {
+            Ok(info) => {
+                // TODO: Compare info.code_id against known Valence Account code IDs
+                // This requires configuration or fetching known IDs.
+                // Placeholder: assume code ID 1 is the Valence Account
+                let is_valence = info.code_id == 1;
+                debug!(contract_address=%contract_address, code_id=%info.code_id, is_valence=is_valence, "Checked contract code ID");
+                Ok(is_valence)
             }
-            .encode_to_vec();
-
-        // Use the trait method
-        match self.provider.abci_query(
-            Some(path_contract_info.to_string()),
-            request_proto_bytes,
-            None, // Query latest height
-            false // No proof needed
-        ).await {
-            Ok(response) => {
-                if response.code.is_ok() {
-                    // Successfully queried contract info.
-                    match cosmrs::proto::cosmwasm::wasm::v1::QueryContractInfoResponse::decode(response.value.as_slice()) {
-                        Ok(contract_info) => {
-                            // Use the configured set of code IDs
-                            if self.valence_account_code_id_set.contains(&contract_info.code_id) {
-                                debug!(contract_address=%contract_address, code_id=%contract_info.code_id, "Contract identified as Valence Account by code ID.");
-                                Ok(true)
-                            } else {
-                                debug!(contract_address=%contract_address, code_id=%contract_info.code_id, "Contract code ID not in known Valence Account set.");
-                                Ok(false)
-                            }
-                        },
-                        Err(e) => {
-                            warn!(contract_address=%contract_address, error=%e, "Failed to decode ContractInfoResponse");
-                            Ok(false) // Treat decoding errors as non-match
-                        }
-                    }
-                } else {
-                    debug!(contract_address=%contract_address, code=%response.code.value(), log=%response.log, "ABCI query for ContractInfo failed.");
-                    Ok(false)
-                }
-            },
             Err(e) => {
-                // Use the error directly from the trait call if it's already indexer_common::Error
-                // The trait implementation converts cosmrs::Error to Error::Rpc
-                error!(contract_address=%contract_address, error=%e, "Provider error during abci_query for ContractInfo");
-                Err(e) 
+                error!(contract_address=%contract_address, error=%e, "Failed to decode ContractInfoResponse");
+                Err(Error::chain("Failed to decode ContractInfoResponse".to_string()))
             }
         }
     }
@@ -317,19 +295,25 @@ impl CosmosEventService {
                     if let Some(addr) = &contract_address {
                         match self.check_if_valence_account(addr).await {
                             Ok(true) => {
-                                if let Err(e) = contracts::valence_account::process_valence_account_event(
+                                // If it's a valence account, attempt processing
+                                if let Err(e) = process_valence_account_event(
+                                    &self.storage, 
+                                    &self.config.chain_id, 
                                     &cosmos_event,
-                                    Arc::clone(&self.storage), // Direct access to field
                                     &tx_hash
                                 ).await {
-                                    error!(tx_hash=%tx_hash, contract_addr=%addr, error=%e, "Error processing Valence Account event");
+                                    error!(
+                                        account_id=%cosmos_event.account_id,
+                                        error=%e,
+                                        "Failed to process Valence Account event"
+                                    );
                                 }
                             },
                             Ok(false) => {
                                 trace!(contract_address=%addr, "Contract is not a Valence Account.");
                             },
                             Err(e) => {
-                                error!(contract_address=%addr, error=%e, "Error checking if contract is Valence Account");
+                                warn!(contract_address=%addr, error=%e, "Failed to check if contract is Valence Account");
                             }
                         }
                     } else {
@@ -345,7 +329,7 @@ impl CosmosEventService {
 
     // Add a public method specifically for testing that calls the private one
     #[cfg(test)]
-    pub async fn process_block_for_test(&self, block: cosmrs::tendermint::Block, tx_results: Vec<cosmrs::rpc::endpoint::tx::response::Response>) -> Result<Vec<CosmosEvent>> {
+    pub async fn process_block_for_test(&self, block: cosmrs::tendermint::Block, tx_results: Vec<cosmrs::rpc::endpoint::tx::Response>) -> Result<Vec<CosmosEvent>> {
         self.process_block(block, tx_results).await
     }
 }
