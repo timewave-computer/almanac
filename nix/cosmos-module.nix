@@ -16,15 +16,19 @@
       dontUnpack = true;
       
       # Download prebuilt binary
+      buildInputs = [ pkgs.cacert ];
+      
       buildPhase = ''
+        export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
+        
         mkdir -p $out/bin
         
         # For macOS ARM64 (Apple Silicon)
-        ${pkgs.curl}/bin/curl -L -o $out/bin/wasmd https://github.com/CosmWasm/wasmd/releases/download/v0.31.0/wasmd_0.31.0_darwin_arm64
+        ${pkgs.curl}/bin/curl --cacert ${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt -L \
+          -o $out/bin/wasmd \
+          https://github.com/CosmWasm/wasmd/releases/download/v0.31.0/wasmd_0.31.0_darwin_arm64
+          
         chmod +x $out/bin/wasmd
-        
-        # Make a symlink for clarity
-        ln -s $out/bin/wasmd $out/bin/wasmd
       '';
       
       # Skip install phase, we did everything in buildPhase
