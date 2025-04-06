@@ -64,23 +64,9 @@ sleep 3
 pkill -9 -f "wasmd" || true
 sleep 1
 
-# Find wasmd command
-if command -v wasmd >/dev/null 2>&1; then
-  WASMD_CMD="wasmd"
-  echo "Using wasmd from PATH: $(which wasmd)"
-elif [ -f "$GOPATH/bin/wasmd" ]; then
-  WASMD_CMD="$GOPATH/bin/wasmd"
-  echo "Using wasmd from GOPATH: $WASMD_CMD"
-else
-  echo "wasmd not found in PATH or GOPATH. Checking if it's available through nix..."
-  if nix run .#wasmd -- version >/dev/null 2>&1; then
-    WASMD_CMD="nix run .#wasmd --"
-    echo "Using wasmd from nix"
-  else
-    echo "wasmd not found. Please install wasmd or ensure it's available through nix."
-  exit 1
-  fi
-fi
+# Use wasmd from cosmos.nix - available through nix
+WASMD_CMD="wasmd"
+echo "Using wasmd from cosmos.nix: $(which wasmd || echo "not found")"
 
 # Find available ports
 RPC_PORT=$(find_available_port 26657)
@@ -103,6 +89,21 @@ if [ -d "$WASMD_HOME" ] && [ -f "$WASMD_HOME/config/genesis.json" ]; then
     INIT_NEEDED=false
   fi
 fi
+
+# Clean up private validator socket files and state
+if [ -f "$WASMD_HOME/config/priv_validator_state.json" ]; then
+  echo "Removing existing priv_validator_state.json for clean start"
+  rm -f "$WASMD_HOME/config/priv_validator_state.json"
+fi
+
+if [ -S "$WASMD_HOME/config/priv_validator_socket" ]; then
+  echo "Removing existing priv_validator_socket for clean start"
+  rm -f "$WASMD_HOME/config/priv_validator_socket"
+fi
+
+# Additional cleanup to ensure no stale validator files
+rm -f "$WASMD_HOME/config/priv_validator_key.json.*.backup"
+rm -f "$WASMD_HOME/config/node_key.json.*.backup"
 
 # Remove and recreate home directory if initialization is needed
 if [ "$INIT_NEEDED" = true ]; then
@@ -145,6 +146,39 @@ if [ "$INIT_NEEDED" = true ]; then
   $WASMD_CMD collect-gentxs --home="$WASMD_HOME"
   
   echo "Node initialization complete"
+  
+  # Create a custom priv_validator_key.json file with a fixed key
+  # This helps avoid issues with validator initialization
+  echo "Creating custom validator key file..."
+  cat > "$WASMD_HOME/config/priv_validator_key.json" << EOF
+  {
+    "address": "12617FA635AF8D5E2141BE5FFB161D89B1847771",
+    "pub_key": {
+      "type": "tendermint/PubKeyEd25519",
+      "value": "Ie/6a5+2gFL+jR8418CroiYqgLXEuCkRBV5/aoLkvas="
+    },
+    "priv_key": {
+      "type": "tendermint/PrivKeyEd25519",
+      "value": "hVv9jXbgI8K5ua3x8+jroT96l7YlVfq9jjOJ5vKYFD4h7/prn7aAUv6NHzjXwKuiJiqAtcS4KREFX39qguS9qw=="
+    }
+  }
+  EOF
+  chmod 600 "$WASMD_HOME/config/priv_validator_key.json"
+
+  # Ensure data directory exists and create priv_validator_state.json in the correct location
+  mkdir -p "$WASMD_HOME/data"
+  echo "Creating priv_validator_state.json in data directory..."
+  cat > "$WASMD_HOME/data/priv_validator_state.json" << EOF
+  {
+    "height": "0",
+    "round": 0,
+    "step": 0
+  }
+  EOF
+  chmod 600 "$WASMD_HOME/data/priv_validator_state.json"
+
+  # Remove any existing priv_validator_state.json in the config directory (if it exists)
+  rm -f "$WASMD_HOME/config/priv_validator_state.json"
 else
   echo "Using existing wasmd node configuration"
 fi
@@ -215,14 +249,11 @@ version = "v0"
 
 ##### Consensus configuration options #####
 [consensus]
-# **** IMPORTANT: Disabling private validator socket to avoid timeout ****
-# This is intentionally left empty to use the file-based private validator
-# instead of the socket-based validator that causes timeouts
-# Socket address to listen on for connections from an external validator
-# Default is "unix://priv_validator_socket", but we're setting it explicitly to "" to disable
+# **** IMPORTANT: Disabling private validator socket completely ****
+# We're explicitly setting this to empty string to disable socket-based validator
 priv_validator_laddr = ""
 
-# Time interval between consensus rounds
+# The following settings are critical to avoid the validator socket error
 timeout_propose = "3s"
 timeout_propose_delta = "500ms"
 timeout_prevote = "1s"
@@ -246,16 +277,45 @@ peer_query_maj23_sleep_duration = "2s"
 [tx_index]
 # What indexer to use
 indexer = "kv"
+
+### Additional Settings ####
+[statesync]
+# State sync rapidly bootstraps a new node by discovering, fetching, and restoring a state machine snapshot
+# from peers instead of fetching and replaying historical blocks. Requires some peers in the network to take and
+# serve state machine snapshots.
+enable = false
 EOF
+
+# Make sure the config changes are properly written and flushed
+sync
 
 # Update app.toml with correct settings for API and GRPC
 echo "Updating app.toml with correct API and GRPC settings..."
 sed -i.bak "s|^address = \"tcp://0.0.0.0:1317\"|address = \"tcp://0.0.0.0:$API_PORT\"|" "$APP_TOML"
 sed -i.bak "s|^address = \"0.0.0.0:[0-9]*\"|address = \"0.0.0.0:$GRPC_PORT\"|" "$APP_TOML"
 sed -i.bak "s|^enabled-unsafe-cors = false|enabled-unsafe-cors = true|" "$APP_TOML"
+sed -i.bak "s|^enable = false|enable = true|g" "$APP_TOML"
+sed -i.bak "s|^swagger = false|swagger = true|g" "$APP_TOML"
 
 # Set minimum-gas-prices to avoid warning
-sed -i.bak "s|^minimum-gas-prices = \".*\"|minimum-gas-prices = \"0stake\"|" "$APP_TOML"
+sed -i.bak "s|^minimum-gas-prices = \".*\"|minimum-gas-prices = \"0.025stake\"|" "$APP_TOML"
+
+# Update config.toml for better local performance
+# Set timeouts to prevent validator timeout issues
+sed -i.bak \
+    -e 's/timeout_commit = "5s"/timeout_commit = "1s"/g' \
+    -e 's/timeout_propose = "3s"/timeout_propose = "10s"/g' \
+    -e 's/timeout_precommit = "1s"/timeout_precommit = "10s"/g' \
+    -e 's/timeout_prevote = "1s"/timeout_prevote = "10s"/g' \
+    -e 's/skip_timeout_commit = false/skip_timeout_commit = true/g' \
+    -e 's/timeout_broadcast_tx_commit = "10s"/timeout_broadcast_tx_commit = "30s"/g' \
+    -e 's/addr_book_strict = true/addr_book_strict = false/g' \
+    -e 's/allow_duplicate_ip = false/allow_duplicate_ip = true/g' \
+    -e 's/max_num_outbound_peers = 10/max_num_outbound_peers = 5/g' \
+    -e 's/max_num_inbound_peers = 40/max_num_inbound_peers = 5/g' \
+    -e 's/flush_throttle_timeout = "100ms"/flush_throttle_timeout = "10ms"/g' \
+    -e 's/priv_validator_laddr = "tcp:\/\/127.0.0.1:26658"/priv_validator_laddr = ""/g' \
+    "$CONFIG_TOML"
 
 # Clear any existing process file
 PID_FILE="$WASMD_HOME/wasmd.pid"
@@ -268,17 +328,15 @@ if [ -f "$PID_FILE" ]; then
   rm -f "$PID_FILE"
 fi
 
-# Start the wasmd node with explicit settings - using the --with-tendermint flag
-# and explicitly disabling the private validator socket
+# Start the wasmd node with explicit settings
 echo "Starting wasmd node..."
+# Important: we need to explicitly set these flags to avoid the private validator socket error
 nohup $WASMD_CMD start \
   --home="$WASMD_HOME" \
-  --rpc.laddr="tcp://127.0.0.1:$RPC_PORT" \
+  --rpc.laddr="tcp://0.0.0.0:$RPC_PORT" \
   --p2p.laddr="tcp://0.0.0.0:$P2P_PORT" \
-  --grpc.address="0.0.0.0:$GRPC_PORT" \
-  --address="tcp://0.0.0.0:$API_PORT" \
-  --priv_validator_laddr="" \
-  --with-tendermint > "$WASMD_HOME/node.log" 2>&1 &
+  --rpc.unsafe \
+  --log_level="info" > "$WASMD_HOME/node.log" 2>&1 &
 
 NODE_PID=$!
 echo "$NODE_PID" > "$PID_FILE"
@@ -292,16 +350,40 @@ if ! ps -p "$NODE_PID" > /dev/null; then
   exit 1
 fi
 
+# Check for common errors in the logs
+if grep -q "panic" "$WASMD_HOME/node.log"; then
+  echo "ERROR: Node panic detected in logs:"
+  grep -A 10 "panic" "$WASMD_HOME/node.log"
+  exit 1
+fi
+
+if grep -q "error with private validator socket client" "$WASMD_HOME/node.log"; then
+  echo "ERROR: Private validator socket error detected. This should have been fixed by our configuration."
+  grep -A 5 -B 5 "error with private validator socket client" "$WASMD_HOME/node.log"
+fi
+
 # Wait for RPC to become available - more time and more detailed output
-echo "Waiting for RPC to become available (max 60 seconds)..."
+echo "Waiting for RPC to become available (max 120 seconds)..."
 RPC_AVAILABLE=false
-for i in {1..60}; do
+for i in {1..120}; do
   if curl -s "http://127.0.0.1:$RPC_PORT/status" > /dev/null 2>&1; then
     echo "RPC is available!"
     RPC_AVAILABLE=true
     break
   fi
-  echo "Waiting for RPC (attempt $i)..."
+  
+  # Check if the process is still running
+  if ! ps -p "$NODE_PID" > /dev/null; then
+    echo "ERROR: wasmd node process died while waiting for RPC to become available"
+    echo "Last 30 lines of log:"
+    tail -30 "$WASMD_HOME/node.log"
+    exit 1
+  fi
+  
+  # Show progress every 10 seconds
+  if [ $((i % 10)) -eq 0 ]; then
+    echo "Waiting for RPC (attempt $i/120)..."
+  fi
   sleep 1
 done
 

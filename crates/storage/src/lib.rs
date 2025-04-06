@@ -292,6 +292,13 @@ pub trait Storage: Send + Sync + 'static {
     /// Get events with specific block status
     async fn get_events_with_status(&self, filters: Vec<EventFilter>, status: BlockStatus) -> Result<Vec<Box<dyn Event>>>;
 
+    /// Stores information about a new Valence Account contract instantiation.
+    async fn store_valence_account_instantiation(
+        &self,
+        account_info: ValenceAccountInfo,
+        initial_libraries: Vec<ValenceAccountLibrary>,
+    ) -> Result<()>;
+
     /// Adds a library to an existing Valence account's approved list.
     async fn store_valence_library_approval(
         &self,
@@ -430,7 +437,7 @@ pub trait Storage: Send + Sync + 'static {
         processor_id: &str,
         block_number: u64,
     ) -> Result<Option<ValenceProcessorState>>;
-    
+
     // --- Valence Authorization Methods ---
     
     /// Stores information about a new Valence Authorization contract instantiation.

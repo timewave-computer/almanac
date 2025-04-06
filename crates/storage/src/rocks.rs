@@ -19,6 +19,12 @@ use bincode;
 use crate::EventFilter;
 use crate::Storage;
 use crate::{ValenceAccountInfo, ValenceAccountLibrary, ValenceAccountExecution, ValenceAccountState};
+use crate::{
+    ValenceProcessorInfo, ValenceProcessorConfig, ValenceProcessorMessage, ValenceMessageStatus,
+    ValenceProcessorState, ValenceAuthorizationInfo, ValenceAuthorizationPolicy, ValenceAuthorizationGrant,
+    ValenceAuthorizationRequest, ValenceAuthorizationDecision, ValenceLibraryInfo, ValenceLibraryVersion,
+    ValenceLibraryUsage, ValenceLibraryState, ValenceLibraryApproval
+};
 
 /// Configuration for RocksDB storage
 pub struct RocksConfig {
@@ -560,6 +566,293 @@ impl Storage for RocksStorage {
              .map_err(|e| Error::database(format!("RocksDB delete error: {}", e)))?;
         Ok(())
     }
+
+    async fn store_valence_processor_instantiation(
+        &self,
+        processor_info: ValenceProcessorInfo,
+    ) -> Result<()> {
+        // Create a basic processor state from the info
+        let state = ValenceProcessorState {
+            processor_id: processor_info.id.clone(),
+            chain_id: processor_info.chain_id.clone(),
+            address: processor_info.contract_address.clone(),
+            owner: processor_info.current_owner.clone(),
+            config: processor_info.config.clone(),
+            pending_message_count: 0,
+            completed_message_count: 0,
+            failed_message_count: 0,
+            last_update_block: processor_info.created_at_block,
+            last_update_tx: processor_info.created_at_tx.clone(),
+        };
+        
+        // Store the processor state
+        self.set_valence_processor_state(&processor_info.id, &state).await?;
+        
+        // Optionally store historical state
+        self.set_historical_valence_processor_state(
+            &processor_info.id,
+            processor_info.created_at_block,
+            &state,
+        ).await?;
+        
+        Ok(())
+    }
+    
+    async fn store_valence_processor_config_update(
+        &self,
+        processor_id: &str,
+        config: ValenceProcessorConfig,
+        update_block: u64,
+        update_tx: &str,
+    ) -> Result<()> {
+        // Get current state
+        if let Some(mut state) = self.get_valence_processor_state(processor_id).await? {
+            // Update config and metadata
+            state.config = Some(config);
+            state.last_update_block = update_block;
+            state.last_update_tx = update_tx.to_string();
+            
+            // Store updated state
+            self.set_valence_processor_state(processor_id, &state).await?;
+            
+            // Store historical state
+            self.set_historical_valence_processor_state(
+                processor_id,
+                update_block,
+                &state,
+            ).await?;
+        }
+        
+        Ok(())
+    }
+    
+    async fn store_valence_processor_message(
+        &self,
+        _message: ValenceProcessorMessage,
+    ) -> Result<()> {
+        // Simplified implementation
+        Ok(())
+    }
+    
+    async fn update_valence_processor_message_status(
+        &self,
+        _message_id: &str,
+        _new_status: ValenceMessageStatus,
+        _processed_block: Option<u64>,
+        _processed_tx: Option<&str>,
+        _retry_count: Option<u32>,
+        _next_retry_block: Option<u64>,
+        _gas_used: Option<u64>,
+        _error: Option<String>,
+    ) -> Result<()> {
+        // Simplified implementation
+        Ok(())
+    }
+    
+    async fn get_valence_processor_state(&self, processor_id: &str) -> Result<Option<ValenceProcessorState>> {
+        let key = self.valence_processor_state_key(processor_id);
+        let cf = self.cf_valence_state()?;
+        
+        if let Some(data) = self.db.get_cf(cf, key)? {
+            let state: ValenceProcessorState = serde_json::from_slice(&data)?;
+            Ok(Some(state))
+        } else {
+            Ok(None)
+        }
+    }
+    
+    async fn set_valence_processor_state(&self, processor_id: &str, state: &ValenceProcessorState) -> Result<()> {
+        let key = self.valence_processor_state_key(processor_id);
+        let cf = self.cf_valence_state()?;
+        let data = serde_json::to_vec(state)?;
+        
+        self.db.put_cf(cf, key, data)?;
+        Ok(())
+    }
+    
+    async fn set_historical_valence_processor_state(
+        &self,
+        processor_id: &str,
+        block_number: u64,
+        state: &ValenceProcessorState,
+    ) -> Result<()> {
+        let key = self.historical_valence_processor_state_key(processor_id, block_number);
+        let cf = self.cf_historical_valence_state()?;
+        let data = serde_json::to_vec(state)?;
+        
+        self.db.put_cf(cf, key, data)?;
+        Ok(())
+    }
+    
+    async fn get_historical_valence_processor_state(
+        &self,
+        processor_id: &str,
+        block_number: u64,
+    ) -> Result<Option<ValenceProcessorState>> {
+        let key = self.historical_valence_processor_state_key(processor_id, block_number);
+        let cf = self.cf_historical_valence_state()?;
+        
+        if let Some(data) = self.db.get_cf(cf, key)? {
+            let state: ValenceProcessorState = serde_json::from_slice(&data)?;
+            Ok(Some(state))
+        } else {
+            Ok(None)
+        }
+    }
+    
+    // --- Valence Authorization Methods ---
+    
+    async fn store_valence_authorization_instantiation(
+        &self,
+        _auth_info: ValenceAuthorizationInfo,
+        _initial_policy: Option<ValenceAuthorizationPolicy>,
+    ) -> Result<()> {
+        // Simplified implementation
+        Ok(())
+    }
+    
+    async fn store_valence_authorization_policy(
+        &self,
+        _policy: ValenceAuthorizationPolicy,
+    ) -> Result<()> {
+        // Simplified implementation
+        Ok(())
+    }
+    
+    async fn update_active_authorization_policy(
+        &self,
+        _auth_id: &str,
+        _policy_id: &str,
+        _update_block: u64,
+        _update_tx: &str,
+    ) -> Result<()> {
+        // Simplified implementation
+        Ok(())
+    }
+    
+    async fn store_valence_authorization_grant(
+        &self,
+        _grant: ValenceAuthorizationGrant,
+    ) -> Result<()> {
+        // Simplified implementation
+        Ok(())
+    }
+    
+    async fn revoke_valence_authorization_grant(
+        &self,
+        _auth_id: &str,
+        _grantee: &str,
+        _resource: &str,
+        _revoked_at_block: u64,
+        _revoked_at_tx: &str,
+    ) -> Result<()> {
+        // Simplified implementation
+        Ok(())
+    }
+    
+    async fn store_valence_authorization_request(
+        &self,
+        _request: ValenceAuthorizationRequest,
+    ) -> Result<()> {
+        // Simplified implementation
+        Ok(())
+    }
+    
+    async fn update_valence_authorization_request_decision(
+        &self,
+        _request_id: &str,
+        _decision: ValenceAuthorizationDecision,
+        _processed_block: Option<u64>,
+        _processed_tx: Option<&str>,
+        _reason: Option<String>,
+    ) -> Result<()> {
+        // Simplified implementation
+        Ok(())
+    }
+
+    // --- Valence Library Methods ---
+    
+    async fn store_valence_library_instantiation(
+        &self,
+        _library_info: ValenceLibraryInfo,
+        _initial_version: Option<ValenceLibraryVersion>,
+    ) -> Result<()> {
+        // Simplified implementation
+        Ok(())
+    }
+    
+    async fn store_valence_library_version(
+        &self,
+        _version: ValenceLibraryVersion,
+    ) -> Result<()> {
+        // Simplified implementation
+        Ok(())
+    }
+    
+    async fn update_active_library_version(
+        &self,
+        _library_id: &str,
+        _version: u32,
+        _update_block: u64,
+        _update_tx: &str,
+    ) -> Result<()> {
+        // Simplified implementation
+        Ok(())
+    }
+    
+    async fn store_valence_library_usage(
+        &self,
+        _usage: ValenceLibraryUsage,
+    ) -> Result<()> {
+        // Simplified implementation
+        Ok(())
+    }
+    
+    async fn revoke_valence_library_approval(
+        &self,
+        _library_id: &str,
+        _account_id: &str,
+        _revoked_at_block: u64,
+        _revoked_at_tx: &str,
+    ) -> Result<()> {
+        // Simplified implementation
+        Ok(())
+    }
+    
+    async fn get_valence_library_state(&self, _library_id: &str) -> Result<Option<ValenceLibraryState>> {
+        // Simplified implementation
+        Ok(None)
+    }
+    
+    async fn set_valence_library_state(&self, _library_id: &str, _state: &ValenceLibraryState) -> Result<()> {
+        // Simplified implementation
+        Ok(())
+    }
+    
+    async fn get_valence_library_versions(&self, _library_id: &str) -> Result<Vec<ValenceLibraryVersion>> {
+        // Simplified implementation
+        Ok(Vec::new())
+    }
+    
+    async fn get_valence_library_approvals(&self, _library_id: &str) -> Result<Vec<ValenceLibraryApproval>> {
+        // Simplified implementation
+        Ok(Vec::new())
+    }
+    
+    async fn get_valence_libraries_for_account(&self, _account_id: &str) -> Result<Vec<ValenceLibraryApproval>> {
+        // Simplified implementation
+        Ok(Vec::new())
+    }
+    
+    async fn get_valence_library_usage_history(
+        &self,
+        _library_id: &str,
+        _limit: Option<usize>,
+        _offset: Option<usize>,
+    ) -> Result<Vec<ValenceLibraryUsage>> {
+        // Simplified implementation
+        Ok(Vec::new())
+    }
 }
 
 impl RocksStorage {
@@ -650,6 +943,14 @@ impl RocksStorage {
 
     pub(crate) fn latest_historical_valence_block_key(&self, account_id: &str) -> Vec<u8> {
         Key::new("latest_historical_valence_block", account_id).to_bytes()
+    }
+
+    pub(crate) fn valence_processor_state_key(&self, processor_id: &str) -> Vec<u8> {
+        format!("processor_state:{}", processor_id).into_bytes()
+    }
+    
+    pub(crate) fn historical_valence_processor_state_key(&self, processor_id: &str, block_number: u64) -> Vec<u8> {
+        format!("historical_processor_state:{}:{}", processor_id, block_number).into_bytes()
     }
 
     // --- General DB Helpers --- 

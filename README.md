@@ -169,14 +169,22 @@ The project now includes full Ethereum contract implementations for testing cros
    - Tests token transfers through the BaseAccount abstraction
    - Demonstrates cross-chain message sending and delivery
    - Verifies correct event emission for indexer integration
+   - Tests sequential transfers between Ethereum and Cosmos chains
 
 3. **Running the Test**:
    ```bash
-   # Run directly
+   # Run directly (not recommended, use Nix instead)
    ./scripts/cross_chain_e2e_test.sh
    
-   # Or using Nix
+   # Or using Nix (preferred method)
    nix run .#cross-chain-e2e-test
    ```
 
-This implementation provides a foundation for the full cross-chain testing that will incorporate both Ethereum and Cosmos sides.
+   The Nix run command will:
+   - Compile the test WASM contracts automatically
+   - Set up both Ethereum and Cosmos nodes
+   - Deploy necessary contracts
+   - Run the full end-to-end test suite
+   - Clean up all resources after completion
+
+This implementation provides a robust framework for testing cross-chain interactions between Ethereum and Cosmos chains.

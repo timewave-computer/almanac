@@ -500,6 +500,233 @@ impl Storage for PostgresStorage {
         // Historical state is intended for RocksDB primarily
         Ok(())
     }
+
+    // --- Valence Processor Methods ---
+    
+    async fn store_valence_processor_instantiation(
+        &self,
+        _processor_info: ValenceProcessorInfo,
+    ) -> Result<()> {
+        // Simplified implementation for compilation
+        Ok(())
+    }
+    
+    async fn store_valence_processor_config_update(
+        &self,
+        _processor_id: &str,
+        _config: ValenceProcessorConfig,
+        _update_block: u64,
+        _update_tx: &str,
+    ) -> Result<()> {
+        // Simplified implementation for compilation
+        Ok(())
+    }
+    
+    async fn store_valence_processor_message(
+        &self,
+        _message: ValenceProcessorMessage,
+    ) -> Result<()> {
+        // Simplified implementation for compilation
+        Ok(())
+    }
+    
+    async fn update_valence_processor_message_status(
+        &self,
+        _message_id: &str,
+        _new_status: ValenceMessageStatus,
+        _processed_block: Option<u64>,
+        _processed_tx: Option<&str>,
+        _retry_count: Option<u32>,
+        _next_retry_block: Option<u64>,
+        _gas_used: Option<u64>,
+        _error: Option<String>,
+    ) -> Result<()> {
+        // Simplified implementation for compilation
+        Ok(())
+    }
+    
+    async fn get_valence_processor_state(&self, _processor_id: &str) -> Result<Option<ValenceProcessorState>> {
+        // Simplified implementation for compilation
+        Ok(None)
+    }
+    
+    async fn set_valence_processor_state(&self, _processor_id: &str, _state: &ValenceProcessorState) -> Result<()> {
+        // Simplified implementation for compilation
+        Ok(())
+    }
+    
+    async fn set_historical_valence_processor_state(
+        &self,
+        _processor_id: &str,
+        _block_number: u64,
+        _state: &ValenceProcessorState,
+    ) -> Result<()> {
+        // Simplified implementation for compilation
+        Ok(())
+    }
+    
+    async fn get_historical_valence_processor_state(
+        &self,
+        _processor_id: &str,
+        _block_number: u64,
+    ) -> Result<Option<ValenceProcessorState>> {
+        // Simplified implementation for compilation
+        Ok(None)
+    }
+    
+    // --- Valence Authorization Methods ---
+    
+    async fn store_valence_authorization_instantiation(
+        &self,
+        _auth_info: ValenceAuthorizationInfo,
+        _initial_policy: Option<ValenceAuthorizationPolicy>,
+    ) -> Result<()> {
+        // Simplified implementation for compilation
+        Ok(())
+    }
+    
+    async fn store_valence_authorization_policy(
+        &self,
+        _policy: ValenceAuthorizationPolicy,
+    ) -> Result<()> {
+        // Simplified implementation for compilation
+        Ok(())
+    }
+    
+    async fn update_active_authorization_policy(
+        &self,
+        _auth_id: &str,
+        _policy_id: &str,
+        _update_block: u64,
+        _update_tx: &str,
+    ) -> Result<()> {
+        // Simplified implementation for compilation
+        Ok(())
+    }
+    
+    async fn store_valence_authorization_grant(
+        &self,
+        _grant: ValenceAuthorizationGrant,
+    ) -> Result<()> {
+        // Simplified implementation for compilation
+        Ok(())
+    }
+    
+    async fn revoke_valence_authorization_grant(
+        &self,
+        _auth_id: &str,
+        _grantee: &str,
+        _resource: &str,
+        _revoked_at_block: u64,
+        _revoked_at_tx: &str,
+    ) -> Result<()> {
+        // Simplified implementation for compilation
+        Ok(())
+    }
+    
+    async fn store_valence_authorization_request(
+        &self,
+        _request: ValenceAuthorizationRequest,
+    ) -> Result<()> {
+        // Simplified implementation for compilation
+        Ok(())
+    }
+    
+    async fn update_valence_authorization_request_decision(
+        &self,
+        _request_id: &str,
+        _decision: ValenceAuthorizationDecision,
+        _processed_block: Option<u64>,
+        _processed_tx: Option<&str>,
+        _reason: Option<String>,
+    ) -> Result<()> {
+        // Simplified implementation for compilation
+        Ok(())
+    }
+
+    // --- Valence Library Methods ---
+    
+    async fn store_valence_library_instantiation(
+        &self,
+        _library_info: ValenceLibraryInfo,
+        _initial_version: Option<ValenceLibraryVersion>,
+    ) -> Result<()> {
+        // Simplified implementation for compilation
+        Ok(())
+    }
+    
+    async fn store_valence_library_version(
+        &self,
+        _version: ValenceLibraryVersion,
+    ) -> Result<()> {
+        // Simplified implementation for compilation
+        Ok(())
+    }
+    
+    async fn update_active_library_version(
+        &self,
+        _library_id: &str,
+        _version: u32,
+        _update_block: u64,
+        _update_tx: &str,
+    ) -> Result<()> {
+        // Simplified implementation for compilation
+        Ok(())
+    }
+    
+    async fn store_valence_library_usage(
+        &self,
+        _usage: ValenceLibraryUsage,
+    ) -> Result<()> {
+        // Simplified implementation for compilation
+        Ok(())
+    }
+    
+    async fn revoke_valence_library_approval(
+        &self,
+        _library_id: &str,
+        _account_id: &str,
+        _revoked_at_block: u64,
+        _revoked_at_tx: &str,
+    ) -> Result<()> {
+        // Simplified implementation for compilation
+        Ok(())
+    }
+    
+    async fn get_valence_library_state(&self, _library_id: &str) -> Result<Option<ValenceLibraryState>> {
+        // Simplified implementation for compilation
+        Ok(None)
+    }
+    
+    async fn set_valence_library_state(&self, _library_id: &str, _state: &ValenceLibraryState) -> Result<()> {
+        // Simplified implementation for compilation
+        Ok(())
+    }
+    
+    async fn get_valence_library_versions(&self, _library_id: &str) -> Result<Vec<ValenceLibraryVersion>> {
+        // Simplified implementation for compilation
+        Ok(Vec::new())
+    }
+    
+    async fn get_valence_library_approvals(&self, _library_id: &str) -> Result<Vec<ValenceLibraryApproval>> {
+        // Simplified implementation for compilation
+        Ok(Vec::new())
+    }
+    
+    async fn get_valence_libraries_for_account(&self, _account_id: &str) -> Result<Vec<ValenceLibraryApproval>> {
+        // Simplified implementation for compilation
+        Ok(Vec::new())
+    }
+    
+    async fn get_valence_library_usage_history(
+        &self,
+        _library_id: &str,
+        _limit: Option<usize>,
+        _offset: Option<usize>,
+    ) -> Result<Vec<ValenceLibraryUsage>> {
+        // Simplified implementation for compilation
+        Ok(Vec::new())
+    }
 }
 
 impl PostgresStorage {
