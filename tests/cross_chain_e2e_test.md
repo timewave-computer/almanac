@@ -92,21 +92,21 @@ wasmd q bank balances $COSMOS_ACCOUNT_B
 ```bash
 # Deploy Processor Contract
 echo "Deploying Ethereum Processor Contract..."
-ETH_PROCESSOR_ADDRESS=$(forge create --rpc-url http://localhost:8545 --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 contracts/Processor.sol:Processor --constructor-args [constructor_args] | grep -oP 'Deployed to: \K.*')
+ETH_PROCESSOR_ADDRESS=$(forge create --rpc-url http://localhost:8545 --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 contracts/solidity/Processor.sol:Processor --constructor-args [constructor_args] | grep -oP 'Deployed to: \K.*')
 echo "Ethereum Processor: $ETH_PROCESSOR_ADDRESS"
 
 # Deploy Base Account Contract
 echo "Deploying Ethereum Base Account Contract..."
-ETH_BASE_ACCOUNT_ADDRESS=$(forge create --rpc-url http://localhost:8545 --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 contracts/BaseAccount.sol:BaseAccount --constructor-args [constructor_args] | grep -oP 'Deployed to: \K.*')
+ETH_BASE_ACCOUNT_ADDRESS=$(forge create --rpc-url http://localhost:8545 --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 contracts/solidity/BaseAccount.sol:BaseAccount --constructor-args [constructor_args] | grep -oP 'Deployed to: \K.*')
 echo "Ethereum Base Account: $ETH_BASE_ACCOUNT_ADDRESS"
 
 # Deploy Token Contracts
 echo "Deploying SUN Token Contract..."
-SUN_TOKEN_ADDRESS=$(forge create --rpc-url http://localhost:8545 --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 contracts/TestToken.sol:TestToken --constructor-args "SUN Token" "SUN" | grep -oP 'Deployed to: \K.*')
+SUN_TOKEN_ADDRESS=$(forge create --rpc-url http://localhost:8545 --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 contracts/solidity/TestToken.sol:TestToken --constructor-args "SUN Token" "SUN" | grep -oP 'Deployed to: \K.*')
 echo "SUN Token: $SUN_TOKEN_ADDRESS"
 
 echo "Deploying EARTH Token Contract..."
-EARTH_TOKEN_ADDRESS=$(forge create --rpc-url http://localhost:8545 --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 contracts/TestToken.sol:TestToken --constructor-args "EARTH Token" "EARTH" | grep -oP 'Deployed to: \K.*')
+EARTH_TOKEN_ADDRESS=$(forge create --rpc-url http://localhost:8545 --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 contracts/solidity/TestToken.sol:TestToken --constructor-args "EARTH Token" "EARTH" | grep -oP 'Deployed to: \K.*')
 echo "EARTH Token: $EARTH_TOKEN_ADDRESS"
 ```
 

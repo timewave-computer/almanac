@@ -81,6 +81,9 @@ contract UniversalGateway {
         // In a real implementation, this would verify the message and call the target contract
         // For testing, we just mark the message as delivered
         
+        require(messages[messageId].destinationChainId != 0, "Message does not exist");
+        require(!messages[messageId].delivered, "Message already delivered");
+
         Message storage message = messages[messageId];
         message.delivered = true;
         

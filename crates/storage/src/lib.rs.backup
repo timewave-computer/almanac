@@ -285,12 +285,22 @@ pub trait Storage: Send + Sync + 'static {
     
     /// Get the latest block with a specific status for a chain
     async fn get_latest_block_with_status(&self, chain: &str, status: BlockStatus) -> Result<u64>;
-
+    
     /// Update block status
     async fn update_block_status(&self, chain: &str, block_number: u64, status: BlockStatus) -> Result<()>;
-
+    
     /// Get events with specific block status
     async fn get_events_with_status(&self, filters: Vec<EventFilter>, status: BlockStatus) -> Result<Vec<Box<dyn Event>>>;
+
+    // --- Valence Account Storage Methods ---
+
+    /// Stores the initial information for a newly instantiated Valence account.
+    /// Also stores the initial list of approved libraries.
+    async fn store_valence_account_instantiation(
+        &self,
+        account_info: ValenceAccountInfo,
+        initial_libraries: Vec<ValenceAccountLibrary>,
+    ) -> Result<()>;
 
     /// Adds a library to an existing Valence account's approved list.
     async fn store_valence_library_approval(
@@ -600,28 +610,37 @@ pub struct ValenceAuthorizationState {
 pub mod storage_defaults {
     use super::*;
     
+    /// Default implementation for get_latest_block_with_status
     pub async fn get_latest_block_with_status(
         storage: &dyn Storage,
         chain: &str, 
         _status: BlockStatus
     ) -> Result<u64> {
+        // Default implementation just returns the latest block
+        // This is compatible with chain adapters that don't support block status
         storage.get_latest_block(chain).await
     }
-
+    
+    /// Default implementation for update_block_status
     pub async fn update_block_status(
         _storage: &dyn Storage,
         _chain: &str, 
         _block_number: u64, 
         _status: BlockStatus
     ) -> Result<()> {
+        // Default implementation does nothing
+        // This is compatible with storage backends that don't support block status
         Ok(())
     }
-
+    
+    /// Default implementation for get_events_with_status
     pub async fn get_events_with_status(
         storage: &dyn Storage,
         filters: Vec<EventFilter>, 
         _status: BlockStatus
     ) -> Result<Vec<Box<dyn Event>>> {
+        // Default implementation ignores status
+        // This is compatible with storage backends that don't support block status
         storage.get_events(filters).await
     }
 }

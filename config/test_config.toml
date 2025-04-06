@@ -1,0 +1,20 @@
+[global]
+log_level = "info"
+
+[database]
+url = "sqlite:/Users/hxrts/projects/timewave/almanac/tmp/cross_chain_e2e_test/indexer_sqlite.db"
+rocks_path = "/Users/hxrts/projects/timewave/almanac/tmp/cross_chain_e2e_test/indexer_rocks_db"
+
+[ethereum]
+rpc_url = "http://localhost:8545"
+start_block = 0
+contracts = []
+
+[cosmos]
+rpc_url = "http://localhost:26657"
+start_block = 0
+contracts = []
+
+[server]
+host = "0.0.0.0"
+port = 8080

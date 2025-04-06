@@ -21,8 +21,10 @@ echo "=================================="
 echo -e "\nDeploying Faucet contract..."
 RESULT=$(forge create --rpc-url "$RPC_URL" \
   --private-key "$PRIVATE_KEY" \
-  contracts/Faucet.sol:Faucet \
-  --json)
+  contracts/solidity/Faucet.sol:Faucet \
+  --constructor-args \
+  "$TOKEN_NAME" "$TOKEN_SYMBOL" "$TOKEN_DECIMALS" "$FAUCET_AMOUNT" \
+  --broadcast)
 
 echo "$RESULT" > "$DEPLOYMENT_DIR/faucet.json"
 FAUCET_ADDRESS=$(echo "$RESULT" | jq -r '.deployedTo')

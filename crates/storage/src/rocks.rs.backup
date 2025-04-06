@@ -2,7 +2,27 @@
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+    async fn update_valence_account_last_updated(&self, account_id: &str, update_block: u64, update_tx: &str) -> Result<()> {
+        let state_key = self.valence_account_state_key(account_id);
+        let cf = self.cf_valence_state()?;
 
+        // Read-Modify-Write
+        let current_state_bytes = self.db.get_cf(cf, &state_key)?;
+        let mut state: ValenceAccountState = match current_state_bytes {
+            Some(bytes) => serde_json::from_slice(&bytes)
+                .map_err(|e| Error::generic(format!("Failed to deserialize Valence state: {}", e)))?,
+            None => return Err(Error::generic(format!("Valence account state not found for ID: {}", account_id))),
+        };
+
+        state.last_update_block = update_block;
+        state.last_update_tx = update_tx.to_string();
+
+        let state_json = serde_json::to_vec(&state)
+            .map_err(|e| Error::generic(format!("Failed to serialize Valence state: {}", e)))?;
+        
+        self.db.put_cf(cf, state_key, state_json)?;
+        Ok(())
+    }
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
 
@@ -21,6 +41,7 @@ use crate::Storage;
 use crate::{ValenceAccountInfo, ValenceAccountLibrary, ValenceAccountExecution, ValenceAccountState};
 
 /// Configuration for RocksDB storage
+#[derive(Debug, Clone)]
 pub struct RocksConfig {
     /// Path to the database
     pub path: String,

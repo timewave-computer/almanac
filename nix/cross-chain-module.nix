@@ -4,7 +4,7 @@
   perSystem = { config, self', inputs', pkgs, lib, system, ... }: 
   let 
     # Get packages from Nix overlay
-    foundryPkg = pkgs.foundry-ethereum;
+    foundryPkg = pkgs.foundry;
     
     # Colors for terminal output
     colors = {
@@ -21,9 +21,9 @@
     
     # Script functions
     printStep = name: ''
-      echo -e "\n${colors.bold}${colors.blue}===================================${colors.reset}"
+      echo -e "\n${colors.bold}${colors.blue}=======================================${colors.reset}"
       echo -e "${colors.bold}${colors.blue}  ${name}${colors.reset}"
-      echo -e "${colors.bold}${colors.blue}===================================${colors.reset}"
+      echo -e "${colors.bold}${colors.blue}=======================================${colors.reset}"
     '';
     
     printSuccess = msg: ''
@@ -90,37 +90,76 @@
 
         # Variables for contract deployment
         ETH_PRIV_KEY="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
-        ETH_DIR="$(pwd)/tests/ethereum-contracts"
+        # Check if the contracts exist in the new location first
+        if [ -d "$(pwd)/contracts/solidity" ]; then
+          ETH_DIR="$(pwd)/contracts/solidity"
+        elif [ -d "$(pwd)/tests/solidity" ]; then
+          ETH_DIR="$(pwd)/tests/solidity"  
+        else
+          ETH_DIR="$(pwd)/tests/ethereum-contracts"
+        fi
+        ${printInfo "Using Ethereum contracts from: $ETH_DIR"}
 
         # Deploy Ethereum Processor Contract
         ${printInfo "Deploying Ethereum Processor Contract..."}
-        PROCESSOR_DEPLOY=$(forge create "$ETH_DIR/EthereumProcessor.sol:EthereumProcessor" --private-key $ETH_PRIV_KEY --broadcast)
-        PROCESSOR_ADDRESS=$(echo "$PROCESSOR_DEPLOY" | grep "Deployed to" | awk '{print $3}')
-        ${printSuccess "Ethereum Processor: ''${PROCESSOR_ADDRESS}"}
+        # If PROCESSOR_ADDRESS is already set in environment, use that value
+        if [ -n "$PROCESSOR_ADDRESS" ]; then
+          ${printInfo "Using existing PROCESSOR_ADDRESS from environment: $PROCESSOR_ADDRESS"}
+        else
+          # Otherwise, deploy the contract and extract the address
+          PROCESSOR_DEPLOY=$(forge create "$ETH_DIR/EthereumProcessor.sol:EthereumProcessor" --private-key $ETH_PRIV_KEY --broadcast)
+          PROCESSOR_ADDRESS=$(echo "$PROCESSOR_DEPLOY" | grep "Deployed to" | awk '{print $3}')
+        fi
+        ${printSuccess "Ethereum Processor: $PROCESSOR_ADDRESS"}
 
         # Deploy Ethereum Base Account Contract
         ${printInfo "Deploying Ethereum Base Account Contract..."}
-        ACCOUNT_DEPLOY=$(forge create "$ETH_DIR/BaseAccount.sol:BaseAccount" --private-key $ETH_PRIV_KEY --broadcast)
-        ACCOUNT_ADDRESS=$(echo "$ACCOUNT_DEPLOY" | grep "Deployed to" | awk '{print $3}')
-        ${printSuccess "Ethereum Base Account: ''${ACCOUNT_ADDRESS}"}
+        # If ACCOUNT_ADDRESS is already set in environment, use that value
+        if [ -n "$ACCOUNT_ADDRESS" ]; then
+          ${printInfo "Using existing ACCOUNT_ADDRESS from environment: $ACCOUNT_ADDRESS"}
+        else
+          # Otherwise, deploy the contract and extract the address
+          ACCOUNT_DEPLOY=$(forge create "$ETH_DIR/BaseAccount.sol:BaseAccount" --private-key $ETH_PRIV_KEY --broadcast)
+          ACCOUNT_ADDRESS=$(echo "$ACCOUNT_DEPLOY" | grep "Deployed to" | awk '{print $3}')
+        fi
+        ${printSuccess "Ethereum Base Account: $ACCOUNT_ADDRESS"}
 
         # Deploy Ethereum Universal Gateway Contract
         ${printInfo "Deploying Ethereum Universal Gateway Contract..."}
-        GATEWAY_DEPLOY=$(forge create "$ETH_DIR/UniversalGateway.sol:UniversalGateway" --private-key $ETH_PRIV_KEY --broadcast)
-        GATEWAY_ADDRESS=$(echo "$GATEWAY_DEPLOY" | grep "Deployed to" | awk '{print $3}')
-        ${printSuccess "Ethereum Universal Gateway: ''${GATEWAY_ADDRESS}"}
+        # If GATEWAY_ADDRESS is already set in environment, use that value
+        if [ -n "$GATEWAY_ADDRESS" ]; then
+          ${printInfo "Using existing GATEWAY_ADDRESS from environment: $GATEWAY_ADDRESS"}
+        else
+          # Otherwise, deploy the contract and extract the address
+          GATEWAY_DEPLOY=$(forge create "$ETH_DIR/UniversalGateway.sol:UniversalGateway" --private-key $ETH_PRIV_KEY --broadcast)
+          GATEWAY_ADDRESS=$(echo "$GATEWAY_DEPLOY" | grep "Deployed to" | awk '{print $3}')
+        fi
+        ${printSuccess "Ethereum Universal Gateway: $GATEWAY_ADDRESS"}
 
         # Deploy SUN Token Contract
         ${printInfo "Deploying SUN Token Contract..."}
-        SUN_DEPLOY=$(forge create "$ETH_DIR/TestToken.sol:TestToken" --private-key $ETH_PRIV_KEY --broadcast --constructor-args "Sun Token" SUN 18)
-        SUN_ADDRESS=$(echo "$SUN_DEPLOY" | grep "Deployed to" | awk '{print $3}')
-        ${printSuccess "SUN Token: ''${SUN_ADDRESS}"}
+        # If TOKEN_ADDRESS is already set in environment, use that value
+        if [ -n "$TOKEN_ADDRESS" ]; then
+          ${printInfo "Using existing TOKEN_ADDRESS from environment: $TOKEN_ADDRESS"}
+          SUN_ADDRESS="$TOKEN_ADDRESS"
+        else
+          # Otherwise, deploy the contract and extract the address
+          SUN_DEPLOY=$(forge create "$ETH_DIR/TestToken.sol:TestToken" --private-key $ETH_PRIV_KEY --broadcast --constructor-args "Sun Token" SUN 18)
+          SUN_ADDRESS=$(echo "$SUN_DEPLOY" | grep "Deployed to" | awk '{print $3}')
+        fi
+        ${printSuccess "SUN Token: $SUN_ADDRESS"}
 
         # Deploy EARTH Token Contract
         ${printInfo "Deploying EARTH Token Contract..."}
-        EARTH_DEPLOY=$(forge create "$ETH_DIR/TestToken.sol:TestToken" --private-key $ETH_PRIV_KEY --broadcast --constructor-args "Earth Token" EARTH 18)
-        EARTH_ADDRESS=$(echo "$EARTH_DEPLOY" | grep "Deployed to" | awk '{print $3}')
-        ${printSuccess "EARTH Token: ''${EARTH_ADDRESS}"}
+        # If EARTH_ADDRESS is already set in environment, use that value
+        if [ -n "$EARTH_ADDRESS" ]; then
+          ${printInfo "Using existing EARTH_ADDRESS from environment: $EARTH_ADDRESS"}
+        else
+          # Otherwise, deploy the contract and extract the address
+          EARTH_DEPLOY=$(forge create "$ETH_DIR/TestToken.sol:TestToken" --private-key $ETH_PRIV_KEY --broadcast --constructor-args "Earth Token" EARTH 18)
+          EARTH_ADDRESS=$(echo "$EARTH_DEPLOY" | grep "Deployed to" | awk '{print $3}')
+        fi
+        ${printSuccess "EARTH Token: $EARTH_ADDRESS"}
 
         ${printStepComplete "Contract deployment"}
 
@@ -151,19 +190,19 @@
         ${printInfo "Minting 10 SUN tokens to Ethereum Base Account..."}
         cast send --private-key $ETH_PRIV_KEY "$SUN_ADDRESS" "mint(address,uint256)" "$ACCOUNT_ADDRESS" "10000000000000000000"
         SUN_BALANCE=$(cast call "$SUN_ADDRESS" "balanceOf(address)" "$ACCOUNT_ADDRESS")
-        ${printSuccess "SUN balance: ''${SUN_BALANCE}"}
+        ${printSuccess "SUN balance: $SUN_BALANCE"}
 
         # Mint 10 EARTH tokens to Ethereum Base Account
         ${printInfo "Minting 10 EARTH tokens to Ethereum Base Account..."}
         cast send --private-key $ETH_PRIV_KEY "$EARTH_ADDRESS" "mint(address,uint256)" "$ACCOUNT_ADDRESS" "10000000000000000000"
         EARTH_BALANCE=$(cast call "$EARTH_ADDRESS" "balanceOf(address)" "$ACCOUNT_ADDRESS")
-        ${printSuccess "EARTH balance: ''${EARTH_BALANCE}"}
+        ${printSuccess "EARTH balance: $EARTH_BALANCE"}
 
         # Setup authorization for account control
         ${printInfo "Authorizing ETH Account A to control ETH Base Account..."}
         cast send --private-key $ETH_PRIV_KEY "$ACCOUNT_ADDRESS" "authorize(address,bool)" "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" "true"
         AUTH_STATUS=$(cast call "$ACCOUNT_ADDRESS" "isAuthorized(address)" "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266")
-        ${printSuccess "Authorization status: ''${AUTH_STATUS}"}
+        ${printSuccess "Authorization status: $AUTH_STATUS"}
 
         ${printStepComplete "Token setup and authorization"}
 
@@ -177,7 +216,7 @@
         sleep 5
         
         if ps -p $WASMD_PID > /dev/null; then
-          ${printSuccess "Cosmos wasmd node started successfully with PID: ''${WASMD_PID}"}
+          ${printSuccess "Cosmos wasmd node started successfully with PID: $WASMD_PID"}
         else
           ${printWarning "Failed to start Cosmos node, continuing with Ethereum-only tests"}
         fi
@@ -204,8 +243,8 @@
         # 3. Check the token balances
         SUN_BALANCE_ACCOUNT=$(cast call "$SUN_ADDRESS" "balanceOf(address)" "$ACCOUNT_ADDRESS")
         SUN_BALANCE_B=$(cast call "$SUN_ADDRESS" "balanceOf(address)" "$ETH_ACCOUNT_B")
-        ${printSuccess "SUN balance of Base Account: ''${SUN_BALANCE_ACCOUNT}"}
-        ${printSuccess "SUN balance of Account B: ''${SUN_BALANCE_B}"}
+        ${printSuccess "SUN balance of Base Account: $SUN_BALANCE_ACCOUNT"}
+        ${printSuccess "SUN balance of Account B: $SUN_BALANCE_B"}
 
         ${printStepComplete "Token transfer"}
 
@@ -216,7 +255,7 @@
         ${printInfo "Testing Gateway - Sending a message..."}
         TEST_PAYLOAD=$(cast --from-utf8 "Hello from Ethereum")
         MESSAGE_ID=$(cast send --private-key $ETH_PRIV_KEY "$GATEWAY_ADDRESS" "sendMessage(uint256,address,bytes)" "2" "$PROCESSOR_ADDRESS" "$TEST_PAYLOAD" --json | jq -r '.logs[0].topics[1]')
-        ${printSuccess "Message ID: ''${MESSAGE_ID}"}
+        ${printSuccess "Message ID: $MESSAGE_ID"}
 
         # 5. Test Message Delivery
         if [ -n "$MESSAGE_ID" ]; then
@@ -234,7 +273,7 @@
         
         # Check if Cosmos node is running
         if ps -p $WASMD_PID > /dev/null 2>&1; then
-            ${printSuccess "Cosmos node is running at PID: ''${WASMD_PID}"}
+            ${printSuccess "Cosmos node is running at PID: $WASMD_PID"}
             ${printInfo "Checking Cosmos node status..."}
             
             # Try to query node status
@@ -278,10 +317,10 @@
     # Define the cross-chain test package
     packages.cross-chain-e2e-test = crossChainTestScript;
     
-    # Expose it as an app
-    apps.cross-chain-e2e-test = {
-      type = "app";
-      program = "${self'.packages.cross-chain-e2e-test}/bin/cross-chain-e2e-test";
-    };
+    # No need to expose it as a duplicate app, as it's already defined in flake.nix
+    # apps.cross-chain-e2e-test = {
+    #   type = "app";
+    #   program = "${self'.packages.cross-chain-e2e-test}/bin/cross-chain-e2e-test";
+    # };
   };
 } 

@@ -132,9 +132,11 @@ echo "Using forge: $FORGE"
 echo "Using RPC URL: $RPC_URL"
 
 # Deploy with broadcast flag for actual deployment
-DEPLOY_OUTPUT=$($FORGE create --rpc-url "$RPC_URL" \
-  --private-key "$PRIVATE_KEY" \
-  contracts/Faucet.sol:Faucet \
+DEPLOY_OUTPUT=$($FORGE create \
+  --rpc-url $RPC_URL \
+  --private-key $PRIVATE_KEY \
+  contracts/solidity/Faucet.sol:Faucet \
+  --constructor-args $TOKEN_NAME $TOKEN_SYMBOL $TOKEN_DECIMALS $FAUCET_AMOUNT \
   --broadcast)
 
 echo "Deploy output: $DEPLOY_OUTPUT"

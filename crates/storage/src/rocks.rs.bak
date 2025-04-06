@@ -2,7 +2,6 @@
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
 
@@ -21,6 +20,7 @@ use crate::Storage;
 use crate::{ValenceAccountInfo, ValenceAccountLibrary, ValenceAccountExecution, ValenceAccountState};
 
 /// Configuration for RocksDB storage
+#[derive(Debug, Clone)]
 pub struct RocksConfig {
     /// Path to the database
     pub path: String,
@@ -354,37 +354,33 @@ impl Storage for RocksStorage {
         &self,
         account_id: &str,
         library_info: ValenceAccountLibrary,
-        update_block: u64,
-        update_tx: &str,
+        _update_block: u64,
+        _update_tx: &str,
     ) -> Result<()> {
-        // Fix the implementation
-        let libraries_cf = self.cf_valence_state()?;
-        let key = format!("{}:{}", account_id, library_info.library_address);
-        
-        // Serialize the library info
-        let value = serde_json::to_string(&library_info)
-            .map_err(|e| Error::generic(format!("Failed to serialize ValenceAccountLibrary: {}", e)))?;
-        
-        self.db.put_cf(libraries_cf, key, value)?;
-
-        // Update the account's last updated block separately
         let state_key = self.valence_account_state_key(account_id);
         let cf = self.cf_valence_state()?;
-        
-        // Read-Modify-Write for the account state
-        if let Some(state_bytes) = self.db.get_cf(cf, &state_key)? {
-            let mut state: ValenceAccountState = serde_json::from_slice(&state_bytes)
-                .map_err(|e| Error::generic(format!("Failed to deserialize Valence state: {}", e)))?;
-            
-            state.last_update_block = update_block;
-            state.last_update_tx = update_tx.to_string();
-            
-            let updated_state = serde_json::to_vec(&state)
+
+        // Read-Modify-Write
+        let current_state_bytes = self.db.get_cf(cf, &state_key)?;
+        let mut state: ValenceAccountState = match current_state_bytes {
+            Some(bytes) => serde_json::from_slice(&bytes)
+                .map_err(|e| Error::generic(format!("Failed to deserialize Valence state: {}", e)))?,
+            None => return Err(Error::generic(format!("Valence account state not found for ID: {}", account_id))),
+        };
+
+        let library_address = library_info.library_address;
+        if !state.libraries.contains(&library_address) {
+            state.libraries.push(library_address.clone());
+            state.libraries.sort();
+
+            state.last_update_block = _update_block;
+            state.last_update_tx = _update_tx.to_string();
+
+            let state_json = serde_json::to_vec(&state)
                 .map_err(|e| Error::generic(format!("Failed to serialize Valence state: {}", e)))?;
             
-            self.db.put_cf(cf, state_key, updated_state)?;
+            self.db.put_cf(cf, state_key, state_json)?;
         }
-
         Ok(())
     }
 
@@ -931,5 +927,236 @@ impl KeyBatch {
     /// Get the inner WriteBatch
     pub fn inner(self) -> WriteBatch {
         self.batch
+    }
+}
+// Dummy implementations for Valence-related methods
+// These are temporary implementations to make the code compile
+impl RocksStorage {
+    async fn dummy_not_implemented<T>(&self) -> Result<T> where T: Default {
+        log::warn!("Valence method not implemented for RocksStorage");
+        Ok(T::default())
+    }
+}
+
+// Implement the Valence-related methods for RocksStorage
+#[async_trait]
+impl Storage for RocksStorage {
+    // Existing methods are already implemented...
+
+    // Valence Processor methods
+    async fn store_valence_processor_instantiation(
+        &self,
+        _processor_info: ValenceProcessorInfo,
+    ) -> Result<()> {
+        log::warn!("store_valence_processor_instantiation not implemented for RocksStorage");
+        Ok(())
+    }
+
+    async fn store_valence_processor_config_update(
+        &self,
+        _processor_id: &str,
+        _config: ValenceProcessorConfig,
+        _update_block: u64,
+        _update_tx: &str,
+    ) -> Result<()> {
+        log::warn!("store_valence_processor_config_update not implemented for RocksStorage");
+        Ok(())
+    }
+
+    async fn store_valence_processor_message(
+        &self,
+        _message: ValenceProcessorMessage,
+    ) -> Result<()> {
+        log::warn!("store_valence_processor_message not implemented for RocksStorage");
+        Ok(())
+    }
+
+    async fn update_valence_processor_message_status(
+        &self,
+        _message_id: &str,
+        _new_status: ValenceMessageStatus,
+        _processed_block: Option<u64>,
+        _processed_tx: Option<&str>,
+        _retry_count: Option<u32>,
+        _next_retry_block: Option<u64>,
+        _gas_used: Option<u64>,
+        _error: Option<String>,
+    ) -> Result<()> {
+        log::warn!("update_valence_processor_message_status not implemented for RocksStorage");
+        Ok(())
+    }
+
+    async fn get_valence_processor_state(&self, _processor_id: &str) -> Result<Option<ValenceProcessorState>> {
+        self.dummy_not_implemented().await
+    }
+
+    async fn set_valence_processor_state(&self, _processor_id: &str, _state: &ValenceProcessorState) -> Result<()> {
+        log::warn!("set_valence_processor_state not implemented for RocksStorage");
+        Ok(())
+    }
+
+    async fn set_historical_valence_processor_state(
+        &self,
+        _processor_id: &str,
+        _block_number: u64,
+        _state: &ValenceProcessorState,
+    ) -> Result<()> {
+        log::warn!("set_historical_valence_processor_state not implemented for RocksStorage");
+        Ok(())
+    }
+
+    async fn get_historical_valence_processor_state(
+        &self,
+        _processor_id: &str,
+        _block_number: u64,
+    ) -> Result<Option<ValenceProcessorState>> {
+        self.dummy_not_implemented().await
+    }
+
+    // Valence Authorization methods
+    async fn store_valence_authorization_instantiation(
+        &self,
+        _auth_info: ValenceAuthorizationInfo,
+        _initial_policy: Option<ValenceAuthorizationPolicy>,
+    ) -> Result<()> {
+        log::warn!("store_valence_authorization_instantiation not implemented for RocksStorage");
+        Ok(())
+    }
+
+    async fn store_valence_authorization_policy(
+        &self,
+        _policy: ValenceAuthorizationPolicy,
+    ) -> Result<()> {
+        log::warn!("store_valence_authorization_policy not implemented for RocksStorage");
+        Ok(())
+    }
+
+    async fn update_active_authorization_policy(
+        &self,
+        _auth_id: &str,
+        _policy_id: &str,
+        _update_block: u64,
+        _update_tx: &str,
+    ) -> Result<()> {
+        log::warn!("update_active_authorization_policy not implemented for RocksStorage");
+        Ok(())
+    }
+
+    async fn store_valence_authorization_grant(
+        &self,
+        _grant: ValenceAuthorizationGrant,
+    ) -> Result<()> {
+        log::warn!("store_valence_authorization_grant not implemented for RocksStorage");
+        Ok(())
+    }
+
+    async fn revoke_valence_authorization_grant(
+        &self,
+        _auth_id: &str,
+        _grantee: &str,
+        _resource: &str,
+        _revoked_at_block: u64,
+        _revoked_at_tx: &str,
+    ) -> Result<()> {
+        log::warn!("revoke_valence_authorization_grant not implemented for RocksStorage");
+        Ok(())
+    }
+
+    async fn store_valence_authorization_request(
+        &self,
+        _request: ValenceAuthorizationRequest,
+    ) -> Result<()> {
+        log::warn!("store_valence_authorization_request not implemented for RocksStorage");
+        Ok(())
+    }
+
+    async fn update_valence_authorization_request_decision(
+        &self,
+        _request_id: &str,
+        _decision: ValenceAuthorizationDecision,
+        _processed_block: Option<u64>,
+        _processed_tx: Option<&str>,
+        _reason: Option<String>,
+    ) -> Result<()> {
+        log::warn!("update_valence_authorization_request_decision not implemented for RocksStorage");
+        Ok(())
+    }
+
+    // Valence Library methods
+    async fn store_valence_library_instantiation(
+        &self,
+        _library_info: ValenceLibraryInfo,
+        _initial_version: Option<ValenceLibraryVersion>,
+    ) -> Result<()> {
+        log::warn!("store_valence_library_instantiation not implemented for RocksStorage");
+        Ok(())
+    }
+
+    async fn store_valence_library_version(
+        &self,
+        _version: ValenceLibraryVersion,
+    ) -> Result<()> {
+        log::warn!("store_valence_library_version not implemented for RocksStorage");
+        Ok(())
+    }
+
+    async fn update_active_library_version(
+        &self,
+        _library_id: &str,
+        _version: u32,
+        _update_block: u64,
+        _update_tx: &str,
+    ) -> Result<()> {
+        log::warn!("update_active_library_version not implemented for RocksStorage");
+        Ok(())
+    }
+
+    async fn store_valence_library_usage(
+        &self,
+        _usage: ValenceLibraryUsage,
+    ) -> Result<()> {
+        log::warn!("store_valence_library_usage not implemented for RocksStorage");
+        Ok(())
+    }
+
+    async fn revoke_valence_library_approval(
+        &self,
+        _library_id: &str,
+        _account_id: &str,
+        _revoked_at_block: u64,
+        _revoked_at_tx: &str,
+    ) -> Result<()> {
+        log::warn!("revoke_valence_library_approval not implemented for RocksStorage");
+        Ok(())
+    }
+
+    async fn get_valence_library_state(&self, _library_id: &str) -> Result<Option<ValenceLibraryState>> {
+        self.dummy_not_implemented().await
+    }
+
+    async fn set_valence_library_state(&self, _library_id: &str, _state: &ValenceLibraryState) -> Result<()> {
+        log::warn!("set_valence_library_state not implemented for RocksStorage");
+        Ok(())
+    }
+
+    async fn get_valence_library_versions(&self, _library_id: &str) -> Result<Vec<ValenceLibraryVersion>> {
+        self.dummy_not_implemented().await
+    }
+
+    async fn get_valence_library_approvals(&self, _library_id: &str) -> Result<Vec<ValenceLibraryApproval>> {
+        self.dummy_not_implemented().await
+    }
+
+    async fn get_valence_libraries_for_account(&self, _account_id: &str) -> Result<Vec<ValenceLibraryApproval>> {
+        self.dummy_not_implemented().await
+    }
+
+    async fn get_valence_library_usage_history(
+        &self,
+        _library_id: &str,
+        _limit: Option<usize>,
+        _offset: Option<usize>,
+    ) -> Result<Vec<ValenceLibraryUsage>> {
+        self.dummy_not_implemented().await
     }
 }

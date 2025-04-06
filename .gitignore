@@ -63,9 +63,12 @@ lib/
 # Temp
 $TMPDIR/
 $CARGO_TARGET_DIR/
+tmp/
 
 # Reth Source (if cloned locally)
 /reth-src/
 
 # Valence
 valence-protocol/
+infra/
+cosmos-nix/

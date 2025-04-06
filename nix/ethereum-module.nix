@@ -33,7 +33,7 @@ let
         --private-key "$PRIVATE_KEY" \
         ${lib.optionalString (cfg.gasPrice != null) "--gas-price ${cfg.gasPrice}"} \
         ${lib.optionalString (cfg.gasLimit != null) "--gas-limit ${toString cfg.gasLimit}"} \
-        contracts/Faucet.sol:Faucet \
+        contracts/solidity/Faucet.sol:Faucet \
         --json > $DEPLOYMENT_DIR/Faucet.json
       
       CONTRACT_ADDRESS=$(${pkgs.jq}/bin/jq -r '.deployedTo' $DEPLOYMENT_DIR/Faucet.json)
