@@ -263,37 +263,12 @@
             '';
           };
           
-          # Build wasm-bindgen from source
-          wasm-bindgen-src = pkgs.fetchFromGitHub {
-            owner = "rustwasm";
-            repo = "wasm-bindgen";
-            rev = "0.2.92"; # Use the tag
-            hash = "sha256-j9wYx0A8Iq5TpgyVVhFJ3hnpW+x01l29I4B21nKh3rw="; # Correct hash
-            fetchSubmodules = true; # Ensure all submodules are fetched
-          };
-          
-          wasm-bindgen-pkg = pkgs.rustPlatform.buildRustPackage {
-            pname = "wasm-bindgen-cli";
-            version = "0.2.92";
-            src = wasm-bindgen-src;
-            
-            # Point to the CLI lock file specifically
-            cargoLock.lockFile = "${wasm-bindgen-src}/Cargo.lock";
-            
-            # Set the crate source directory to the CLI crate
-            cargoBuildFlags = [ "-p" "wasm-bindgen-cli" ];
-            
-            # Add necessary build inputs
-            nativeBuildInputs = with pkgs; [ pkg-config ];
-            buildInputs = with pkgs; [ openssl ];
-          };
-          
-          # Define packages - include the database packages
+          # Use wasm-bindgen-cli from nixpkgs instead of building from source
           packages = {
-            inherit wasm-bindgen-pkg;
+            wasm-bindgen-pkg = pkgs.wasm-bindgen-cli;
             init-databases = initDatabasesScript;
             stop-databases = stopDatabasesScript;
-            default = wasm-bindgen-pkg;
+            default = pkgs.wasm-bindgen-cli;
           };
           
         in

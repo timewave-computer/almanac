@@ -795,6 +795,35 @@ impl Storage for PostgresStorage {
         // Simplified implementation for compilation
         Ok(Vec::new())
     }
+
+    // Implement the processor state methods
+    async fn set_processor_state(&self, chain: &str, block_number: u64, state: &str) -> Result<()> {
+        // For PostgreSQL, we'll store processor state in a dedicated table
+        // For simplicity, we'll log and return Ok for now
+        debug!("PostgreSQL set_processor_state not fully implemented");
+        Ok(())
+    }
+    
+    async fn get_processor_state(&self, chain: &str, block_number: u64) -> Result<Option<String>> {
+        // For PostgreSQL, we'll retrieve processor state from a dedicated table
+        // For simplicity, we'll return None for now
+        debug!("PostgreSQL get_processor_state not fully implemented");
+        Ok(None)
+    }
+    
+    async fn set_historical_processor_state(&self, chain: &str, block_number: u64, state: &str) -> Result<()> {
+        // For PostgreSQL, we'll store historical processor state in a dedicated table
+        // For simplicity, we'll log and return Ok for now
+        debug!("PostgreSQL set_historical_processor_state not fully implemented");
+        Ok(())
+    }
+    
+    async fn get_historical_processor_state(&self, chain: &str, block_number: u64) -> Result<Option<String>> {
+        // For PostgreSQL, we'll retrieve historical processor state from a dedicated table
+        // For simplicity, we'll return None for now
+        debug!("PostgreSQL get_historical_processor_state not fully implemented");
+        Ok(None)
+    }
 }
 
 impl PostgresStorage {

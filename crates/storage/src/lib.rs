@@ -21,15 +21,17 @@ pub mod postgres;
 
 // Common modules
 pub mod sync;
-pub mod migrations;
-pub mod tests;
+
+// For testing only
+#[cfg(test)]
+mod tests;
 
 // Type aliases
 pub type BoxedStorage = Arc<dyn Storage + Send + Sync>;
 
 /// Storage interface for Almanac indexer data
-#[async_trait]
-pub trait Storage {
+#[async_trait::async_trait]
+pub trait Storage: Send + Sync {
     /// Store an event
     async fn store_event(&self, chain: &str, event: Box<dyn Event>) -> Result<()>;
     
@@ -53,6 +55,12 @@ pub trait Storage {
     
     /// Handle chain reorganization from a specific block
     async fn reorg_chain(&self, chain: &str, from_block: u64) -> Result<()>;
+    
+    /// Get the latest block before a specific block
+    async fn get_latest_block_before(&self, chain: &str, before_block: u64) -> Result<u64> {
+        // Default implementation returns the latest block
+        self.get_latest_block(chain).await
+    }
     
     // Valence Account methods
     
@@ -318,6 +326,18 @@ pub trait Storage {
     ) -> Result<Vec<ValenceLibraryUsage>>;
 
     // Additional methods as needed
+
+    /// Set processor state for a specific block
+    async fn set_processor_state(&self, chain: &str, block_number: u64, state: &str) -> Result<()>;
+    
+    /// Get processor state for a specific block
+    async fn get_processor_state(&self, chain: &str, block_number: u64) -> Result<Option<String>>;
+    
+    /// Set historical processor state for a specific block
+    async fn set_historical_processor_state(&self, chain: &str, block_number: u64, state: &str) -> Result<()>;
+    
+    /// Get historical processor state for a specific block
+    async fn get_historical_processor_state(&self, chain: &str, block_number: u64) -> Result<Option<String>>;
 }
 
 // Storage factory function
@@ -353,9 +373,9 @@ pub use postgres::repositories;
 
 /// Re-export contract schema types for convenience
 #[cfg(feature = "postgres")]
-pub use migrations::schema::{
+pub use crate::migrations::schema::{
     ContractSchemaVersion, EventSchema, FieldSchema, FunctionSchema,
-    ContractSchemaRegistry
+    ContractSchema, ContractSchemaRegistry, InMemorySchemaRegistry,
 };
 
 // Add structs to pass Valence data around
@@ -690,24 +710,37 @@ pub mod storage_defaults {
     }
 }
 
-/// Event filter for querying events
+/// Filter for querying events
 #[derive(Debug, Clone)]
 pub struct EventFilter {
-    /// Chain filter
+    /// Filter by chain
     pub chain: Option<String>,
     
-    /// Block range filter (min, max)
+    /// Filter by block range (inclusive)
     pub block_range: Option<(u64, u64)>,
     
-    /// Time range filter (min, max) in unix seconds
+    /// Filter by time range (inclusive)
     pub time_range: Option<(u64, u64)>,
     
-    /// Event type filter
+    /// Filter by event types
     pub event_types: Option<Vec<String>>,
     
-    /// Result limit
+    /// Limit the number of results
     pub limit: Option<usize>,
     
-    /// Result offset
+    /// Offset for pagination
     pub offset: Option<usize>,
-} 
+}
+
+// Other exports for convenience
+#[cfg(feature = "rocks")]
+pub use rocks::RocksConfig;
+
+#[cfg(feature = "postgres")]
+pub use postgres::PostgresConfig;
+
+#[cfg(feature = "postgres")]
+pub use crate::migrations::schema::{
+    ContractSchemaVersion, EventSchema, FunctionSchema, FieldSchema,
+    ContractSchema, ContractSchemaRegistry, InMemorySchemaRegistry,
+}; 

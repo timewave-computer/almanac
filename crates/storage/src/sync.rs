@@ -15,6 +15,7 @@ use indexer_core::event::Event;
 
 use crate::{BoxedStorage, EventFilter};
 use crate::rocks::RocksStorage;
+#[cfg(feature = "postgres")]
 use crate::postgres::PostgresStorage;
 use crate::Storage;
 
@@ -72,8 +73,8 @@ impl StorageSynchronizer {
         config: SyncConfig
     ) -> Self 
     where 
-        P: Storage + 'static,
-        S: Storage + 'static
+        P: Storage + Send + Sync + 'static,
+        S: Storage + Send + Sync + 'static
     {
         Self {
             primary: primary as BoxedStorage,
@@ -85,6 +86,7 @@ impl StorageSynchronizer {
     }
     
     /// Create a new storage synchronizer with RocksDB as primary and PostgreSQL as secondary
+    #[cfg(feature = "postgres")]
     pub async fn new_rocks_postgres(
         rocks: Arc<RocksStorage>, 
         postgres: Arc<PostgresStorage>,
@@ -100,6 +102,7 @@ impl StorageSynchronizer {
     }
     
     /// Create a new storage synchronizer with PostgreSQL as primary and RocksDB as secondary
+    #[cfg(feature = "postgres")]
     pub async fn new_postgres_rocks(
         postgres: Arc<PostgresStorage>, 
         rocks: Arc<RocksStorage>,

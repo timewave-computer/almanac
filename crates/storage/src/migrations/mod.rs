@@ -47,6 +47,14 @@ pub enum MigrationError {
     #[error("Migration not found: {0}")]
     MigrationNotFound(String),
     
+    /// SQL error
+    #[error("SQL error: {0}")]
+    SQL(String),
+    
+    /// Other error
+    #[error("Unknown error: {0}")]
+    Other(String),
+    
     /// Unknown error
     #[error("Unknown error: {0}")]
     Unknown(String),
@@ -696,18 +704,25 @@ pub use schema::{
     ContractSchema, ContractSchemaRegistry, InMemorySchemaRegistry,
 };
 
-// Add an implementation of From<MigrationError> for Error
+// Fix the From<MigrationError> for Error implementation
+#[cfg(feature = "postgres")]
 impl From<MigrationError> for Error {
     fn from(err: MigrationError) -> Self {
         match err {
-            MigrationError::IO(msg) => Error::IO(msg),
-            MigrationError::SQL(e) => Error::Database(format!("SQL migration error: {}", e)),
-            MigrationError::Other(msg) => Error::Custom(format!("Migration error: {}", msg)),
+            MigrationError::IO(msg) => Error::io(msg),
+            MigrationError::SQL(e) => Error::database(format!("SQL migration error: {}", e)),
+            MigrationError::Other(msg) => Error::storage(format!("Migration error: {}", msg)),
+            MigrationError::Database(e) => Error::database(format!("Database error: {}", e)),
+            MigrationError::Migrate(e) => Error::database(format!("Migration error: {}", e)),
+            MigrationError::MigrationExists(msg) => Error::database(format!("Migration exists: {}", msg)),
+            MigrationError::MigrationNotFound(msg) => Error::database(format!("Migration not found: {}", msg)),
+            MigrationError::Unknown(msg) => Error::generic(format!("Unknown error: {}", msg)),
         }
     }
 }
 
-// Stub implementation for the fetch_applied_migrations function
+// Update the fetch_applied_migrations function to use the correct error types
+#[cfg(feature = "postgres")]
 async fn fetch_applied_migrations(migrator: &sqlx::migrate::Migrator, pool: &Pool<Postgres>) -> Result<Vec<String>> {
     // Placeholder implementation to make it compile
     let result = sqlx::query("SELECT name FROM migrations ORDER BY applied_at")

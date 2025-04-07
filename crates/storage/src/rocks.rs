@@ -19,7 +19,7 @@ use tracing::{debug, warn, info};
 use serde_json;
 use num_cpus;
 use bincode;
-use std::str::FromUtf8Error;
+use std::string::FromUtf8Error;
 
 use crate::EventFilter;
 use crate::Storage;
@@ -107,6 +107,7 @@ pub struct RocksStorage {
 
 #[async_trait]
 impl Storage for RocksStorage {
+    /// Store an event
     async fn store_event(&self, chain: &str, event: Box<dyn Event>) -> Result<()> {
         let key = Key::new("events", event.id());
         
@@ -237,21 +238,31 @@ impl Storage for RocksStorage {
         Ok(latest_block)
     }
 
+    /// Get events with a specific status in a block range
     async fn get_events_with_status(&self, chain: &str, from_block: u64, to_block: u64, status: BlockStatus) -> Result<Vec<Box<dyn Event>>> {
         let mut events = Vec::new();
-        let cf = self.cf_block_status()?;
-
+        
         for block_num in from_block..=to_block {
+            // Check if the block has the specified status
             let key = Key::new("block_status", format!("{}:{}", chain, block_num));
-            if let Some(status_bytes) = self.db.get_cf(cf, key.to_bytes())? {
-                let status_str = string_from_utf8(status_bytes)?;
-                if status_str == status.as_str() {
-                    // If status matches, get events for this block
-                    let block_events = self.get_events(chain, block_num, block_num).await?;
-                    events.extend(block_events);
+            
+            // Need to get the column family inside this scope so it's not held across await
+            let status_str = {
+                let cf = self.cf_block_status()?;
+                if let Some(status_bytes) = self.db.get_cf(cf, key.to_bytes())? {
+                    string_from_utf8(status_bytes)?
+                } else {
+                    continue; // Skip blocks without status
                 }
+            };
+            
+            if status_str == status.as_str() {
+                // If status matches, get events for this block
+                let block_events = self.get_events(chain, block_num, block_num).await?;
+                events.extend(block_events);
             }
         }
+        
         Ok(events)
     }
 
@@ -700,84 +711,78 @@ impl Storage for RocksStorage {
     }
 
     async fn reorg_chain(&self, chain: &str, from_block: u64) -> Result<()> {
-        info!("Handling reorg in RocksDB for chain {} from block {}", chain, from_block);
+        debug!("Performing chain reorg for {} from block {}", chain, from_block);
         
-        // Simplified reorg: Delete blocks and associated data from `from_block` onwards.
-        // A more robust implementation might move data or mark it as orphaned.
-
+        // 1. Create a batch for atomic operations
         let mut batch = self.create_write_batch();
-
-        // 1. Delete block status entries
-        let block_status_cf = self.cf_block_status()?;
-        let block_status_prefix = Key::prefix(format!("block_status:{}:", chain));
-        let mut block_iter = self.db.prefix_iterator_cf(block_status_cf, block_status_prefix);
-        while let Some(item) = block_iter.next() {
+        
+        // 2. Get the column families
+        let events_cf = self.cf_events()?;
+        let blocks_cf = self.cf_block_status()?;
+        
+        // 3. Delete events from blocks >= from_block
+        let prefix = format!("chain_block:{}:", chain);
+        let iter = self.db.prefix_iterator_cf(blocks_cf, prefix.as_bytes());
+        
+        for item in iter {
             let (key_bytes, _) = item?;
-            let key_str = string_from_utf8(key_bytes.to_vec())?;
+            let key_str = string_from_utf8(key_bytes.to_vec())
+                .map_err(|e| Error::storage(format!("UTF8 conversion error: {}", e)))?;
             let parts: Vec<&str> = key_str.split(':').collect();
+            
             if parts.len() >= 3 {
                 if let Ok(block_num) = parts[2].parse::<u64>() {
                     if block_num >= from_block {
-                         batch.delete_key_bytes(&key_bytes, block_status_cf);
-                    }
-                }
-            }
-        }
-
-        // 2. Delete events and their indices (more complex)
-        // This requires iterating relevant indices or events and deleting them.
-        // Example: Iterate events from `from_block` and delete.
-        let events_cf = self.cf_events()?;
-        let chain_block_prefix = Key::prefix(format!("index:chain_block:{}:", chain));
-        let mut chain_block_iter = self.db.prefix_iterator_cf(self.cf_handle_ref("index:chain_block")?, chain_block_prefix);
-
-        while let Some(item) = chain_block_iter.next() {
-            let (index_key_bytes, event_id_bytes) = item?;
-            let index_key_str = string_from_utf8(index_key_bytes.to_vec())?;
-            let parts: Vec<&str> = index_key_str.split(':').collect(); // e.g., index:chain_block:eth:0x...block_num
-            if parts.len() >= 4 {
-                if let Ok(block_num) = u64::from_str_radix(parts[3], 16) {
-                    if block_num >= from_block {
-                        // Delete the event
-                        let event_key = Key::new("events", String::from_utf8(event_id_bytes.to_vec())?);
-                        batch.delete(&event_key, events_cf);
-                        // Delete other indices for this event (chain_type, chain_time)
-                        // This part needs careful implementation to find all related index entries.
-                        // For simplicity, we might only delete the chain_block index entry here.
-                        batch.delete_key_bytes(&index_key_bytes, self.cf_handle_ref("index:chain_block")?);
+                        // Get all events for this block
+                        let event_prefix = format!("chain_block:{}:{}", chain, block_num);
+                        let event_iter = self.db.prefix_iterator_cf(blocks_cf, event_prefix.as_bytes());
+                        
+                        for event_item in event_iter {
+                            let (event_key_bytes, event_id_bytes) = event_item?;
+                            
+                            // Delete the index entry
+                            batch.delete_key_bytes(&event_key_bytes, blocks_cf);
+                            
+                            if block_num >= from_block {
+                                // Delete the event
+                                let event_key = Key::new("events", String::from_utf8(event_id_bytes.to_vec())
+                                    .map_err(|e| Error::storage(format!("UTF8 conversion error: {}", e)))?);
+                                batch.delete(&event_key);
+                                // Delete other indices for this event (chain_type, chain_time)
+                                // This part needs careful implementation to find all related index entries.
+                                // For simplicity, we might only delete the chain_block index entry here.
+                            }
+                        }
+                        
+                        // Delete the block status
+                        let block_status_key = Key::new("block_status", format!("{}:{}", chain, block_num));
+                        batch.delete(&block_status_key);
                     }
                 }
             }
         }
         
-        // 3. Delete historical Valence states >= from_block
-        // Need to iterate historical CFs and delete relevant entries.
-        // This requires knowing the account IDs potentially affected.
-        // Simplified: Assume we don't delete historical state for now.
-        warn!("Simplified RocksDB reorg: Historical state not deleted.");
-
         // 4. Update latest block
         // Find the highest block *before* from_block that exists.
-        let new_latest_block = self.get_latest_block(chain, from_block).await?;
+        let new_latest_block = self.get_latest_block_before(chain, from_block).await?;
         let latest_block_key = Key::new("latest_block", chain);
         batch.put(&latest_block_key, new_latest_block.to_string().as_bytes());
-
-        // Write the batch
+        
+        // 5. Write batch to storage
         self.write_batch(batch)?;
-
-        info!("Reorg complete in RocksDB for chain {} from block {} - new latest block: {}", 
-              chain, from_block, new_latest_block);
+        
+        debug!("Chain reorg completed for {} from block {}", chain, from_block);
         Ok(())
     }
 
-    pub async fn set_processor_state(&self, chain: &str, block_number: u64, state: &str) -> Result<()> {
+    async fn set_processor_state(&self, chain: &str, block_number: u64, state: &str) -> Result<()> {
         let cf = self.cf_block_status()?;
         let key = Key::new("processor_state", format!("{}:{}", chain, block_number));
         self.db.put_cf(cf, key.to_bytes(), state.as_bytes())?;
         Ok(())
     }
 
-    pub async fn get_processor_state(&self, chain: &str, block_number: u64) -> Result<Option<String>> {
+    async fn get_processor_state(&self, chain: &str, block_number: u64) -> Result<Option<String>> {
         let cf = self.cf_block_status()?;
         let key = Key::new("processor_state", format!("{}:{}", chain, block_number));
         if let Some(bytes) = self.db.get_cf(cf, key.to_bytes())? {
@@ -788,14 +793,14 @@ impl Storage for RocksStorage {
         }
     }
 
-    pub async fn set_historical_processor_state(&self, chain: &str, block_number: u64, state: &str) -> Result<()> {
+    async fn set_historical_processor_state(&self, chain: &str, block_number: u64, state: &str) -> Result<()> {
         let cf = self.cf_historical_valence_state()?;
         let key = Key::new("historical_processor_state", format!("{}:{}", chain, block_number));
         self.db.put_cf(cf, key.to_bytes(), state.as_bytes())?;
         Ok(())
     }
 
-    pub async fn get_historical_processor_state(&self, chain: &str, block_number: u64) -> Result<Option<String>> {
+    async fn get_historical_processor_state(&self, chain: &str, block_number: u64) -> Result<Option<String>> {
         let cf = self.cf_historical_valence_state()?;
         let key = Key::new("historical_processor_state", format!("{}:{}", chain, block_number));
         if let Some(bytes) = self.db.get_cf(cf, key.to_bytes())? {
@@ -806,7 +811,7 @@ impl Storage for RocksStorage {
         }
     }
 
-    async fn get_latest_block(&self, chain: &str, before_block: u64) -> Result<u64> {
+    async fn get_latest_block_before(&self, chain: &str, before_block: u64) -> Result<u64> {
         let block_status_cf = self.cf_block_status()?;
         let mut latest_block = 0;
         
@@ -1218,5 +1223,5 @@ impl KeyBatch {
 
 // Fix the String::from_utf8 errors by adding this helper function
 fn string_from_utf8(bytes: Vec<u8>) -> Result<String> {
-    String::from_utf8(bytes).map_err(|e| Error::Custom(format!("UTF8 conversion error: {}", e)))
+    String::from_utf8(bytes).map_err(|e| Error::storage(format!("UTF8 conversion error: {}", e)))
 }

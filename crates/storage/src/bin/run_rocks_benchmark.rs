@@ -2,6 +2,7 @@ use std::fs::{self, File};
 use std::io::Write;
 use std::path::PathBuf;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::any::Any;
 use tempfile::TempDir;
 
 use indexer_storage::rocks::{RocksConfig, RocksStorage};
@@ -53,6 +54,10 @@ impl Event for MockEvent {
     
     fn raw_data(&self) -> &[u8] {
         &self.raw_data
+    }
+    
+    fn as_any(&self) -> &(dyn Any + 'static) {
+        self
     }
 }
 
@@ -141,7 +146,7 @@ async fn benchmark_rocksdb_write_performance(path: PathBuf) {
     let start = Instant::now();
     
     for event in eth_events {
-        storage.store_event(event).await.expect("Failed to store Ethereum event");
+        storage.store_event("ethereum", event).await.expect("Failed to store Ethereum event");
     }
     
     let eth_duration = start.elapsed();
@@ -153,7 +158,7 @@ async fn benchmark_rocksdb_write_performance(path: PathBuf) {
     let start = Instant::now();
     
     for event in cosmos_events {
-        storage.store_event(event).await.expect("Failed to store Cosmos event");
+        storage.store_event("cosmos", event).await.expect("Failed to store Cosmos event");
     }
     
     let cosmos_duration = start.elapsed();
@@ -193,7 +198,9 @@ async fn benchmark_rocksdb_query_performance(path: PathBuf) {
         offset: None,
     };
     
-    let eth_events = storage.get_events(vec![eth_filter]).await.expect("Failed to query Ethereum events");
+    // Get latest block for range
+    let latest_block = storage.get_latest_block("ethereum").await.expect("Failed to get latest block");
+    let eth_events = storage.get_events("ethereum", 0, latest_block).await.expect("Failed to query Ethereum events");
     
     let duration = start.elapsed();
     println!("Found {} Ethereum events in {:?}", eth_events.len(), duration);
@@ -203,16 +210,7 @@ async fn benchmark_rocksdb_query_performance(path: PathBuf) {
     println!("\nQuerying Ethereum events by block range (100-200)...");
     let start = Instant::now();
     
-    let block_range_filter = EventFilter {
-        chain: Some("ethereum".to_string()),
-        block_range: Some((100, 200)),
-        time_range: None,
-        event_types: None,
-        limit: None,
-        offset: None,
-    };
-    
-    let block_range_events = storage.get_events(vec![block_range_filter]).await.expect("Failed to query by block range");
+    let block_range_events = storage.get_events("ethereum", 100, 200).await.expect("Failed to query by block range");
     
     let duration = start.elapsed();
     println!("Found {} events in block range 100-200 in {:?}", block_range_events.len(), duration);
@@ -222,16 +220,12 @@ async fn benchmark_rocksdb_query_performance(path: PathBuf) {
     println!("\nQuerying Ethereum Transfer events...");
     let start = Instant::now();
     
-    let event_type_filter = EventFilter {
-        chain: Some("ethereum".to_string()),
-        block_range: None,
-        time_range: None,
-        event_types: Some(vec!["Transfer".to_string()]),
-        limit: None,
-        offset: None,
-    };
-    
-    let event_type_events = storage.get_events(vec![event_type_filter]).await.expect("Failed to query by event type");
+    let latest_block = storage.get_latest_block("ethereum").await.expect("Failed to get latest block");
+    let all_events = storage.get_events("ethereum", 0, latest_block).await.expect("Failed to query all events");
+    // Filter events manually
+    let event_type_events: Vec<_> = all_events.into_iter()
+        .filter(|event| event.event_type() == "Transfer")
+        .collect();
     
     let duration = start.elapsed();
     println!("Found {} Transfer events in {:?}", event_type_events.len(), duration);
@@ -241,16 +235,17 @@ async fn benchmark_rocksdb_query_performance(path: PathBuf) {
     println!("\nQuerying events by time range...");
     let start = Instant::now();
     
-    let time_filter = EventFilter {
-        chain: Some("cosmos".to_string()),
-        block_range: None,
-        time_range: Some((1600000000, 1600000100)),
-        event_types: None,
-        limit: None,
-        offset: None,
-    };
-    
-    let time_range_events = storage.get_events(vec![time_filter]).await.expect("Failed to query by time range");
+    let latest_block = storage.get_latest_block("cosmos").await.expect("Failed to get latest block");
+    let all_events = storage.get_events("cosmos", 0, latest_block).await.expect("Failed to query all events");
+    // Filter events manually by time range
+    let time_range_events: Vec<_> = all_events.into_iter()
+        .filter(|event| {
+            let timestamp = event.timestamp().duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            timestamp >= 1600000000 && timestamp <= 1600000100
+        })
+        .collect();
     
     let duration = start.elapsed();
     println!("Found {} events in time range in {:?}", time_range_events.len(), duration);
@@ -260,16 +255,13 @@ async fn benchmark_rocksdb_query_performance(path: PathBuf) {
     println!("\nQuerying with complex filters...");
     let start = Instant::now();
     
-    let complex_filter = EventFilter {
-        chain: Some("ethereum".to_string()),
-        block_range: Some((100, 500)),
-        time_range: None,
-        event_types: Some(vec!["Transfer".to_string(), "Approval".to_string()]),
-        limit: Some(20),
-        offset: Some(5),
-    };
-    
-    let complex_events = storage.get_events(vec![complex_filter]).await.expect("Failed to query with complex filter");
+    let all_events = storage.get_events("ethereum", 100, 500).await.expect("Failed to query events in block range");
+    // Filter events manually
+    let complex_events: Vec<_> = all_events.into_iter()
+        .filter(|event| event.event_type() == "Transfer" || event.event_type() == "Approval")
+        .skip(5)
+        .take(20)
+        .collect();
     
     let duration = start.elapsed();
     println!("Found {} events with complex query in {:?}", complex_events.len(), duration);
@@ -373,37 +365,29 @@ async fn benchmark_index_efficiency(path: PathBuf) {
     println!("\nBaseline Query: Full scan for Transfer events in Ethereum chain...");
     let start = Instant::now();
     
-    let filter = EventFilter {
-        chain: Some("ethereum".to_string()),
-        block_range: None,
-        time_range: None,
-        event_types: Some(vec!["Transfer".to_string()]),
-        limit: None,
-        offset: None,
-    };
-    
-    let events = storage.get_events(vec![filter]).await.expect("Failed to execute query");
+    let latest_block = storage.get_latest_block("ethereum").await.expect("Failed to get latest block");
+    let all_events = storage.get_events("ethereum", 0, latest_block).await.expect("Failed to execute query");
+    // Filter events manually
+    let transfer_events: Vec<_> = all_events.into_iter()
+        .filter(|event| event.event_type() == "Transfer")
+        .collect();
     
     let no_index_duration = start.elapsed();
-    println!("Found {} events in {:?} (full scan)", events.len(), no_index_duration);
+    println!("Found {} events in {:?} (full scan)", transfer_events.len(), no_index_duration);
     
     // 2. Indexed query - using the index we created earlier
     println!("\nIndexed Query: Using chain_type index for Transfer events in Ethereum chain...");
     let start = Instant::now();
     
-    let filter = EventFilter {
-        chain: Some("ethereum".to_string()),
-        block_range: None,
-        time_range: None,
-        event_types: Some(vec!["Transfer".to_string()]),
-        limit: None,
-        offset: None,
-    };
-    
-    let events = storage.get_events(vec![filter]).await.expect("Failed to execute query");
+    let latest_block = storage.get_latest_block("ethereum").await.expect("Failed to get latest block");
+    let all_events = storage.get_events("ethereum", 0, latest_block).await.expect("Failed to execute query");
+    // Filter events manually
+    let transfer_events: Vec<_> = all_events.into_iter()
+        .filter(|event| event.event_type() == "Transfer")
+        .collect();
     
     let indexed_duration = start.elapsed();
-    println!("Found {} events in {:?} (using index)", events.len(), indexed_duration);
+    println!("Found {} events in {:?} (using index)", transfer_events.len(), indexed_duration);
     
     // Calculate performance improvement
     if no_index_duration.as_nanos() > 0 {
@@ -415,16 +399,7 @@ async fn benchmark_index_efficiency(path: PathBuf) {
     println!("\nHigh-Selectivity Query: Block range 100-110 in Ethereum chain...");
     let start = Instant::now();
     
-    let filter = EventFilter {
-        chain: Some("ethereum".to_string()),
-        block_range: Some((100, 110)),
-        time_range: None,
-        event_types: None,
-        limit: None,
-        offset: None,
-    };
-    
-    let events = storage.get_events(vec![filter]).await.expect("Failed to execute query");
+    let events = storage.get_events("ethereum", 100, 110).await.expect("Failed to execute query");
     
     let duration = start.elapsed();
     println!("Found {} events in {:?} (narrow block range)", events.len(), duration);

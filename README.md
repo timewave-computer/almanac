@@ -1,6 +1,6 @@
 # Almanac: Cross-Chain Indexer
 
-A performant indexer designed to track Valence protocol contracts and related blockchain state across multiple chains. Almanac currently supports Ethereum and Cosmos chains, with easy extensibility to others in the future.
+A performant indexer designed to track Valence, Causality and associated contract state across multiple chains. Almanac currently supports Ethereum and Cosmos chains, with easy extensibility to others in the future.
 
 ![](./almanac.png)
 
