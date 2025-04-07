@@ -28,7 +28,7 @@ path = "src/bin/test_chain_reorg.rs"
 
 [dependencies]
 # Workspace dependencies
-sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "macros", "uuid", "time", "chrono"] }
+sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "macros", "uuid", "time", "chrono"], optional = true }
 async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -38,7 +38,7 @@ hex.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 anyhow.workspace = true
-rocksdb.workspace = true
+rocksdb = { workspace = true, optional = true }
 bincode.workspace = true
 tokio.workspace = true
 futures.workspace = true
@@ -46,8 +46,9 @@ uuid.workspace = true
 bytes.workspace = true
 
 # Internal crates
-indexer-core = { path = "../core", features = ["postgres", "rocks"] }
-indexer-common = { path = "../common", features = ["postgres", "rocks"] }
+indexer-core = { path = "../core" }
+indexer-pipeline = { path = "../pipeline" }
+indexer-common = { path = "../common" }
 
 # Explicit versioned dependencies (Only those NOT in workspace)
 rand = "0.8.5"
@@ -65,9 +66,9 @@ testcontainers = "0.22.0"
 dockertest = "0.5.0"
 
 [features]
-default = []
-rocks = []
-postgres = []
+default = ["postgres", "rocks"]
+rocks = ["indexer-common/rocks", "rocksdb"]
+postgres = ["indexer-common/postgres", "sqlx"]
 
 # Add bincode dependency
 # bincode = "1.3"

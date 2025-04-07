@@ -1,20 +1,358 @@
+// Main storage interface for Almanac indexers
+//
+// This crate provides storage implementations for various backends
+// including PostgreSQL and RocksDB
+
+// Re-export from core
+pub use indexer_core::{Error, Result, BlockStatus};
+
+// Common module imports
 use std::sync::Arc;
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
-
 use indexer_core::event::Event;
-use indexer_common::{BlockStatus, Result};
+use serde::{Serialize, Deserialize};
 
+// Conditional modules based on features
+#[cfg(feature = "rocks")]
 pub mod rocks;
+
+#[cfg(feature = "postgres")]
 pub mod postgres;
+
+// Common modules
+pub mod sync;
 pub mod migrations;
 pub mod tests;
-pub mod sync;
+
+// Type aliases
+pub type BoxedStorage = Arc<dyn Storage + Send + Sync>;
+
+/// Storage interface for Almanac indexer data
+#[async_trait]
+pub trait Storage {
+    /// Store an event
+    async fn store_event(&self, chain: &str, event: Box<dyn Event>) -> Result<()>;
+    
+    /// Get events by chain and block range
+    async fn get_events(&self, chain: &str, from_block: u64, to_block: u64) -> Result<Vec<Box<dyn Event>>>;
+    
+    /// Get the latest block height for a chain
+    async fn get_latest_block(&self, chain: &str) -> Result<u64>;
+    
+    /// Get the latest block with a specific status for a chain
+    async fn get_latest_block_with_status(&self, chain: &str, status: BlockStatus) -> Result<u64>;
+    
+    /// Mark a block as processed with status
+    async fn mark_block_processed(&self, chain: &str, block_number: u64, tx_hash: &str, status: BlockStatus) -> Result<()>;
+
+    /// Update block status
+    async fn update_block_status(&self, chain: &str, block_number: u64, status: BlockStatus) -> Result<()>;
+    
+    /// Get events with specific block status
+    async fn get_events_with_status(&self, chain: &str, from_block: u64, to_block: u64, status: BlockStatus) -> Result<Vec<Box<dyn Event>>>;
+    
+    /// Handle chain reorganization from a specific block
+    async fn reorg_chain(&self, chain: &str, from_block: u64) -> Result<()>;
+    
+    // Valence Account methods
+    
+    /// Stores information about a new Valence Account contract instantiation.
+    async fn store_valence_account_instantiation(
+        &self,
+        account_info: ValenceAccountInfo,
+        initial_libraries: Vec<ValenceAccountLibrary>,
+    ) -> Result<()>;
+    
+    /// Adds a library to an existing Valence account's approved list.
+    async fn store_valence_library_approval(
+        &self,
+        account_id: &str,
+        library_info: ValenceAccountLibrary,
+        update_block: u64,
+        update_tx: &str,
+    ) -> Result<()>;
+    
+    /// Removes a library from an existing Valence account's approved list.
+    async fn store_valence_library_removal(
+        &self,
+        account_id: &str,
+        library_address: &str,
+        update_block: u64,
+        update_tx: &str,
+    ) -> Result<()>;
+    
+    /// Updates the ownership details of a Valence account.
+    async fn store_valence_ownership_update(
+        &self,
+        account_id: &str,
+        new_owner: Option<String>,
+        new_pending_owner: Option<String>,
+        new_pending_expiry: Option<u64>,
+        update_block: u64,
+        update_tx: &str,
+    ) -> Result<()>;
+    
+    /// Stores a record of an execution triggered by a Valence account.
+    async fn store_valence_execution(
+        &self,
+        execution_info: ValenceAccountExecution,
+    ) -> Result<()>;
+    
+    /// Retrieves the current state of a Valence account.
+    async fn get_valence_account_state(&self, account_id: &str) -> Result<Option<ValenceAccountState>>;
+    
+    /// Sets the current state of a Valence account.
+    async fn set_valence_account_state(&self, account_id: &str, state: &ValenceAccountState) -> Result<()>;
+    
+    /// Deletes the current state of a Valence account.
+    async fn delete_valence_account_state(&self, account_id: &str) -> Result<()>;
+    
+    /// Stores the historical state of a Valence account.
+    async fn set_historical_valence_account_state(
+        &self,
+        account_id: &str,
+        block_number: u64,
+        state: &ValenceAccountState,
+    ) -> Result<()>;
+    
+    /// Retrieves the historical state of a Valence account.
+    async fn get_historical_valence_account_state(
+        &self,
+        account_id: &str,
+        block_number: u64,
+    ) -> Result<Option<ValenceAccountState>>;
+    
+    /// Deletes the historical state of a Valence account.
+    async fn delete_historical_valence_account_state(
+        &self,
+        account_id: &str,
+        block_number: u64,
+    ) -> Result<()>;
+    
+    /// Sets the latest block number for which historical state is stored for an account.
+    async fn set_latest_historical_valence_block(
+        &self,
+        account_id: &str,
+        block_number: u64,
+    ) -> Result<()>;
+
+    /// Retrieves the latest block number for which historical state is stored for an account.
+    async fn get_latest_historical_valence_block(&self, account_id: &str) -> Result<Option<u64>>;
+
+    /// Deletes the record of the latest historical block for an account.
+    async fn delete_latest_historical_valence_block(&self, account_id: &str) -> Result<()>;
+
+    // Valence Processor data models
+
+    /// Stores information about a new Valence Processor contract instantiation.
+    async fn store_valence_processor_instantiation(
+        &self,
+        processor_info: ValenceProcessorInfo,
+    ) -> Result<()>;
+
+    /// Updates the configuration of a Valence Processor.
+    async fn store_valence_processor_config_update(
+        &self,
+        processor_id: &str,
+        config: ValenceProcessorConfig,
+        update_block: u64,
+        update_tx: &str,
+    ) -> Result<()>;
+
+    /// Stores a new cross-chain message submitted to the processor.
+    async fn store_valence_processor_message(
+        &self,
+        message: ValenceProcessorMessage,
+    ) -> Result<()>;
+
+    /// Updates the status of an existing processor message.
+    async fn update_valence_processor_message_status(
+        &self,
+        message_id: &str,
+        new_status: ValenceMessageStatus,
+        processed_block: Option<u64>,
+        processed_tx: Option<&str>,
+        retry_count: Option<u32>,
+        next_retry_block: Option<u64>,
+        gas_used: Option<u64>,
+        error: Option<String>,
+    ) -> Result<()>;
+
+    /// Retrieves the current state of a Valence Processor.
+    async fn get_valence_processor_state(&self, processor_id: &str) -> Result<Option<ValenceProcessorState>>;
+
+    /// Sets the current state of a Valence Processor.
+    async fn set_valence_processor_state(&self, processor_id: &str, state: &ValenceProcessorState) -> Result<()>;
+
+    /// Stores a historical snapshot of a processor's state at a specific block.
+    async fn set_historical_valence_processor_state(
+        &self,
+        processor_id: &str,
+        block_number: u64,
+        state: &ValenceProcessorState,
+    ) -> Result<()>;
+
+    /// Retrieves a historical snapshot of a processor's state.
+    async fn get_historical_valence_processor_state(
+        &self,
+        processor_id: &str,
+        block_number: u64,
+    ) -> Result<Option<ValenceProcessorState>>;
+
+    // Valence Authorization data models
+
+    /// Stores information about a new Valence Authorization contract instantiation.
+    async fn store_valence_authorization_instantiation(
+        &self,
+        auth_info: ValenceAuthorizationInfo,
+        initial_policy: Option<ValenceAuthorizationPolicy>,
+    ) -> Result<()>;
+
+    /// Creates or updates an authorization policy.
+    async fn store_valence_authorization_policy(
+        &self,
+        policy: ValenceAuthorizationPolicy,
+    ) -> Result<()>;
+
+    /// Updates the active policy for an authorization contract.
+    async fn update_active_authorization_policy(
+        &self,
+        auth_id: &str,
+        policy_id: &str,
+        update_block: u64,
+        update_tx: &str,
+    ) -> Result<()>;
+
+    /// Records a new authorization grant.
+    async fn store_valence_authorization_grant(
+        &self,
+        grant: ValenceAuthorizationGrant,
+    ) -> Result<()>;
+
+    /// Revokes an existing authorization grant.
+    async fn revoke_valence_authorization_grant(
+        &self,
+        auth_id: &str,
+        grantee: &str,
+        resource: &str,
+        revoked_at_block: u64,
+        revoked_at_tx: &str,
+    ) -> Result<()>;
+
+    /// Records an authorization request and its decision.
+    async fn store_valence_authorization_request(
+        &self,
+        request: ValenceAuthorizationRequest,
+    ) -> Result<()>;
+
+    /// Updates an existing authorization request's decision.
+    async fn update_valence_authorization_request_decision(
+        &self,
+        request_id: &str,
+        decision: ValenceAuthorizationDecision,
+        processed_block: Option<u64>,
+        processed_tx: Option<&str>,
+        reason: Option<String>,
+    ) -> Result<()>;
+
+    // Valence Library data models
+
+    /// Stores information about a new Valence Library contract instantiation.
+    async fn store_valence_library_instantiation(
+        &self,
+        library_info: ValenceLibraryInfo,
+        initial_version: Option<ValenceLibraryVersion>,
+    ) -> Result<()>;
+
+    /// Records a new version of a library.
+    async fn store_valence_library_version(
+        &self,
+        version: ValenceLibraryVersion,
+    ) -> Result<()>;
+
+    /// Updates the active version for a library.
+    async fn update_active_library_version(
+        &self,
+        library_id: &str,
+        version: u32,
+        update_block: u64,
+        update_tx: &str,
+    ) -> Result<()>;
+
+    /// Records usage of a library.
+    async fn store_valence_library_usage(
+        &self,
+        usage: ValenceLibraryUsage,
+    ) -> Result<()>;
+
+    /// Revokes a library approval.
+    async fn revoke_valence_library_approval(
+        &self,
+        library_id: &str,
+        account_id: &str,
+        revoked_at_block: u64,
+        revoked_at_tx: &str,
+    ) -> Result<()>;
+
+    /// Get the current state of a Valence library.
+    async fn get_valence_library_state(&self, library_id: &str) -> Result<Option<ValenceLibraryState>>;
+
+    /// Set the current state of a Valence library.
+    async fn set_valence_library_state(&self, library_id: &str, state: &ValenceLibraryState) -> Result<()>;
+
+    /// Get library versions for a specific library.
+    async fn get_valence_library_versions(&self, library_id: &str) -> Result<Vec<ValenceLibraryVersion>>;
+
+    /// Get library approvals for a specific library.
+    async fn get_valence_library_approvals(&self, library_id: &str) -> Result<Vec<ValenceLibraryApproval>>;
+
+    /// Get libraries approved for a specific account.
+    async fn get_valence_libraries_for_account(&self, account_id: &str) -> Result<Vec<ValenceLibraryApproval>>;
+
+    /// Get usage history for a specific library.
+    async fn get_valence_library_usage_history(
+        &self,
+        library_id: &str,
+        limit: Option<usize>,
+        offset: Option<usize>,
+    ) -> Result<Vec<ValenceLibraryUsage>>;
+
+    // Additional methods as needed
+}
+
+// Storage factory function
+#[cfg(feature = "rocks")]
+pub fn create_rocks_storage(path: &str) -> Result<BoxedStorage> {
+    use rocks::{RocksConfig, RocksStorage};
+    
+    let config = RocksConfig {
+        path: path.to_string(),
+        create_if_missing: true,
+        cache_size_mb: 128, // Default cache size
+    };
+    let storage = RocksStorage::new(config)?;
+    Ok(Arc::new(storage))
+}
+
+#[cfg(feature = "postgres")]
+pub async fn create_postgres_storage(connection_string: &str) -> Result<BoxedStorage> {
+    use postgres::{PostgresConfig, PostgresStorage};
+    
+    let config = PostgresConfig {
+        url: connection_string.to_string(),
+        max_connections: 5, // Default max connections
+        connection_timeout: 30, // Default timeout
+    };
+    let storage = PostgresStorage::new(config).await?;
+    Ok(Arc::new(storage))
+}
 
 // Re-export repositories from postgres module
+#[cfg(feature = "postgres")]
 pub use postgres::repositories;
 
 /// Re-export contract schema types for convenience
+#[cfg(feature = "postgres")]
 pub use migrations::schema::{
     ContractSchemaVersion, EventSchema, FieldSchema, FunctionSchema,
     ContractSchemaRegistry
@@ -271,292 +609,6 @@ pub struct ValenceLibraryState {
     pub last_update_tx: String,
 }
 
-/// Storage backend for indexer
-#[async_trait]
-pub trait Storage: Send + Sync + 'static {
-    /// Store an event
-    async fn store_event(&self, event: Box<dyn Event>) -> Result<()>;
-    
-    /// Get events by filters
-    async fn get_events(&self, filters: Vec<EventFilter>) -> Result<Vec<Box<dyn Event>>>;
-    
-    /// Get the latest block height for a chain
-    async fn get_latest_block(&self, chain: &str) -> Result<u64>;
-    
-    /// Get the latest block with a specific status for a chain
-    async fn get_latest_block_with_status(&self, chain: &str, status: BlockStatus) -> Result<u64>;
-
-    /// Update block status
-    async fn update_block_status(&self, chain: &str, block_number: u64, status: BlockStatus) -> Result<()>;
-
-    /// Get events with specific block status
-    async fn get_events_with_status(&self, filters: Vec<EventFilter>, status: BlockStatus) -> Result<Vec<Box<dyn Event>>>;
-
-    /// Stores information about a new Valence Account contract instantiation.
-    async fn store_valence_account_instantiation(
-        &self,
-        account_info: ValenceAccountInfo,
-        initial_libraries: Vec<ValenceAccountLibrary>,
-    ) -> Result<()>;
-
-    /// Adds a library to an existing Valence account's approved list.
-    async fn store_valence_library_approval(
-        &self,
-        account_id: &str,
-        library_info: ValenceAccountLibrary,
-        update_block: u64,
-        update_tx: &str,
-    ) -> Result<()>;
-
-    /// Removes a library from an existing Valence account's approved list.
-    async fn store_valence_library_removal(
-        &self,
-        account_id: &str,
-        library_address: &str,
-        update_block: u64,
-        update_tx: &str,
-    ) -> Result<()>;
-
-    /// Updates the ownership details (owner, pending owner, expiry) of a Valence account.
-    async fn store_valence_ownership_update(
-        &self,
-        account_id: &str,
-        new_owner: Option<String>,
-        new_pending_owner: Option<String>,
-        new_pending_expiry: Option<u64>,
-        update_block: u64,
-        update_tx: &str,
-    ) -> Result<()>;
-
-    /// Stores a record of an execution triggered by a Valence account.
-    async fn store_valence_execution(
-        &self,
-        execution_info: ValenceAccountExecution,
-    ) -> Result<()>;
-
-    /// Retrieves the current state of a Valence account (owner, libraries).
-    /// Needed for calculating updates (e.g., removing old owner index).
-    async fn get_valence_account_state(&self, account_id: &str) -> Result<Option<ValenceAccountState>>;
-
-    // --- Additional Valence Account State Methods (often RocksDB specific for history) ---
-
-    /// Sets the current state of a Valence account.
-    async fn set_valence_account_state(&self, account_id: &str, state: &ValenceAccountState) -> Result<()>;
-
-    /// Deletes the current state of a Valence account.
-    async fn delete_valence_account_state(&self, account_id: &str) -> Result<()>;
-
-    /// Stores the historical state of a Valence account at a specific block.
-    async fn set_historical_valence_account_state(
-        &self,
-        account_id: &str,
-        block_number: u64,
-        state: &ValenceAccountState,
-    ) -> Result<()>;
-
-    /// Retrieves the historical state of a Valence account at a specific block.
-    async fn get_historical_valence_account_state(
-        &self,
-        account_id: &str,
-        block_number: u64,
-    ) -> Result<Option<ValenceAccountState>>;
-
-    /// Deletes the historical state of a Valence account at a specific block.
-    async fn delete_historical_valence_account_state(
-        &self,
-        account_id: &str,
-        block_number: u64,
-    ) -> Result<()>;
-
-    /// Sets the latest block number for which historical state is stored for an account.
-    async fn set_latest_historical_valence_block(
-        &self,
-        account_id: &str,
-        block_number: u64,
-    ) -> Result<()>;
-
-    /// Retrieves the latest block number for which historical state is stored for an account.
-    async fn get_latest_historical_valence_block(&self, account_id: &str) -> Result<Option<u64>>;
-
-    /// Deletes the record of the latest historical block for an account.
-    async fn delete_latest_historical_valence_block(&self, account_id: &str) -> Result<()>;
-
-    // --- Valence Processor Methods ---
-    
-    /// Stores information about a new Valence Processor contract instantiation.
-    async fn store_valence_processor_instantiation(
-        &self,
-        processor_info: ValenceProcessorInfo,
-    ) -> Result<()>;
-    
-    /// Updates the configuration of a Valence Processor.
-    async fn store_valence_processor_config_update(
-        &self,
-        processor_id: &str,
-        config: ValenceProcessorConfig,
-        update_block: u64,
-        update_tx: &str,
-    ) -> Result<()>;
-    
-    /// Stores a new cross-chain message submitted to the processor.
-    async fn store_valence_processor_message(
-        &self,
-        message: ValenceProcessorMessage,
-    ) -> Result<()>;
-    
-    /// Updates the status of an existing processor message.
-    async fn update_valence_processor_message_status(
-        &self,
-        message_id: &str,
-        new_status: ValenceMessageStatus,
-        processed_block: Option<u64>,
-        processed_tx: Option<&str>,
-        retry_count: Option<u32>,
-        next_retry_block: Option<u64>,
-        gas_used: Option<u64>,
-        error: Option<String>,
-    ) -> Result<()>;
-    
-    /// Retrieves the current state of a Valence Processor.
-    async fn get_valence_processor_state(&self, processor_id: &str) -> Result<Option<ValenceProcessorState>>;
-    
-    /// Sets the current state of a Valence Processor.
-    async fn set_valence_processor_state(&self, processor_id: &str, state: &ValenceProcessorState) -> Result<()>;
-    
-    /// Stores a historical snapshot of a processor's state at a specific block.
-    async fn set_historical_valence_processor_state(
-        &self,
-        processor_id: &str,
-        block_number: u64,
-        state: &ValenceProcessorState,
-    ) -> Result<()>;
-    
-    /// Retrieves a historical snapshot of a processor's state.
-    async fn get_historical_valence_processor_state(
-        &self,
-        processor_id: &str,
-        block_number: u64,
-    ) -> Result<Option<ValenceProcessorState>>;
-
-    // --- Valence Authorization Methods ---
-    
-    /// Stores information about a new Valence Authorization contract instantiation.
-    async fn store_valence_authorization_instantiation(
-        &self,
-        auth_info: ValenceAuthorizationInfo,
-        initial_policy: Option<ValenceAuthorizationPolicy>,
-    ) -> Result<()>;
-    
-    /// Creates or updates an authorization policy.
-    async fn store_valence_authorization_policy(
-        &self,
-        policy: ValenceAuthorizationPolicy,
-    ) -> Result<()>;
-    
-    /// Updates the active policy for an authorization contract.
-    async fn update_active_authorization_policy(
-        &self,
-        auth_id: &str,
-        policy_id: &str,
-        update_block: u64,
-        update_tx: &str,
-    ) -> Result<()>;
-    
-    /// Records a new authorization grant.
-    async fn store_valence_authorization_grant(
-        &self,
-        grant: ValenceAuthorizationGrant,
-    ) -> Result<()>;
-    
-    /// Revokes an existing authorization grant.
-    async fn revoke_valence_authorization_grant(
-        &self,
-        auth_id: &str,
-        grantee: &str,
-        resource: &str,
-        revoked_at_block: u64,
-        revoked_at_tx: &str,
-    ) -> Result<()>;
-    
-    /// Records an authorization request and its decision.
-    async fn store_valence_authorization_request(
-        &self,
-        request: ValenceAuthorizationRequest,
-    ) -> Result<()>;
-    
-    /// Updates an existing authorization request's decision.
-    async fn update_valence_authorization_request_decision(
-        &self,
-        request_id: &str,
-        decision: ValenceAuthorizationDecision,
-        processed_block: Option<u64>,
-        processed_tx: Option<&str>,
-        reason: Option<String>,
-    ) -> Result<()>;
-
-    // --- Valence Library Methods ---
-    
-    /// Stores information about a new Valence Library contract instantiation.
-    async fn store_valence_library_instantiation(
-        &self,
-        library_info: ValenceLibraryInfo,
-        initial_version: Option<ValenceLibraryVersion>,
-    ) -> Result<()>;
-    
-    /// Records a new version of a library.
-    async fn store_valence_library_version(
-        &self,
-        version: ValenceLibraryVersion,
-    ) -> Result<()>;
-    
-    /// Updates the active version for a library.
-    async fn update_active_library_version(
-        &self,
-        library_id: &str,
-        version: u32,
-        update_block: u64,
-        update_tx: &str,
-    ) -> Result<()>;
-    
-    /// Records usage of a library.
-    async fn store_valence_library_usage(
-        &self,
-        usage: ValenceLibraryUsage,
-    ) -> Result<()>;
-    
-    /// Revokes a library approval.
-    async fn revoke_valence_library_approval(
-        &self,
-        library_id: &str,
-        account_id: &str,
-        revoked_at_block: u64,
-        revoked_at_tx: &str,
-    ) -> Result<()>;
-    
-    /// Get the current state of a Valence library.
-    async fn get_valence_library_state(&self, library_id: &str) -> Result<Option<ValenceLibraryState>>;
-    
-    /// Set the current state of a Valence library.
-    async fn set_valence_library_state(&self, library_id: &str, state: &ValenceLibraryState) -> Result<()>;
-    
-    /// Get library versions for a specific library.
-    async fn get_valence_library_versions(&self, library_id: &str) -> Result<Vec<ValenceLibraryVersion>>;
-    
-    /// Get library approvals for a specific library.
-    async fn get_valence_library_approvals(&self, library_id: &str) -> Result<Vec<ValenceLibraryApproval>>;
-    
-    /// Get libraries approved for a specific account.
-    async fn get_valence_libraries_for_account(&self, account_id: &str) -> Result<Vec<ValenceLibraryApproval>>;
-    
-    /// Get usage history for a specific library.
-    async fn get_valence_library_usage_history(
-        &self,
-        library_id: &str,
-        limit: Option<usize>,
-        offset: Option<usize>,
-    ) -> Result<Vec<ValenceLibraryUsage>>;
-}
-
 /// Represents the latest known state of a Valence account in storage.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ValenceAccountState {
@@ -621,20 +673,22 @@ pub mod storage_defaults {
         _block_number: u64, 
         _status: BlockStatus
     ) -> Result<()> {
-        Ok(())
+        Ok(()) // Default is often no-op or relies on underlying impl
     }
 
     pub async fn get_events_with_status(
         storage: &dyn Storage,
-        filters: Vec<EventFilter>, 
+        chain: &str,
+        from_block: u64, 
+        to_block: u64,
         _status: BlockStatus
     ) -> Result<Vec<Box<dyn Event>>> {
-        storage.get_events(filters).await
+        // Default implementation might just fetch all events in range
+        // and rely on higher layers for status filtering if needed, 
+        // or assume the underlying storage handles it implicitly.
+        storage.get_events(chain, from_block, to_block).await
     }
 }
-
-/// Boxed storage
-pub type BoxedStorage = Arc<dyn Storage>;
 
 /// Event filter for querying events
 #[derive(Debug, Clone)]

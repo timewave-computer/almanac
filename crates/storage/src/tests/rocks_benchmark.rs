@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use tempfile::TempDir;
 use rand::{thread_rng, Rng};
-use indexer_common::Result;
+use indexer_pipeline::Result;
 
 use crate::rocks::{RocksStorage, RocksConfig, Key};
 use crate::tests::common::{create_mock_event, create_mock_events, assert_duration_less_than};

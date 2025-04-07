@@ -19,7 +19,7 @@ use sha2::{Sha256, Digest};
 use uuid::Uuid;
 
 /// Internal Crate Imports
-use indexer_common::{Error, Result, BlockStatus};
+use indexer_pipeline::{Error, Result, BlockStatus};
 use indexer_storage::{Storage, BoxedStorage, ValenceAccountInfo, ValenceAccountLibrary, ValenceAccountExecution};
 use indexer_core::event::Event;
 use indexer_core::service::{EventService, EventSubscription};

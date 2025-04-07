@@ -11,7 +11,7 @@ license.workspace = true
 [dependencies]
 # Indexer core
 indexer-core = { path = "../core" }
-indexer-common = { path = "../common" }
+indexer-pipeline = { path = "../pipeline" }
 indexer-storage = { path = "../storage" }
 
 # Async runtime

@@ -30,6 +30,9 @@ sqlx = { workspace = true, optional = true, features = ["migrate"] }
 rocksdb = { workspace = true, optional = true }
 
 # Internal crates
+indexer-pipeline = { path = "../pipeline" }
+
+# Internal dependencies
 indexer-common = { path = "../common" }
 
 [features]

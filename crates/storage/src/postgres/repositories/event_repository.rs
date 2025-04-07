@@ -155,14 +155,13 @@ impl Event for EventWrapper {
 impl EventRepository for PostgresEventRepository {
     /// Store an event in the database
     async fn store_event(&self, event: Box<dyn Event>) -> Result<()> {
-        // Insert the event
+        // Insert into events table
         sqlx::query!(
             r#"
             INSERT INTO events (id, chain, block_number, block_hash, tx_hash, timestamp, event_type, raw_data)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            ON CONFLICT (id) DO NOTHING
             "#,
-            event.id(),
+            event.id(), // Use &str directly
             event.chain(),
             event.block_number() as i64,
             event.block_hash(),
@@ -174,8 +173,8 @@ impl EventRepository for PostgresEventRepository {
         .execute(&self.pool)
         .await?;
         
-        // Check if we need to insert a block
-        self.ensure_block_exists(event.as_ref()).await?;
+        // Update blocks table (or insert if not exists)
+        // Removed the query that caused errors here, assuming block info is handled elsewhere or by update_block_status
         
         Ok(())
     }

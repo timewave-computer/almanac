@@ -67,6 +67,29 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 
 [[package]]
+name = "almanac"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "clap",
+ "ethers",
+ "eyre",
+ "hex",
+ "indexer-api",
+ "indexer-core",
+ "indexer-cosmos",
+ "indexer-ethereum",
+ "indexer-pipeline",
+ "indexer-storage",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "android-tzdata"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2792,24 +2815,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ce23b50ad8242c51a442f3ff322d56b02f08852c77e4c0b4d3fd684abc89c683"
 
 [[package]]
-name = "indexer"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "clap",
- "indexer-api",
- "indexer-common",
- "indexer-core",
- "indexer-cosmos",
- "indexer-ethereum",
- "indexer-storage",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "indexer-api"
 version = "0.1.0"
 dependencies = [
@@ -2822,8 +2827,8 @@ dependencies = [
  "base64 0.21.7",
  "chrono",
  "futures",
- "indexer-common",
  "indexer-core",
+ "indexer-pipeline",
  "indexer-storage",
  "serde",
  "serde_json",
@@ -2839,14 +2844,11 @@ dependencies = [
 name = "indexer-common"
 version = "0.1.0"
 dependencies = [
- "async-trait",
- "futures",
  "rocksdb",
  "serde",
  "serde_json",
  "sqlx",
  "thiserror 1.0.69",
- "tracing",
 ]
 
 [[package]]
@@ -2857,6 +2859,7 @@ dependencies = [
  "async-trait",
  "futures",
  "indexer-common",
+ "indexer-pipeline",
  "rocksdb",
  "serde",
  "serde_bytes",
@@ -2877,8 +2880,8 @@ dependencies = [
  "cosmos-sdk-proto 0.20.0",
  "cosmrs",
  "futures",
- "indexer-common",
  "indexer-core",
+ "indexer-pipeline",
  "indexer-storage",
  "mockall",
  "rand",
@@ -2900,8 +2903,8 @@ dependencies = [
  "ethers",
  "futures",
  "hex",
- "indexer-common",
  "indexer-core",
+ "indexer-pipeline",
  "indexer-storage",
  "mockall",
  "rand",
@@ -2909,6 +2912,29 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "indexer-pipeline"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "futures",
+ "indexer-common",
+ "log",
+ "metrics",
+ "mockall",
+ "rocksdb",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-test",
  "tracing",
 ]
 
@@ -2927,6 +2953,7 @@ dependencies = [
  "hex",
  "indexer-common",
  "indexer-core",
+ "indexer-pipeline",
  "num_cpus",
  "proptest",
  "rand",
@@ -3278,6 +3305,28 @@ name = "memchr"
 version = "2.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "78ca9ab1a0babb1e7d5695e3530886289c18cf2f87ec19a575a0abdce112e3a3"
+
+[[package]]
+name = "metrics"
+version = "0.21.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fde3af1a009ed76a778cb84fdef9e7dbbdf5775ae3e4cc1f434a6a307f6f76c5"
+dependencies = [
+ "ahash",
+ "metrics-macros",
+ "portable-atomic",
+]
+
+[[package]]
+name = "metrics-macros"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38b4faf00617defe497754acde3024865bc143d44a86799b24e191ecff91354f"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.100",
+]
 
 [[package]]
 name = "mime"
@@ -3955,6 +4004,12 @@ checksum = "51bae2ac328883f7acdfea3d66a7c35751187f870bc81f94563733a154d7a670"
 dependencies = [
  "plotters-backend",
 ]
+
+[[package]]
+name = "portable-atomic"
+version = "1.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "350e9b48cbc6b0e028b0473b114454c6316e57336ee184ceab6e53f72c178b3e"
 
 [[package]]
 name = "powerfmt"
@@ -5892,6 +5947,19 @@ dependencies = [
  "futures-core",
  "pin-project-lite",
  "tokio",
+]
+
+[[package]]
+name = "tokio-test"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2468baabc3311435b55dd935f702f42cd1b8abb7e754fb7dfb16bd36aa88f9f7"
+dependencies = [
+ "async-stream",
+ "bytes",
+ "futures-core",
+ "tokio",
+ "tokio-stream",
 ]
 
 [[package]]

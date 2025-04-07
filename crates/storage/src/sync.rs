@@ -10,7 +10,7 @@ use tokio::time;
 use futures::future::join_all;
 use tracing::{debug, info, error, warn};
 
-use indexer_common::{BlockStatus, Result, Error};
+use indexer_pipeline::{BlockStatus, Result, Error};
 use indexer_core::event::Event;
 
 use crate::{BoxedStorage, EventFilter};

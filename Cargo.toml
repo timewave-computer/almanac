@@ -1,16 +1,16 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/common",
-    "crates/core",
-    "crates/ethereum",
-    "crates/cosmos",
-    "crates/storage",
     "crates/api",
+    "crates/core",
+    "crates/cosmos",
+    "crates/ethereum",
+    "crates/storage",
+    "crates/pipeline",
 ]
 
 [package]
-name = "indexer"
+name = "almanac"
 version = "0.1.0"
 edition = "2021"
 authors = ["Timewave"]
@@ -18,18 +18,25 @@ repository = "https://github.com/timewave-computer/almanac"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-indexer-common = { path = "crates/common" }
+indexer-pipeline = { path = "crates/pipeline" }
 indexer-core = { path = "crates/core" }
 indexer-ethereum = { path = "crates/ethereum" }
 indexer-cosmos = { path = "crates/cosmos", features = ["contracts"] }
 indexer-storage = { path = "crates/storage" }
 indexer-api = { path = "crates/api" }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-clap = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
+
+# Ethereum interactions
+ethers = { workspace = true, features = ["ws", "rustls"] }
+eyre = "0.6.8"
+serde_json = { workspace = true }
+hex = { workspace = true }
+serde = { workspace = true }
 
 [workspace.package]
 version = "0.1.0"
@@ -58,7 +65,7 @@ thiserror = "1.0.50"
 anyhow = "1.0"
 
 # Ethereum specific
-ethers = { version = "2", features = ["ws", "rustls"] }
+ethers = { version = "2.0", features = ["ws", "rustls"] }
 reth = { version = "0.1.0-alpha.6", default-features = false }
 
 # Cosmos specific
@@ -91,4 +98,8 @@ codegen-units = 1
 
 [profile.dev]
 opt-level = 0
-debug = true 
+debug = true
+
+[[bin]]
+name = "reth_client"
+path = "src/tools/reth_client.rs" 
