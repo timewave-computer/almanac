@@ -1,249 +1,282 @@
 # This file defines a Nix flake for the Almanac project with CosmWasm support.
 {
-  description = "Almanac Project Root";
+  description = "Almanac: Cross-chain event indexer and processor";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     flake-parts.url = "github:hercules-ci/flake-parts";
-    # No longer need direct reth input
-    # reth.url = "github:paradigmxyz/reth/main";
-    rust-overlay = {
-      url = "github:oxalica/rust-overlay";
+    rust-overlay.url = "github:oxalica/rust-overlay";
+    fenix = {
+      url = "github:nix-community/fenix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    
-    # Input needed for flake reference (not used directly anymore)
-    wasmd-src = {
-      url = "github:CosmWasm/wasmd/v0.31.0";
-      flake = false;
+    crane = {
+      url = "github:ipetkov/crane";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.rust-overlay.follows = "rust-overlay";
     };
     foundry = {
-      url = "github:foundry-rs/foundry";
+      url = "github:shazow/foundry.nix/monthly"; # Use monthly for stability
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.flake-parts.follows = "flake-parts";
     };
   };
 
-  outputs = inputs@{ self, nixpkgs, flake-parts, wasmd-src, foundry, ... }:
-    flake-parts.lib.mkFlake { inherit inputs; } {
-      # Apply nixpkgs config and overlays here
-      flake = { 
-        nixpkgs.config = {
-          allowUnfree = true;
-          allowUnsupportedSystem = true;
-        };
-      };
-      # Import our modules
-      imports = [
-        ./nix/cosmos-module.nix
-        ./nix/database-module.nix
-        ./nix/cross-chain-module.nix
-      ];
+  outputs = inputs@{ self, nixpkgs, flake-parts, fenix, crane, rust-overlay, foundry, ... }:
+    # Create a simplified flake that directly specifies outputs without using modules
+    flake-parts.lib.mkFlake { inherit self inputs; } {
+      systems = [ "aarch64-darwin" "x86_64-linux" ]; # Add systems as needed
       
-      systems = ["aarch64-darwin" "x86_64-linux"];
-
-      # Define perSystem configuration
-      perSystem = { config, self', inputs', system, ... }:
-        let 
-          # Apply overlay to pkgs for this system
-          pkgs = import inputs.nixpkgs {
-            inherit system;
-            overlays = [ inputs.rust-overlay.overlays.default ];
-            config = {
-              allowUnfree = true;
-              allowUnsupportedSystem = true;
-            };
-          };
-
-          # Define foundry package from nixpkgs
-          foundryPkg = pkgs.foundry;
-
-          # Define Reth build logic based on their flake
-          rethSrc = pkgs.fetchFromGitHub {
-            owner = "paradigmxyz";
-            repo = "reth";
-            rev = "v1.3.7"; # Use tag name instead of hash
-            hash = "sha256-nqahs6zGQG/qG6Qe/tKNIPGLIiQcng1zDZFKrUBpoiM="; # Correct hash
-            fetchSubmodules = true;
-          };
-          cargoTOML = (builtins.fromTOML (builtins.readFile "${rethSrc}/Cargo.toml"));
-          packageVersion = cargoTOML.workspace.package.version;
-          # Use a specific version known to be available via rust-overlay
-          rustVersion = cargoTOML.workspace.package.rust-version;
-          rustPkg = pkgs.rust-bin.stable."1.85.0".default.override {
-            extensions = [ "rust-src" "rust-analyzer" "clippy" "rustfmt" ];
-          };
-          macPackages = pkgs.lib.optionals pkgs.stdenv.isDarwin (with pkgs.darwin.apple_sdk.frameworks; [ Security CoreFoundation CoreServices ]);
-          linuxPackages = pkgs.lib.optionals pkgs.stdenv.isLinux (with pkgs; [
-            libclang.lib
-            llvmPackages.libcxxClang
-          ]);
-          cargoDeps = pkgs.rustPlatform.importCargoLock {
-            lockFile = "${rethSrc}/Cargo.lock";
-          };
-          rustPlatform = pkgs.makeRustPlatform {
-            rustc = rustPkg;
-            cargo = rustPkg;
-          };
-
-          # Define scripts for test apps
-          testEthAnvilScript = pkgs.writeShellScript "test-eth-anvil-runner" ''
-            export ETH_RPC_URL="http://127.0.0.1:8545"
-            # Set target dir to a writable temporary location (use escaped $)
-            export CARGO_TARGET_DIR="\$TMPDIR/cargo-target-anvil"
-            exec "${self}/scripts/test-ethereum-adapter.sh" "$@"
-          '';
-          testEthRethScript = pkgs.writeShellScript "test-eth-reth-runner" ''
-            export ETH_RPC_URL="http://127.0.0.1:8545" # Assuming default reth port
-            # Set target dir to a writable temporary location (use escaped $)
-            export CARGO_TARGET_DIR="\$TMPDIR/cargo-target-reth"
-            exec "${self}/scripts/test-ethereum-adapter.sh" "$@"
-          '';
-
-        in
-        {
-          # Create the default development shell
-          devShells.default = pkgs.mkShell {
-            packages = [ 
-              pkgs.git 
-              # Include essential cosmos packages
-              self'.packages.wasmd-node
-              self'.packages.test-cosmos-adapter
-              # Include Ethereum tools
-              foundryPkg # Provides anvil
-              self'.packages.reth-pkg # Use our manually built reth
-              # General dev tools
-              pkgs.jq
-              pkgs.go
-              pkgs.curl
-              pkgs.gzip
-              pkgs.sqlx-cli
-              pkgs.postgresql # Add PostgreSQL server package
+      # Include the database-module from the local nix directory
+      imports = [];
+      
+      perSystem = { config, self', inputs', pkgs, system, ... }:
+        let
+          # Use pkgs.lib for convenience
+          lib = pkgs.lib;
+          
+          # Create database packages directly (simplified version of what's in the module)
+          initDatabasesScript = pkgs.writeShellApplication {
+            name = "init-databases";
+            runtimeInputs = with pkgs; [
+              postgresql_15
+              sqlx-cli
+              git
             ];
-            
-            shellHook = ''
-              echo "=== Almanac Development Environment ===="
-              echo "Available shell commands:"
-              echo "  (Cosmos)"
-              echo "  - wasmd-node: Start a local wasmd node for testing"
-              echo "  - test-cosmos-adapter: Run cosmos adapter tests against local node"
-              echo "  (Ethereum)"
-              echo "  - anvil: Start local Ethereum test node"
-              echo "  - reth node: Start Reth Ethereum node (requires config)"
-              echo "  - test-ethereum-adapter-anvil: Run tests against anvil"
-              echo "  - test-ethereum-adapter-reth: Run tests against reth"
-              echo "  (Database)"
-              echo "  - init-databases: Initialize PostgreSQL and RocksDB"
-              echo "  - stop-databases: Gracefully stop running databases"
-              echo "  - test-databases: Test database connectivity"
-              echo "  - wipe-databases: Completely wipe all database data"
+            text = ''
+              # Initialize and start databases for the Almanac project
+              set -e
+
+              echo "=== Almanac Database Initialization ==="
+
+              # Create required data directories
+              PROJECT_ROOT="$(pwd)"
+              mkdir -p "$PROJECT_ROOT/data/rocksdb"
+              mkdir -p "$PROJECT_ROOT/data/postgres"
+
+              # === PostgreSQL initialization and startup ===
+              echo "Initializing PostgreSQL..."
+
+              # Configure PostgreSQL data directory
+              export PGDATA="$PROJECT_ROOT/data/postgres"
+              export PGUSER=postgres
+              export PGPASSWORD=postgres
+              export PGDATABASE=indexer
+              export PGHOST=localhost
+              export PGPORT=5432
+
+              # Initialize PostgreSQL if not already done
+              if [ ! -f "$PGDATA/PG_VERSION" ]; then
+                echo "Creating new PostgreSQL database cluster..."
+                initdb -D "$PGDATA" --auth=trust --no-locale --encoding=UTF8 --username=$PGUSER
+                
+                # Configure PostgreSQL to listen on localhost
+                echo "listen_addresses = '127.0.0.1'" >> "$PGDATA/postgresql.conf"
+                echo "port = 5432" >> "$PGDATA/postgresql.conf"
+                
+                echo "PostgreSQL initialized successfully."
+              else
+                echo "Using existing PostgreSQL database at $PGDATA"
+              fi
+
+              # Start PostgreSQL server if not running
+              if ! pg_isready -q; then
+                echo "Starting PostgreSQL server..."
+                pg_ctl -D "$PGDATA" -o "-F -p $PGPORT" start -l "$PGDATA/postgres.log"
+                
+                # Wait for PostgreSQL to be ready
+                attempt=0
+                max_attempts=10
+                until pg_isready -q || [ $attempt -eq $max_attempts ]; do
+                  attempt=$((attempt+1))
+                  echo "Waiting for PostgreSQL to be ready... (attempt $attempt/$max_attempts)"
+                  sleep 1
+                done
+
+                if [ $attempt -eq $max_attempts ]; then
+                  echo "Failed to connect to PostgreSQL after $max_attempts attempts."
+                  exit 1
+                fi
+              else
+                echo "PostgreSQL is already running."
+              fi
+
+              # Create development database if it doesn't exist
+              if ! psql -lqt | cut -d \| -f 1 | grep -qw indexer; then
+                echo "Creating development database 'indexer'..."
+                createdb indexer
+                
+                # Set DATABASE_URL for applications
+                export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/indexer"
+                echo "export DATABASE_URL=\"$DATABASE_URL\"" > "$PROJECT_ROOT/.db_env"
+                
+                # Run migrations if needed
+                echo "Running PostgreSQL migrations..."
+                cd "$PROJECT_ROOT/crates/storage"
+                if command -v sqlx &> /dev/null; then
+                  SQLX_OFFLINE=false sqlx migrate run
+                else
+                  echo "sqlx-cli not found, skipping automatic migrations."
+                  echo "You may need to run migrations manually."
+                fi
+                cd "$PROJECT_ROOT"
+              else
+                echo "Development database 'indexer' already exists."
+              fi
+
+              # === RocksDB initialization ===
+              echo -e "\nInitializing RocksDB storage..."
+
+              # RocksDB doesn't need a server, but we'll pre-create the directory
+              # and ensure permissions are correct
+              ROCKS_PATH="$PROJECT_ROOT/data/rocksdb"
+              mkdir -p "$ROCKS_PATH"
+              echo "RocksDB storage directory prepared at $ROCKS_PATH"
+
+              # === Finish ===
+              echo -e "\n=== Database Initialization Complete ==="
+              echo "PostgreSQL: Running on localhost:5432"
+              echo "  • Database: indexer"
+              echo "  • Connection URL: $DATABASE_URL"
+              echo "  • Data directory: $PGDATA"
+              echo "  • Log file: $PGDATA/postgres.log"
               echo ""
-              echo "Available nix run commands:"
-              echo "  (Cosmos)"
-              echo "  - nix run .#wasmd-node"
-              echo "  - nix run .#test-cosmos-adapter"
-              echo "  (Ethereum)"
-              echo "  - nix run .#start-anvil"
-              echo "  - nix run .#start-reth"
-              echo "  - nix run .#test-ethereum-adapter-anvil"
-              echo "  - nix run .#test-ethereum-adapter-reth"
-              echo "  (Database)"
-              echo "  - nix run .#init-databases"
-              echo "  - nix run .#stop-databases"
-              echo "  - nix run .#test-databases"
-              echo "  - nix run .#wipe-databases"
+              echo "RocksDB:"
+              echo "  • Data directory: $ROCKS_PATH"
+              echo "  • Access through application configs pointing to this path"
+              echo ""
+              echo "Environment variables have been saved to .db_env"
+
+              # To ensure these variables are available in the current shell
+              echo "Run 'source .db_env' to load database environment variables in your current shell."
             '';
           };
 
-          # Define packages needed for apps
+          stopDatabasesScript = pkgs.writeShellApplication {
+            name = "stop-databases";
+            runtimeInputs = with pkgs; [
+              postgresql_15
+              git
+            ];
+            text = ''
+              # Gracefully stop running database services
+              set -e
+
+              PROJECT_ROOT="$(pwd)"
+              echo "=== Gracefully Stopping Databases ==="
+
+              # === PostgreSQL shutdown ===
+              export PGDATA="$PROJECT_ROOT/data/postgres"
+              
+              if [ ! -d "$PGDATA" ]; then
+                echo "PostgreSQL data directory not found at $PGDATA"
+                echo "No PostgreSQL instance to stop."
+              elif pg_isready -q; then
+                echo "Stopping PostgreSQL server..."
+                pg_ctl -D "$PGDATA" stop -m fast
+                
+                # Wait for PostgreSQL to stop
+                attempt=0
+                max_attempts=10
+                while pg_isready -q && [ $attempt -lt $max_attempts ]; do
+                  attempt=$((attempt+1))
+                  echo "Waiting for PostgreSQL to stop... (attempt $attempt/$max_attempts)"
+                  sleep 1
+                done
+                
+                if pg_isready -q; then
+                  echo "WARNING: PostgreSQL server did not stop gracefully."
+                  echo "You may need to manually kill the process."
+                else
+                  echo "✓ PostgreSQL server stopped successfully."
+                fi
+              else
+                echo "PostgreSQL server is not running."
+              fi
+
+              # RocksDB is not a server, so nothing to stop
+
+              echo -e "\n=== Database Shutdown Complete ==="
+            '';
+          };
+          
+          # Use rust from nixpkgs for now
+          rustToolchain = pkgs.rustc;
+          
+          # Define PostgreSQL configuration 
+          pgPort = 5432;
+          pgUser = "postgres";
+          pgPassword = "postgres";
+          pgDatabase = "indexer"; # Changed to match what's used in the scripts
+          pgSchema = "public";
+          
+          # Add PostgreSQL to the basic development shell
+          basicDevShell = pkgs.mkShell {
+            packages = [ 
+              rustToolchain 
+              pkgs.pkg-config 
+              pkgs.openssl
+              pkgs.postgresql_15
+              pkgs.sqlx-cli
+            ];
+            
+            # Shell hook to set up PostgreSQL
+            shellHook = ''
+              # Setup PostgreSQL environment
+              export PGHOST=localhost
+              export PGPORT=${toString pgPort}
+              export PGUSER=${pgUser}
+              export PGPASSWORD=${pgPassword}
+              export PGDATABASE=${pgDatabase}
+              export PGDATA="$PWD/data/postgres"
+              export DATABASE_URL="postgres://$PGUSER:$PGPASSWORD@$PGHOST:$PGPORT/$PGDATABASE?schema=$pgSchema"
+              
+              # Database commands - we're exposing the database scripts
+              echo "Using simplified development environment"
+              echo "rust version: $(rustc --version)"
+              echo ""
+              echo "Database commands available:"
+              echo "  init_databases       - Initialize and start PostgreSQL and RocksDB"
+              echo "  stop_databases       - Stop PostgreSQL server"
+              echo ""
+              
+              # Expose the database commands as shell functions
+              function init_databases {
+                ${initDatabasesScript}/bin/init-databases
+              }
+              
+              function stop_databases {
+                ${stopDatabasesScript}/bin/stop-databases
+              }
+              
+              export -f init_databases
+              export -f stop_databases
+              
+              # Check PostgreSQL status and start if needed
+              if ! pg_isready -q; then
+                echo "PostgreSQL is not running. Run 'init_databases' to start it."
+              else 
+                echo "PostgreSQL is running at $PGHOST:$PGPORT"
+                echo "Database: $PGDATABASE"
+                echo "Connection URL: $DATABASE_URL"
+              fi
+            '';
+          };
+          
+          # Use wasm-bindgen-cli from nixpkgs instead of building from source
           packages = {
-            # Build reth manually
-            reth-pkg = rustPlatform.buildRustPackage {
-              pname = "reth";
-              version = packageVersion;
-              cargoLock = {
-                lockFile = "${rethSrc}/Cargo.lock";
-              };
-              checkFlags = [
-                #this test breaks Read Only FS sandbox
-                "--skip=cli::tests::parse_env_filter_directives"
-              ];
-              LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
-              nativeBuildInputs = (with pkgs;[ libclang ]) ++ macPackages ++ linuxPackages;
-              src = rethSrc;
-            };
-
-            # Simple wrapper for anvil
-             start-anvil = pkgs.stdenv.mkDerivation {
-               name = "start-anvil";
-               src = pkgs.lib.cleanSource ./.;
-               buildInputs = [ pkgs.makeWrapper foundryPkg ];
-               installPhase = ''
-                 mkdir -p $out/bin
-                 makeWrapper ${foundryPkg}/bin/anvil $out/bin/start-anvil
-               '';
-             };
-             # Simple wrapper for reth
-             start-reth = pkgs.stdenv.mkDerivation {
-               name = "start-reth";
-               src = pkgs.lib.cleanSource ./.;
-               buildInputs = [ pkgs.makeWrapper self'.packages.reth-pkg pkgs.openssl ]; 
-               installPhase = ''
-                 mkdir -p $out/bin
-                 makeWrapper ${self'.packages.reth-pkg}/bin/reth $out/bin/start-reth --add-flags "node"
-               '';
-             };
+            wasm-bindgen-pkg = pkgs.wasm-bindgen-cli;
+            init-databases = initDatabasesScript;
+            stop-databases = stopDatabasesScript;
+            default = pkgs.wasm-bindgen-cli;
           };
-
-          # Define runnable applications
-          apps = {
-            # Cosmos Apps
-            wasmd-node = {
-              type = "app";
-              program = "${self'.packages.wasmd-node}/bin/wasmd-node";
-            };
-            test-cosmos-adapter = {
-              type = "app";
-              program = "${self'.packages.test-cosmos-adapter}/bin/test-cosmos-adapter";
-            };
-            # Ethereum Apps
-            start-anvil = {
-              type = "app";
-              program = "${self'.packages.start-anvil}/bin/start-anvil";
-            };
-            start-reth = {
-              type = "app";
-              program = "${self'.packages.start-reth}/bin/start-reth";
-            };
-             # Define test apps directly with inline script
-             test-ethereum-adapter-anvil = {
-              type = "app";
-              program = "${testEthAnvilScript}"; # Reference the script derivation
-            };
-            test-ethereum-adapter-reth = {
-              type = "app";
-              program = "${testEthRethScript}"; # Reference the script derivation
-            };
-            test-valence-contracts = {
-              type = "app";
-              program = "${pkgs.writeShellScript "test-valence-contracts-runner" ''
-                cd ${self}
-                source ${self}/scripts/test-valence-contracts.sh "$@"
-              ''}";
-            };
-            test-valence-real-contracts = {
-              type = "app";
-              program = "${pkgs.writeShellScript "test-valence-real-contracts-runner" ''
-                cd ${self}
-                source ${self}/scripts/test-valence-real-contracts.sh "$@"
-              ''}";
-            };
-            cross-chain-e2e-test = {
-              type = "app";
-              program = "${pkgs.writeShellScript "cross-chain-e2e-test-runner" ''
-                cd ${self}
-                source ${self}/scripts/cross_chain_e2e_test.sh "$@"
-              ''}";
-            };
-          };
+          
+        in
+        {
+          # Define minimal outputs needed to get the shell working
+          packages = packages;
+          devShells.default = basicDevShell;
+          formatter = pkgs.nixpkgs-fmt;
         };
     };
 }

@@ -10,7 +10,7 @@ description = "API interface for the indexer"
 [dependencies]
 # Internal crates
 indexer-core = { path = "../core" }
-indexer-common = { path = "../common" }
+indexer-pipeline = { path = "../pipeline" }
 indexer-storage = { path = "../storage" }
 
 # Async runtime

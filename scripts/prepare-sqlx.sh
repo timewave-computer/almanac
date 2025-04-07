@@ -16,7 +16,7 @@ DB_NAME="sqlx_prep_db"
 MIGRATION_DIR="./crates/storage/migrations"
 
 # Database connection string (points to the temporary instance)
-export DATABASE_URL="postgres://${DB_USER}@${PG_SOCKET_DIR}:${DB_PORT}/${DB_NAME}"
+export DATABASE_URL="postgres://${DB_USER}@localhost:${DB_PORT}/${DB_NAME}"
 
 # --- Cleanup Function ---
 cleanup() {
@@ -60,7 +60,7 @@ initdb -D "$PG_DATA_DIR" --username="$DB_USER" --no-locale --encoding=UTF8 || {
 # Configure PostgreSQL to listen on the specified port and socket directory
 echo "port = $DB_PORT" >> "$PG_DATA_DIR/postgresql.conf"
 echo "unix_socket_directories = '$PG_SOCKET_DIR'" >> "$PG_DATA_DIR/postgresql.conf"
-echo "listen_addresses = ''" >> "$PG_DATA_DIR/postgresql.conf" # Listen only on Unix socket
+echo "listen_addresses = '127.0.0.1'" >> "$PG_DATA_DIR/postgresql.conf" # Listen on localhost
 
 # Start the PostgreSQL server
 echo "Starting PostgreSQL server (logging to $PG_LOG_FILE)..."

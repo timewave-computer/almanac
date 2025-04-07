@@ -6,7 +6,7 @@ use std::sync::Arc;
 use ethers::types::{Block, Log, Transaction, TransactionReceipt, H256};
 use ethers::abi::{Abi, Event as AbiEvent, Token};
 use serde::{Deserialize, Serialize};
-use indexer_common::{Error, Result};
+use indexer_pipeline::{Error, Result};
 use tracing::{debug, error, info, warn};
 
 use indexer_core::event::Event;

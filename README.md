@@ -1,8 +1,12 @@
 # Almanac: Cross-Chain Indexer
 
-A high-performance indexer designed to track Valence protocol contracts and related blockchain state across multiple chains. Almanac currently supports Ethereum and Cosmos chains, with easy extensibility to others in the future.
+A performant indexer designed to track Valence, Causality and associated contract state across multiple chains. Almanac currently supports Ethereum and Cosmos chains, with easy extensibility to others in the future.
 
 ![](./almanac.png)
+
+## Status
+
+Still under development. Basic intexing works, but a simulation system still being scaffolded to test the system properly.
 
 ## Project Overview
 
@@ -144,14 +148,6 @@ The system is designed to meet the following performance targets:
 - Complex query latency for PostgreSQL < 500ms (95th percentile)
 - Support for at least 100 concurrent read queries
 
-## Project Status
-
-The project is actively under development.
-
-## Credit
-
-- Cover image from [Gaine's New-York pocket almanack for the year 1789](https://www.loc.gov/resource/rbc0001.2022madison98629)
-
 ## Cross-Chain Testing
 
 The project now includes full Ethereum contract implementations for testing cross-chain functionality:
@@ -169,14 +165,26 @@ The project now includes full Ethereum contract implementations for testing cros
    - Tests token transfers through the BaseAccount abstraction
    - Demonstrates cross-chain message sending and delivery
    - Verifies correct event emission for indexer integration
+   - Tests sequential transfers between Ethereum and Cosmos chains
 
 3. **Running the Test**:
    ```bash
-   # Run directly
+   # Run directly (not recommended, use Nix instead)
    ./scripts/cross_chain_e2e_test.sh
    
-   # Or using Nix
+   # Or using Nix (preferred method)
    nix run .#cross-chain-e2e-test
    ```
 
-This implementation provides a foundation for the full cross-chain testing that will incorporate both Ethereum and Cosmos sides.
+   The Nix run command will:
+   - Compile the test WASM contracts automatically
+   - Set up both Ethereum and Cosmos nodes
+   - Deploy necessary contracts
+   - Run the full end-to-end test suite
+   - Clean up all resources after completion
+
+This implementation provides a robust framework for testing cross-chain interactions between Ethereum and Cosmos chains.
+
+## Credit
+
+- Cover image from [Gaine's New-York pocket almanack for the year 1789](https://www.loc.gov/resource/rbc0001.2022madison98629)

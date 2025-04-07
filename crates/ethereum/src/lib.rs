@@ -10,7 +10,7 @@ use async_trait::async_trait;
 use ethers::middleware::Middleware;
 use ethers::providers::{Http, Provider, Ws};
 use ethers::types::{BlockNumber, Filter, H256, Log};
-use indexer_common::{BlockStatus, Error, Result};
+use indexer_pipeline::{BlockStatus, Error, Result};
 use indexer_core::event::Event;
 use indexer_storage::Storage;
 use indexer_core::service::{EventService, EventSubscription};

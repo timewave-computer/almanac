@@ -1,9 +1,8 @@
-
 use async_trait::async_trait;
 use sqlx::{Pool, Postgres, FromRow};
 use tracing::{instrument, debug};
 
-use indexer_common::Result;
+use indexer_pipeline::Result;
 
 /// Record for a contract schema in the database
 #[derive(Debug, FromRow)]

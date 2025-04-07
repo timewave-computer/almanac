@@ -2,7 +2,7 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use indexer_common::{Result, Error};
+use indexer_pipeline::{Result, Error};
 use indexer_core::service::BoxedEventService;
 use indexer_core::types::ApiConfig;
 use indexer_storage::migrations::schema::ContractSchemaRegistry;

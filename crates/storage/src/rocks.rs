@@ -1,24 +1,35 @@
 /// RocksDB storage implementation
-use std::path::Path;
+#[cfg(feature = "rocks")]
+use std::path::{Path, PathBuf};
+#[cfg(feature = "rocks")]
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use std::any::Any;
+#[cfg(feature = "rocks")]
 use std::collections::{HashMap, HashSet};
 
 use async_trait::async_trait;
-use indexer_common::{BlockStatus, Error, Result};
+use indexer_pipeline::{BlockStatus, Error, Result};
 use indexer_core::event::Event;
+#[cfg(feature = "rocks")]
 use rocksdb::{Options, DB, WriteBatch, IteratorMode, Direction, BlockBasedOptions, BoundColumnFamily, ColumnFamily};
 use serde::{Deserialize, Serialize};
-use tracing::{debug, warn};
+use tracing::{debug, warn, info};
 use serde_json;
 use num_cpus;
 use bincode;
+use std::string::FromUtf8Error;
 
 use crate::EventFilter;
 use crate::Storage;
 use crate::{ValenceAccountInfo, ValenceAccountLibrary, ValenceAccountExecution, ValenceAccountState};
+use crate::{
+    ValenceProcessorInfo, ValenceProcessorConfig, ValenceProcessorMessage, ValenceMessageStatus,
+    ValenceProcessorState, ValenceAuthorizationInfo, ValenceAuthorizationPolicy, ValenceAuthorizationGrant,
+    ValenceAuthorizationRequest, ValenceAuthorizationDecision, ValenceLibraryInfo, ValenceLibraryVersion,
+    ValenceLibraryUsage, ValenceLibraryState, ValenceLibraryApproval
+};
 
 /// Configuration for RocksDB storage
 pub struct RocksConfig {
@@ -96,7 +107,8 @@ pub struct RocksStorage {
 
 #[async_trait]
 impl Storage for RocksStorage {
-    async fn store_event(&self, event: Box<dyn Event>) -> Result<()> {
+    /// Store an event
+    async fn store_event(&self, chain: &str, event: Box<dyn Event>) -> Result<()> {
         let key = Key::new("events", event.id());
         
         // Convert event to JSON for storage
@@ -120,18 +132,19 @@ impl Storage for RocksStorage {
         batch.put(&key, event_data.as_bytes());
         
         // Add secondary indexes for efficient querying
+        let event_chain = chain;
         
         // Chain + block index (for querying by chain and block range)
         let chain_block_key = Key::new(
             "index:chain_block", 
-            format!("{}:{}", event.chain(), event.block_number())
+            format!("{}:{:016x}", event_chain, event.block_number())
         );
         batch.put(&chain_block_key, event.id().as_bytes());
         
         // Chain + event type index (for filtering by event type)
         let chain_type_key = Key::new(
             "index:chain_type", 
-            format!("{}:{}", event.chain(), event.event_type())
+            format!("{}:{}", event_chain, event.event_type())
         );
         batch.put(&chain_type_key, event.id().as_bytes());
         
@@ -141,12 +154,12 @@ impl Storage for RocksStorage {
             .as_secs();
         let chain_time_key = Key::new(
             "index:chain_time", 
-            format!("{}:{:016x}", event.chain(), timestamp)
+            format!("{}:{:016x}", event_chain, timestamp)
         );
         batch.put(&chain_time_key, event.id().as_bytes());
         
         // Update latest block for chain
-        let latest_block_key = Key::new("latest_block", event.chain());
+        let latest_block_key = Key::new("latest_block", event_chain);
         let current_latest = self.get(&latest_block_key)?
             .and_then(|bytes| String::from_utf8(bytes).ok())
             .and_then(|s| s.parse::<u64>().ok())
@@ -157,7 +170,7 @@ impl Storage for RocksStorage {
         }
         
         // Update block hash mapping
-        let block_key = Key::new("block", format!("{}:{}", event.chain(), event.block_number()));
+        let block_key = Key::new("block", format!("{}:{}", event_chain, event.block_number()));
         batch.put(&block_key, event.block_hash().as_bytes());
         
         // Write the batch
@@ -166,188 +179,115 @@ impl Storage for RocksStorage {
         Ok(())
     }
     
-    async fn get_events(&self, filters: Vec<EventFilter>) -> Result<Vec<Box<dyn Event>>> {
-        debug!("Getting events from RocksDB with {} filters", filters.len());
+    async fn get_events(&self, chain: &str, from_block: u64, to_block: u64) -> Result<Vec<Box<dyn Event>>> {
+        debug!("Getting events from RocksDB for chain {}, range {}-{}", chain, from_block, to_block);
         
-        // If there are no filters, return empty results
-        if filters.is_empty() {
-            return Ok(Vec::new());
-        }
-        
-        // We'll process each filter separately and then combine the results
-        let mut all_results: Vec<Box<dyn Event>> = Vec::new();
-        
-        for filter in filters {
-            // Determine the most efficient query strategy based on the filter
-            let event_ids = if let Some(chain) = &filter.chain {
-                if let Some((min_block, max_block)) = filter.block_range {
-                    // If we have a chain and block range, use the chain_block index
-                    self.get_event_ids_by_chain_and_block_range(chain, min_block, max_block)?
-                } else if let Some(event_types) = &filter.event_types {
-                    // If we have chain and event types, use the chain_type index
-                    self.get_event_ids_by_chain_and_event_types(chain, event_types)?
-                } else if let Some((min_time, max_time)) = filter.time_range {
-                    // If we have chain and time range, use the chain_time index
-                    self.get_event_ids_by_chain_and_time_range(chain, min_time, max_time)?
-                } else {
-                    // If we only have a chain, scan all events for that chain
-                    self.get_event_ids_by_chain(chain)?
-                }
-            } else {
-                // If no chain specified, scan all events (expensive!)
-                self.get_all_event_ids()?
-            };
+        let event_ids = self.get_event_ids_by_chain_and_block_range(chain, from_block, to_block)?;
             
-            // Now get the actual events by their IDs
-            let mut events = Vec::new();
-            for id in event_ids {
-                if let Some(event) = self.get_event_by_id(&id)? {
+        // Now get the actual events by their IDs
+        let mut events = Vec::new();
+        for id in event_ids {
+            if let Some(event) = self.get_event_by_id(&id)? {
+                // Additional check: Ensure event chain matches the requested chain
+                if event.chain() == chain {
                     events.push(event);
                 }
             }
-            
-            // Apply any remaining filters that weren't covered by the index lookup
-            let filtered_events = self.apply_remaining_filters(events, &filter);
-            
-            // Apply limit and offset if specified
-            let mut result = filtered_events;
-            if let Some(offset) = filter.offset {
-                result = result.into_iter().skip(offset).collect();
-            }
-            if let Some(limit) = filter.limit {
-                result = result.into_iter().take(limit).collect();
-            }
-            
-            all_results.extend(result);
         }
-        
-        Ok(all_results)
+            
+        Ok(events)
     }
-    
+
     async fn get_latest_block(&self, chain: &str) -> Result<u64> {
-        debug!("Getting latest block for chain {}", chain);
-        
-        let latest_block_key = Key::new("latest_block", chain);
-        let result = self.get(&latest_block_key)?
-            .and_then(|bytes| String::from_utf8(bytes).ok())
-            .and_then(|s| s.parse::<u64>().ok())
-            .unwrap_or(0);
-        
-        Ok(result)
-    }
-    
-    async fn update_block_status(&self, chain: &str, block_number: u64, status: BlockStatus) -> Result<()> {
-        // Convert the BlockStatus enum to a string representation
-        let status_str = match status {
-            BlockStatus::Confirmed => "confirmed",
-            BlockStatus::Safe => "safe",
-            BlockStatus::Justified => "justified",
-            BlockStatus::Finalized => "finalized",
-        };
-        
-        let key = Key::new("block_status", format!("{}:{}", chain, block_number));
-        self.put(&key, status_str.as_bytes())?;
-        
-        // Also store the latest block with this status
-        let latest_status_key = Key::new(format!("latest_block_status:{}", status_str), chain);
-        let current_latest = self.get(&latest_status_key)?
-            .and_then(|bytes| String::from_utf8(bytes).ok())
-            .and_then(|s| s.parse::<u64>().ok())
-            .unwrap_or(0);
-        
-        if block_number > current_latest {
-            self.put(&latest_status_key, block_number.to_string().as_bytes())?;
+        let key = Key::new("latest_block", chain);
+        let result = self.get(&key)?;
+        match result {
+            Some(bytes) => String::from_utf8(bytes)
+                .map_err(|_| Error::generic("Invalid latest block format"))
+                .and_then(|s| s.parse::<u64>().map_err(|_| Error::generic("Invalid latest block format"))),
+            None => Ok(0), // Return 0 if no latest block found for the chain
         }
-        
-        Ok(())
     }
-    
+
+    async fn update_block_status(&self, chain: &str, block_number: u64, status: BlockStatus) -> Result<()> {
+        let key = Key::new("block_status", format!("{}:{}", chain, block_number));
+        self.put(&key, status.as_str().as_bytes())
+    }
+
     async fn get_latest_block_with_status(&self, chain: &str, status: BlockStatus) -> Result<u64> {
-        debug!("Getting latest block with status {:?} for chain {}", status, chain);
+        let prefix = Key::prefix(format!("block_status:{}:", chain));
+        let cf = self.cf_block_status()?;
+        let iter = self.db.prefix_iterator_cf(cf, prefix);
         
-        let status_str = match status {
-            BlockStatus::Confirmed => "confirmed",
-            BlockStatus::Safe => "safe",
-            BlockStatus::Justified => "justified",
-            BlockStatus::Finalized => "finalized",
-        };
-        
-        let latest_status_key = Key::new(format!("latest_block_status:{}", status_str), chain);
-        let result = self.get(&latest_status_key)?
-            .and_then(|bytes| String::from_utf8(bytes).ok())
-            .and_then(|s| s.parse::<u64>().ok())
-            .unwrap_or(0);
-        
-        Ok(result)
+        let mut latest_block = 0;
+        for item in iter {
+            let (key_bytes, value_bytes) = item.map_err(|e| Error::database(format!("RocksDB iterator error: {}", e)))?;
+            let key_str = string_from_utf8(key_bytes.to_vec())?;
+            let parts: Vec<&str> = key_str.split(':').collect();
+            if parts.len() >= 3 {
+                 if let Ok(block_num) = parts[2].parse::<u64>() {
+                     let current_status_str = string_from_utf8(value_bytes.to_vec())?;
+                     if current_status_str == status.as_str() {
+                         if block_num > latest_block {
+                             latest_block = block_num;
+                         }
+                     }
+                 }
+            }
+        }
+        Ok(latest_block)
     }
-    
-    async fn get_events_with_status(&self, filters: Vec<EventFilter>, status: BlockStatus) -> Result<Vec<Box<dyn Event>>> {
-        debug!("Getting events with status {:?}", status);
+
+    /// Get events with a specific status in a block range
+    async fn get_events_with_status(&self, chain: &str, from_block: u64, to_block: u64, status: BlockStatus) -> Result<Vec<Box<dyn Event>>> {
+        let mut events = Vec::new();
         
-        let events = self.get_events(filters).await?;
-        
-        // Filter events by block status
-        let mut filtered_events = Vec::new();
-        for event in events {
-            let block_status_key = Key::new("block_status", format!("{}:{}", event.chain(), event.block_number()));
-            if let Some(status_bytes) = self.get(&block_status_key)? {
-                let event_status = std::str::from_utf8(&status_bytes).unwrap_or("");
-                let matches = match status {
-                    BlockStatus::Confirmed => event_status == "confirmed" || event_status == "safe" || 
-                                             event_status == "justified" || event_status == "finalized",
-                    BlockStatus::Safe => event_status == "safe" || event_status == "justified" || event_status == "finalized",
-                    BlockStatus::Justified => event_status == "justified" || event_status == "finalized",
-                    BlockStatus::Finalized => event_status == "finalized",
-                };
-                
-                if matches {
-                    filtered_events.push(event);
+        for block_num in from_block..=to_block {
+            // Check if the block has the specified status
+            let key = Key::new("block_status", format!("{}:{}", chain, block_num));
+            
+            // Need to get the column family inside this scope so it's not held across await
+            let status_str = {
+                let cf = self.cf_block_status()?;
+                if let Some(status_bytes) = self.db.get_cf(cf, key.to_bytes())? {
+                    string_from_utf8(status_bytes)?
+                } else {
+                    continue; // Skip blocks without status
                 }
+            };
+            
+            if status_str == status.as_str() {
+                // If status matches, get events for this block
+                let block_events = self.get_events(chain, block_num, block_num).await?;
+                events.extend(block_events);
             }
         }
         
-        Ok(filtered_events)
+        Ok(events)
     }
 
-    // --- Valence Account Storage Methods ---
-
+    // --- Valence Account State Methods (Simplified/Placeholder) ---
+    
     async fn store_valence_account_instantiation(
         &self,
         account_info: ValenceAccountInfo,
         initial_libraries: Vec<ValenceAccountLibrary>,
     ) -> Result<()> {
-        // Create the initial state from the info
         let state = ValenceAccountState {
-            account_id: account_info.id.clone(), // Use clone if needed
+            account_id: account_info.id.clone(),
             chain_id: account_info.chain_id.clone(),
             address: account_info.contract_address.clone(),
-            current_owner: account_info.current_owner.clone(),
-            pending_owner: account_info.pending_owner.clone(),
+            current_owner: account_info.current_owner,
+            pending_owner: account_info.pending_owner,
             pending_owner_expiry: account_info.pending_owner_expiry,
-            libraries: initial_libraries
-                .iter()
-                .map(|lib| lib.library_address.clone())
-                .collect(),
-            last_update_block: account_info.created_at_block, // Initial update is creation
-            last_update_tx: account_info.created_at_tx.clone(),
+            libraries: initial_libraries.into_iter().map(|l| l.library_address).collect(),
+            last_update_block: account_info.last_updated_block,
+            last_update_tx: account_info.last_updated_tx,
         };
-
-        // Store the initial state
-        self.set_valence_account_state(&account_info.id, &state).await?;
-
-        // We might also want to store the initial historical state if required
-        self.set_historical_valence_account_state(
-            &account_info.id,
-            account_info.created_at_block,
-            &state,
-        )
-        .await?;
-
-        // Set the latest historical block marker
-        self.set_latest_historical_valence_block(&account_info.id, account_info.created_at_block)
-            .await?;
-
-        Ok(())
+        self.set_valence_account_state(&account_info.id, &state).await?; 
+        // Also store historical state if needed
+        self.set_historical_valence_account_state(&account_info.id, account_info.created_at_block, &state).await?; 
+        self.set_latest_historical_valence_block(&account_info.id, account_info.created_at_block).await
     }
 
     async fn store_valence_library_approval(
@@ -357,34 +297,18 @@ impl Storage for RocksStorage {
         update_block: u64,
         update_tx: &str,
     ) -> Result<()> {
-        // Fix the implementation
-        let libraries_cf = self.cf_valence_state()?;
-        let key = format!("{}:{}", account_id, library_info.library_address);
-        
-        // Serialize the library info
-        let value = serde_json::to_string(&library_info)
-            .map_err(|e| Error::generic(format!("Failed to serialize ValenceAccountLibrary: {}", e)))?;
-        
-        self.db.put_cf(libraries_cf, key, value)?;
-
-        // Update the account's last updated block separately
-        let state_key = self.valence_account_state_key(account_id);
-        let cf = self.cf_valence_state()?;
-        
-        // Read-Modify-Write for the account state
-        if let Some(state_bytes) = self.db.get_cf(cf, &state_key)? {
-            let mut state: ValenceAccountState = serde_json::from_slice(&state_bytes)
-                .map_err(|e| Error::generic(format!("Failed to deserialize Valence state: {}", e)))?;
-            
-            state.last_update_block = update_block;
-            state.last_update_tx = update_tx.to_string();
-            
-            let updated_state = serde_json::to_vec(&state)
-                .map_err(|e| Error::generic(format!("Failed to serialize Valence state: {}", e)))?;
-            
-            self.db.put_cf(cf, state_key, updated_state)?;
+        if let Some(mut state) = self.get_valence_account_state(account_id).await? {
+            if !state.libraries.contains(&library_info.library_address) {
+                state.libraries.push(library_info.library_address);
+                state.last_update_block = update_block;
+                state.last_update_tx = update_tx.to_string();
+                self.set_valence_account_state(account_id, &state).await?; 
+                self.set_historical_valence_account_state(account_id, update_block, &state).await?
+            }
+        } else {
+            // Handle case where account state doesn't exist yet (might be an error or edge case)
+            warn!(account_id, "Attempted library approval for non-existent account state");
         }
-
         Ok(())
     }
 
@@ -392,31 +316,15 @@ impl Storage for RocksStorage {
         &self,
         account_id: &str,
         library_address: &str,
-        _update_block: u64,
-        _update_tx: &str,
+        update_block: u64,
+        update_tx: &str,
     ) -> Result<()> {
-        let state_key = self.valence_account_state_key(account_id);
-        let cf = self.cf_valence_state()?;
-
-        // Read-Modify-Write
-        let current_state_bytes = self.db.get_cf(cf, &state_key)?;
-        let mut state: ValenceAccountState = match current_state_bytes {
-            Some(bytes) => serde_json::from_slice(&bytes)
-                .map_err(|e| Error::generic(format!("Failed to deserialize Valence state: {}", e)))?,
-            None => return Err(Error::generic(format!("Valence account state not found for ID: {}", account_id))),
-        };
-
-        let initial_len = state.libraries.len();
-        state.libraries.retain(|lib| lib != library_address);
-
-        if state.libraries.len() < initial_len {
-            state.last_update_block = _update_block;
-            state.last_update_tx = _update_tx.to_string();
-
-            let state_json = serde_json::to_vec(&state)
-                .map_err(|e| Error::generic(format!("Failed to serialize Valence state: {}", e)))?;
-            
-            self.db.put_cf(cf, state_key, state_json)?;
+        if let Some(mut state) = self.get_valence_account_state(account_id).await? {
+            state.libraries.retain(|lib| lib != library_address);
+            state.last_update_block = update_block;
+            state.last_update_tx = update_tx.to_string();
+            self.set_valence_account_state(account_id, &state).await?; 
+            self.set_historical_valence_account_state(account_id, update_block, &state).await?
         }
         Ok(())
     }
@@ -427,40 +335,19 @@ impl Storage for RocksStorage {
         new_owner: Option<String>,
         new_pending_owner: Option<String>,
         new_pending_expiry: Option<u64>,
-        _update_block: u64,
-        _update_tx: &str,
+        update_block: u64,
+        update_tx: &str,
     ) -> Result<()> {
-        let state_key = self.valence_account_state_key(account_id);
-        let cf = self.cf_valence_state()?;
-
-        // Read-Modify-Write
-        let current_state_bytes = self.db.get_cf(cf, &state_key)?;
-        let mut state: ValenceAccountState = match current_state_bytes {
-            Some(bytes) => serde_json::from_slice(&bytes)
-                .map_err(|e| Error::generic(format!("Failed to deserialize Valence state: {}", e)))?,
-            None => return Err(Error::generic(format!("Valence account state not found for ID: {}", account_id))),
-        };
-
-        let mut changed = false;
-        if state.current_owner != new_owner {
+        if let Some(mut state) = self.get_valence_account_state(account_id).await? {
             state.current_owner = new_owner;
-            changed = true;
-        }
-        if state.pending_owner != new_pending_owner {
             state.pending_owner = new_pending_owner;
-            changed = true;
-        }
-        if state.pending_owner_expiry != new_pending_expiry {
-             state.pending_owner_expiry = new_pending_expiry;
-            changed = true;
-        }
-
-        if changed {
-            state.last_update_block = _update_block;
-            state.last_update_tx = _update_tx.to_string();
-            let state_json = serde_json::to_vec(&state)
-                .map_err(|e| Error::generic(format!("Failed to serialize Valence state: {}", e)))?;
-            self.db.put_cf(cf, state_key, state_json)?;
+            state.pending_owner_expiry = new_pending_expiry;
+            state.last_update_block = update_block;
+            state.last_update_tx = update_tx.to_string();
+            self.set_valence_account_state(account_id, &state).await?; 
+            self.set_historical_valence_account_state(account_id, update_block, &state).await?
+        } else {
+             warn!(account_id, "Attempted ownership update for non-existent account state");
         }
         Ok(())
     }
@@ -469,6 +356,7 @@ impl Storage for RocksStorage {
         &self,
         _execution_info: ValenceAccountExecution,
     ) -> Result<()> {
+        // Not typically stored directly in RocksDB state, maybe an event or log?
         Ok(())
     }
 
@@ -476,63 +364,73 @@ impl Storage for RocksStorage {
         let key = self.valence_account_state_key(account_id);
         let cf = self.cf_valence_state()?;
         match self.db.get_cf(cf, key)? {
-            Some(bytes) => Ok(Some(serde_json::from_slice(&bytes)
-                .map_err(|e| Error::generic(format!("Failed to deserialize Valence state: {}", e)))?)),
+            Some(data) => {
+                let state: ValenceAccountState = serde_json::from_slice(&data)?;
+                Ok(Some(state))
+            }
             None => Ok(None),
         }
     }
-
+    
     async fn set_valence_account_state(&self, account_id: &str, state: &ValenceAccountState) -> Result<()> {
         let key = self.valence_account_state_key(account_id);
-        let state_json = serde_json::to_vec(state)
-             .map_err(|e| Error::generic(format!("Failed to serialize Valence state: {}", e)))?;
         let cf = self.cf_valence_state()?;
-        self.db.put_cf(cf, key, state_json)
-             .map_err(|e| Error::database(format!("RocksDB put error: {}", e)))?;
+        let state_json = serde_json::to_vec(state)?;
+        self.db.put_cf(cf, key, state_json)?;
         Ok(())
     }
 
     async fn delete_valence_account_state(&self, account_id: &str) -> Result<()> {
         let key = self.valence_account_state_key(account_id);
         let cf = self.cf_valence_state()?;
-        self.db.delete_cf(cf, key)
-             .map_err(|e| Error::database(format!("RocksDB delete error: {}", e)))?;
+        self.db.delete_cf(cf, key)?;
         Ok(())
     }
 
-    async fn set_historical_valence_account_state(&self, account_id: &str, block_number: u64, state: &ValenceAccountState) -> Result<()> {
+    async fn set_historical_valence_account_state(
+        &self,
+        account_id: &str,
+        block_number: u64,
+        state: &ValenceAccountState,
+    ) -> Result<()> {
         let key = self.historical_valence_account_state_key(account_id, block_number);
-        let state_json = serde_json::to_vec(state)
-             .map_err(|e| Error::generic(format!("Failed to serialize Valence state: {}", e)))?;
         let cf = self.cf_historical_valence_state()?;
-        self.db.put_cf(cf, key, state_json)
-             .map_err(|e| Error::database(format!("RocksDB put error: {}", e)))?;
+        let state_json = serde_json::to_vec(state)?;
+        self.db.put_cf(cf, key, state_json)?;
         Ok(())
     }
 
-    async fn get_historical_valence_account_state(&self, account_id: &str, block_number: u64) -> Result<Option<ValenceAccountState>> {
+    async fn get_historical_valence_account_state(
+        &self,
+        account_id: &str,
+        block_number: u64,
+    ) -> Result<Option<ValenceAccountState>> {
         let key = self.historical_valence_account_state_key(account_id, block_number);
         let cf = self.cf_historical_valence_state()?;
         match self.db.get_cf(cf, key)? {
-            Some(bytes) => Ok(Some(serde_json::from_slice(&bytes)
-                .map_err(|e| Error::generic(format!("Failed to deserialize Valence state: {}", e)))?)),
+            Some(data) => {
+                let state: ValenceAccountState = serde_json::from_slice(&data)?;
+                Ok(Some(state))
+            }
             None => Ok(None),
         }
     }
 
-    async fn delete_historical_valence_account_state(&self, account_id: &str, block_number: u64) -> Result<()> {
+    async fn delete_historical_valence_account_state(
+        &self,
+        account_id: &str,
+        block_number: u64,
+    ) -> Result<()> {
         let key = self.historical_valence_account_state_key(account_id, block_number);
         let cf = self.cf_historical_valence_state()?;
-        self.db.delete_cf(cf, key)
-             .map_err(|e| Error::database(format!("RocksDB delete error: {}", e)))?;
+        self.db.delete_cf(cf, key)?;
         Ok(())
     }
-
+    
     async fn set_latest_historical_valence_block(&self, account_id: &str, block_number: u64) -> Result<()> {
         let key = self.latest_historical_valence_block_key(account_id);
         let cf = self.cf_latest_historical_valence_block()?;
-        self.db.put_cf(cf, key, block_number.to_be_bytes())
-             .map_err(|e| Error::database(format!("RocksDB put error: {}", e)))?;
+        self.db.put_cf(cf, key, block_number.to_be_bytes())?;
         Ok(())
     }
 
@@ -542,11 +440,10 @@ impl Storage for RocksStorage {
         match self.db.get_cf(cf, key)? {
             Some(bytes) => {
                 if bytes.len() == 8 {
-                    Ok(Some(u64::from_be_bytes(bytes.try_into().unwrap())))
+                    let block_num = u64::from_be_bytes(bytes.try_into().unwrap());
+                    Ok(Some(block_num))
                 } else {
-                    Err(Error::generic(
-                        "Invalid byte length for block number".to_string(),
-                    ))
+                    Err(Error::storage("Invalid format for latest historical block"))
                 }
             }
             None => Ok(None),
@@ -556,9 +453,386 @@ impl Storage for RocksStorage {
     async fn delete_latest_historical_valence_block(&self, account_id: &str) -> Result<()> {
         let key = self.latest_historical_valence_block_key(account_id);
         let cf = self.cf_latest_historical_valence_block()?;
-        self.db.delete_cf(cf, key)
-             .map_err(|e| Error::database(format!("RocksDB delete error: {}", e)))?;
+        self.db.delete_cf(cf, key)?;
         Ok(())
+    }
+
+    // --- Valence Processor Methods (Simplified/Placeholder) ---
+    
+    async fn store_valence_processor_instantiation(
+        &self,
+        processor_info: ValenceProcessorInfo,
+    ) -> Result<()> {
+         let state = ValenceProcessorState {
+            processor_id: processor_info.id.clone(),
+            chain_id: processor_info.chain_id.clone(),
+            address: processor_info.contract_address.clone(),
+            owner: processor_info.current_owner,
+            config: processor_info.config,
+            pending_message_count: 0, // Initial state
+            completed_message_count: 0,
+            failed_message_count: 0,
+            last_update_block: processor_info.last_updated_block,
+            last_update_tx: processor_info.last_updated_tx,
+        };
+        self.set_valence_processor_state(&processor_info.id, &state).await?; 
+        self.set_historical_valence_processor_state(&processor_info.id, processor_info.created_at_block, &state).await?; 
+        Ok(())
+    }
+    
+    async fn store_valence_processor_config_update(
+        &self,
+        processor_id: &str,
+        config: ValenceProcessorConfig,
+        update_block: u64,
+        update_tx: &str,
+    ) -> Result<()> {
+        if let Some(mut state) = self.get_valence_processor_state(processor_id).await? {
+            state.config = Some(config);
+            state.last_update_block = update_block;
+            state.last_update_tx = update_tx.to_string();
+            self.set_valence_processor_state(processor_id, &state).await?; 
+            self.set_historical_valence_processor_state(processor_id, update_block, &state).await?
+        } else {
+             warn!(processor_id, "Attempted config update for non-existent processor state");
+        }
+        Ok(())
+    }
+    
+    async fn store_valence_processor_message(
+        &self,
+        _message: ValenceProcessorMessage,
+    ) -> Result<()> {
+        // Implementation would involve storing message state, perhaps in separate CF
+        Ok(())
+    }
+    
+    async fn update_valence_processor_message_status(
+        &self,
+        _message_id: &str,
+        _new_status: ValenceMessageStatus,
+        _processed_block: Option<u64>,
+        _processed_tx: Option<&str>,
+        _retry_count: Option<u32>,
+        _next_retry_block: Option<u64>,
+        _gas_used: Option<u64>,
+        _error: Option<String>,
+    ) -> Result<()> {
+        // Update message state in its CF
+        Ok(())
+    }
+    
+    async fn get_valence_processor_state(&self, processor_id: &str) -> Result<Option<ValenceProcessorState>> {
+        let key = self.valence_processor_state_key(processor_id);
+        let cf = self.cf_block_status()?;
+        if let Some(data) = self.db.get_cf(cf, key)? {
+            let state: ValenceProcessorState = serde_json::from_slice(&data)?;
+            Ok(Some(state))
+        } else {
+            Ok(None)
+        }
+    }
+    
+    async fn set_valence_processor_state(&self, processor_id: &str, state: &ValenceProcessorState) -> Result<()> {
+        let key = self.valence_processor_state_key(processor_id);
+        let cf = self.cf_block_status()?;
+        let data = serde_json::to_vec(state)?;
+        self.db.put_cf(cf, key, data)?;
+        Ok(())
+    }
+    
+    async fn set_historical_valence_processor_state(
+        &self,
+        processor_id: &str,
+        block_number: u64,
+        state: &ValenceProcessorState,
+    ) -> Result<()> {
+        let key = self.historical_valence_processor_state_key(processor_id, block_number);
+        let cf = self.cf_historical_valence_state()?;
+        let data = serde_json::to_vec(state)?;
+        self.db.put_cf(cf, key, data)?;
+        Ok(())
+    }
+    
+    async fn get_historical_valence_processor_state(
+        &self,
+        processor_id: &str,
+        block_number: u64,
+    ) -> Result<Option<ValenceProcessorState>> {
+        let key = self.historical_valence_processor_state_key(processor_id, block_number);
+        let cf = self.cf_historical_valence_state()?;
+        if let Some(data) = self.db.get_cf(cf, key)? {
+            let state: ValenceProcessorState = serde_json::from_slice(&data)?;
+            Ok(Some(state))
+        } else {
+            Ok(None)
+        }
+    }
+    
+    // --- Valence Authorization Methods (Placeholder) ---
+    
+    async fn store_valence_authorization_instantiation(
+        &self,
+        _auth_info: ValenceAuthorizationInfo,
+        _initial_policy: Option<ValenceAuthorizationPolicy>,
+    ) -> Result<()> {
+        Ok(())
+    }
+    
+    async fn store_valence_authorization_policy(
+        &self,
+        _policy: ValenceAuthorizationPolicy,
+    ) -> Result<()> {
+        Ok(())
+    }
+    
+    async fn update_active_authorization_policy(
+        &self,
+        _auth_id: &str,
+        _policy_id: &str,
+        _update_block: u64,
+        _update_tx: &str,
+    ) -> Result<()> {
+        Ok(())
+    }
+    
+    async fn store_valence_authorization_grant(
+        &self,
+        _grant: ValenceAuthorizationGrant,
+    ) -> Result<()> {
+        Ok(())
+    }
+    
+    async fn revoke_valence_authorization_grant(
+        &self,
+        _auth_id: &str,
+        _grantee: &str,
+        _resource: &str,
+        _revoked_at_block: u64,
+        _revoked_at_tx: &str,
+    ) -> Result<()> {
+        Ok(())
+    }
+    
+    async fn store_valence_authorization_request(
+        &self,
+        _request: ValenceAuthorizationRequest,
+    ) -> Result<()> {
+        Ok(())
+    }
+    
+    async fn update_valence_authorization_request_decision(
+        &self,
+        _request_id: &str,
+        _decision: ValenceAuthorizationDecision,
+        _processed_block: Option<u64>,
+        _processed_tx: Option<&str>,
+        _reason: Option<String>,
+    ) -> Result<()> {
+        Ok(())
+    }
+
+    // --- Valence Library Methods (Placeholder) ---
+    
+    async fn store_valence_library_instantiation(
+        &self,
+        _library_info: ValenceLibraryInfo,
+        _initial_version: Option<ValenceLibraryVersion>,
+    ) -> Result<()> {
+        Ok(())
+    }
+    
+    async fn store_valence_library_version(
+        &self,
+        _version: ValenceLibraryVersion,
+    ) -> Result<()> {
+        Ok(())
+    }
+    
+    async fn update_active_library_version(
+        &self,
+        _library_id: &str,
+        _version: u32,
+        _update_block: u64,
+        _update_tx: &str,
+    ) -> Result<()> {
+        Ok(())
+    }
+    
+    async fn store_valence_library_usage(
+        &self,
+        _usage: ValenceLibraryUsage,
+    ) -> Result<()> {
+        Ok(())
+    }
+    
+    async fn revoke_valence_library_approval(
+        &self,
+        _library_id: &str,
+        _account_id: &str,
+        _revoked_at_block: u64,
+        _revoked_at_tx: &str,
+    ) -> Result<()> {
+        Ok(())
+    }
+    
+    async fn get_valence_library_state(&self, _library_id: &str) -> Result<Option<ValenceLibraryState>> {
+        Ok(None)
+    }
+    
+    async fn set_valence_library_state(&self, _library_id: &str, _state: &ValenceLibraryState) -> Result<()> {
+        Ok(())
+    }
+    
+    async fn get_valence_library_versions(&self, _library_id: &str) -> Result<Vec<ValenceLibraryVersion>> {
+        Ok(Vec::new())
+    }
+    
+    async fn get_valence_library_approvals(&self, _library_id: &str) -> Result<Vec<ValenceLibraryApproval>> {
+        Ok(Vec::new())
+    }
+    
+    async fn get_valence_libraries_for_account(&self, _account_id: &str) -> Result<Vec<ValenceLibraryApproval>> {
+        Ok(Vec::new())
+    }
+    
+    async fn get_valence_library_usage_history(
+        &self,
+        _library_id: &str,
+        _limit: Option<usize>,
+        _offset: Option<usize>,
+    ) -> Result<Vec<ValenceLibraryUsage>> {
+        Ok(Vec::new())
+    }
+    
+    // Implement missing trait methods
+    async fn mark_block_processed(&self, chain: &str, block_number: u64, _tx_hash: &str, status: BlockStatus) -> Result<()> {
+        self.update_block_status(chain, block_number, status).await
+    }
+
+    async fn reorg_chain(&self, chain: &str, from_block: u64) -> Result<()> {
+        debug!("Performing chain reorg for {} from block {}", chain, from_block);
+        
+        // 1. Create a batch for atomic operations
+        let mut batch = self.create_write_batch();
+        
+        // 2. Get the column families
+        let events_cf = self.cf_events()?;
+        let blocks_cf = self.cf_block_status()?;
+        
+        // 3. Delete events from blocks >= from_block
+        let prefix = format!("chain_block:{}:", chain);
+        let iter = self.db.prefix_iterator_cf(blocks_cf, prefix.as_bytes());
+        
+        for item in iter {
+            let (key_bytes, _) = item?;
+            let key_str = string_from_utf8(key_bytes.to_vec())
+                .map_err(|e| Error::storage(format!("UTF8 conversion error: {}", e)))?;
+            let parts: Vec<&str> = key_str.split(':').collect();
+            
+            if parts.len() >= 3 {
+                if let Ok(block_num) = parts[2].parse::<u64>() {
+                    if block_num >= from_block {
+                        // Get all events for this block
+                        let event_prefix = format!("chain_block:{}:{}", chain, block_num);
+                        let event_iter = self.db.prefix_iterator_cf(blocks_cf, event_prefix.as_bytes());
+                        
+                        for event_item in event_iter {
+                            let (event_key_bytes, event_id_bytes) = event_item?;
+                            
+                            // Delete the index entry
+                            batch.delete_key_bytes(&event_key_bytes, blocks_cf);
+                            
+                            if block_num >= from_block {
+                                // Delete the event
+                                let event_key = Key::new("events", String::from_utf8(event_id_bytes.to_vec())
+                                    .map_err(|e| Error::storage(format!("UTF8 conversion error: {}", e)))?);
+                                batch.delete(&event_key);
+                                // Delete other indices for this event (chain_type, chain_time)
+                                // This part needs careful implementation to find all related index entries.
+                                // For simplicity, we might only delete the chain_block index entry here.
+                            }
+                        }
+                        
+                        // Delete the block status
+                        let block_status_key = Key::new("block_status", format!("{}:{}", chain, block_num));
+                        batch.delete(&block_status_key);
+                    }
+                }
+            }
+        }
+        
+        // 4. Update latest block
+        // Find the highest block *before* from_block that exists.
+        let new_latest_block = self.get_latest_block_before(chain, from_block).await?;
+        let latest_block_key = Key::new("latest_block", chain);
+        batch.put(&latest_block_key, new_latest_block.to_string().as_bytes());
+        
+        // 5. Write batch to storage
+        self.write_batch(batch)?;
+        
+        debug!("Chain reorg completed for {} from block {}", chain, from_block);
+        Ok(())
+    }
+
+    async fn set_processor_state(&self, chain: &str, block_number: u64, state: &str) -> Result<()> {
+        let cf = self.cf_block_status()?;
+        let key = Key::new("processor_state", format!("{}:{}", chain, block_number));
+        self.db.put_cf(cf, key.to_bytes(), state.as_bytes())?;
+        Ok(())
+    }
+
+    async fn get_processor_state(&self, chain: &str, block_number: u64) -> Result<Option<String>> {
+        let cf = self.cf_block_status()?;
+        let key = Key::new("processor_state", format!("{}:{}", chain, block_number));
+        if let Some(bytes) = self.db.get_cf(cf, key.to_bytes())? {
+            let state = string_from_utf8(bytes)?;
+            Ok(Some(state))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn set_historical_processor_state(&self, chain: &str, block_number: u64, state: &str) -> Result<()> {
+        let cf = self.cf_historical_valence_state()?;
+        let key = Key::new("historical_processor_state", format!("{}:{}", chain, block_number));
+        self.db.put_cf(cf, key.to_bytes(), state.as_bytes())?;
+        Ok(())
+    }
+
+    async fn get_historical_processor_state(&self, chain: &str, block_number: u64) -> Result<Option<String>> {
+        let cf = self.cf_historical_valence_state()?;
+        let key = Key::new("historical_processor_state", format!("{}:{}", chain, block_number));
+        if let Some(bytes) = self.db.get_cf(cf, key.to_bytes())? {
+            let state = string_from_utf8(bytes)?;
+            Ok(Some(state))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn get_latest_block_before(&self, chain: &str, before_block: u64) -> Result<u64> {
+        let block_status_cf = self.cf_block_status()?;
+        let mut latest_block = 0;
+        
+        // Create a prefix iterator for blocks in this chain up to before_block
+        let prefix = format!("block_status:{}:", chain);
+        let iter = self.db.prefix_iterator_cf(block_status_cf, prefix.as_bytes());
+        
+        for item in iter {
+            let (key_bytes, _) = item.map_err(|e| Error::database(format!("RocksDB iterator error: {}", e)))?;
+            let key_str = string_from_utf8(key_bytes.to_vec())?;
+            let parts: Vec<&str> = key_str.split(':').collect();
+            if parts.len() >= 3 {
+                if let Ok(block_num) = parts[2].parse::<u64>() {
+                    if block_num < before_block && block_num > latest_block {
+                        latest_block = block_num;
+                    }
+                }
+            }
+        }
+        
+        Ok(latest_block)
     }
 }
 
@@ -650,6 +924,14 @@ impl RocksStorage {
 
     pub(crate) fn latest_historical_valence_block_key(&self, account_id: &str) -> Vec<u8> {
         Key::new("latest_historical_valence_block", account_id).to_bytes()
+    }
+
+    pub(crate) fn valence_processor_state_key(&self, processor_id: &str) -> Vec<u8> {
+        format!("processor_state:{}", processor_id).into_bytes()
+    }
+    
+    pub(crate) fn historical_valence_processor_state_key(&self, processor_id: &str, block_number: u64) -> Vec<u8> {
+        format!("historical_processor_state:{}:{}", processor_id, block_number).into_bytes()
     }
 
     // --- General DB Helpers --- 
@@ -932,4 +1214,14 @@ impl KeyBatch {
     pub fn inner(self) -> WriteBatch {
         self.batch
     }
+
+    pub fn delete_key_bytes(&mut self, key: &[u8], cf: &ColumnFamily) -> &mut Self {
+        self.batch.delete_cf(cf, key);
+        self
+    }
+}
+
+// Fix the String::from_utf8 errors by adding this helper function
+fn string_from_utf8(bytes: Vec<u8>) -> Result<String> {
+    String::from_utf8(bytes).map_err(|e| Error::storage(format!("UTF8 conversion error: {}", e)))
 }

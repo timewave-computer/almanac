@@ -1,5 +1,6 @@
 //! Test for database migrations
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::any::Any;
 
 use indexer_core::event::Event;
 use indexer_core::Result;
@@ -50,6 +51,10 @@ impl Event for TestEvent {
     fn raw_data(&self) -> &[u8] {
         &self.raw_data
     }
+    
+    fn as_any(&self) -> &(dyn Any + 'static) {
+        self
+    }
 }
 
 #[tokio::test]
@@ -81,14 +86,14 @@ async fn test_postgres_migrations() -> Result<()> {
     };
     
     // Store the event
-    storage.store_event(Box::new(event)).await?;
+    storage.store_event("ethereum", Box::new(event)).await?;
     
     // Retrieve the latest block
     let latest_block = storage.get_latest_block("ethereum").await?;
     assert_eq!(latest_block, 12345);
     
     // Retrieve events
-    let events = storage.get_events(vec![]).await?;
+    let events = storage.get_events("ethereum", 0, latest_block).await?;
     assert!(!events.is_empty());
     
     Ok(())
@@ -127,7 +132,7 @@ async fn test_postgres_storage_full() -> Result<()> {
             raw_data: format!("test data for event {}", i).into_bytes(),
         };
         
-        storage.store_event(Box::new(event)).await?;
+        storage.store_event("ethereum", Box::new(event)).await?;
     }
     
     // Check the latest block
@@ -135,7 +140,7 @@ async fn test_postgres_storage_full() -> Result<()> {
     assert_eq!(latest_block, 1099); // 1000 + 99
     
     // Retrieve all events
-    let events = storage.get_events(vec![]).await?;
+    let events = storage.get_events("ethereum", 0, latest_block).await?;
     assert_eq!(events.len(), 100);
     
     Ok(())

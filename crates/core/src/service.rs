@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use crate::event::Event;
 use crate::types::{ChainId, EventFilter};
-use indexer_common::{BlockStatus, Result};
+use indexer_pipeline::{BlockStatus, Result};
 
 /// Define common interfaces for chain services
 

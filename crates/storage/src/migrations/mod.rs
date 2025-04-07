@@ -1,22 +1,43 @@
+#[cfg(feature = "postgres")]
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[cfg(feature = "postgres")]
 use async_trait::async_trait;
-use sqlx::{Pool, Postgres};
+#[cfg(feature = "postgres")]
+use sqlx::migrate::Migrator;
+#[cfg(feature = "postgres")]
+use sqlx::{Pool, Postgres, Row};
+#[cfg(feature = "postgres")]
 use thiserror::Error;
+#[cfg(feature = "postgres")]
 use tracing::{debug, info};
+#[cfg(feature = "postgres")]
+use std::path::Path;
+use std::fs;
 
-use indexer_core::Result;
-use indexer_common::{Error};
+#[cfg(feature = "postgres")]
+use indexer_core::{Error, Result};
 
+#[cfg(feature = "postgres")]
 pub mod postgres;
+#[cfg(feature = "postgres")]
 pub mod schema;
 
 /// Migration error
 #[derive(Debug, Error)]
+#[cfg(feature = "postgres")]
 pub enum MigrationError {
     /// Database error
     #[error("Database error: {0}")]
     Database(#[from] sqlx::Error),
+    
+    /// Migration error from sqlx::migrate
+    #[error("Migration error: {0}")]
+    Migrate(#[from] sqlx::migrate::MigrateError),
+    
+    /// IO error during migration discovery
+    #[error("IO error: {0}")]
+    IO(String),
     
     /// Migration already exists
     #[error("Migration already exists: {0}")]
@@ -26,9 +47,13 @@ pub enum MigrationError {
     #[error("Migration not found: {0}")]
     MigrationNotFound(String),
     
-    /// IO error
-    #[error("IO error: {0}")]
-    IO(String),
+    /// SQL error
+    #[error("SQL error: {0}")]
+    SQL(String),
+    
+    /// Other error
+    #[error("Unknown error: {0}")]
+    Other(String),
     
     /// Unknown error
     #[error("Unknown error: {0}")]
@@ -37,6 +62,7 @@ pub enum MigrationError {
 
 /// Migration manager
 #[async_trait]
+#[cfg(feature = "postgres")]
 pub trait MigrationManager: Send + Sync + 'static {
     /// Apply all pending migrations
     async fn apply_migrations(&self) -> Result<Vec<String>>;
@@ -49,6 +75,7 @@ pub trait MigrationManager: Send + Sync + 'static {
 }
 
 /// PostgreSQL migration manager
+#[cfg(feature = "postgres")]
 pub struct PostgresMigrationManager {
     /// Database connection pool
     pool: Pool<Postgres>,
@@ -57,6 +84,7 @@ pub struct PostgresMigrationManager {
     migrations_dir: String,
 }
 
+#[cfg(feature = "postgres")]
 impl PostgresMigrationManager {
     /// Create a new PostgreSQL migration manager
     pub fn new(pool: Pool<Postgres>, migrations_dir: String) -> Self {
@@ -86,6 +114,7 @@ impl PostgresMigrationManager {
 }
 
 #[async_trait]
+#[cfg(feature = "postgres")]
 impl MigrationManager for PostgresMigrationManager {
     async fn apply_migrations(&self) -> Result<Vec<String>> {
         // Ensure the migrations table exists
@@ -513,7 +542,7 @@ impl MigrationManager for PostgresMigrationManager {
                     COMMENT ON COLUMN valence_library_approvals.account_id IS 'Account approving use of the library';
                     "#
                 }
-                _ => continue,
+                _ => continue, // Skip unknown migration names
             };
             
             // Start a transaction
@@ -600,180 +629,108 @@ impl MigrationManager for PostgresMigrationManager {
     }
 }
 
-/// Create migrations table if it doesn't exist
+/// Applies all migrations from the specified directory using sqlx::migrate::Migrator.
+#[cfg(feature = "postgres")]
+pub async fn apply_migrations_from_dir(pool: &Pool<Postgres>, migrations_dir: &str) -> Result<()>
+{
+    info!(directory = %migrations_dir, "Applying migrations...");
+    let migrator = Migrator::new(Path::new(migrations_dir)).await
+        .map_err(|e| MigrationError::IO(e.to_string()))?;
+        
+    migrator.run(pool).await.map_err(MigrationError::from)?;
+
+    info!("Migrations applied successfully.");
+    Ok(())
+}
+
+/// Create migrations table if it doesn't exist (required by sqlx::Migrator)
+#[cfg(feature = "postgres")]
 pub async fn ensure_migrations_table(pool: &Pool<Postgres>) -> Result<()> {
-    info!("Ensuring migrations table exists");
-    
-    sqlx::query(
-        r#"
-        CREATE TABLE IF NOT EXISTS migrations (
-            id SERIAL PRIMARY KEY,
-            name TEXT UNIQUE NOT NULL,
-            applied_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-        )
-        "#
-    )
-    .execute(pool)
-    .await
-    .map_err(|e| Error::Storage(format!("Failed to create migrations table: {}", e)))?;
-    
+    info!("Ensuring _sqlx_migrations table exists");
+    // sqlx::Migrator automatically creates the _sqlx_migrations table
+    // if it doesn't exist when run() is called. 
+    // However, if we need to check its existence beforehand for some reason,
+    // we could add a check here, but it's usually not necessary.
+    // For now, this function can be a no-op or simply log.
     Ok(())
 }
 
-/// Create contract_schemas table if it doesn't exist
-pub async fn ensure_contract_schemas_table(pool: &Pool<Postgres>) -> Result<()> {
-    info!("Ensuring contract_schemas table exists");
-    
-    sqlx::query(
-        r#"
-        CREATE TABLE IF NOT EXISTS contract_schemas (
-            id SERIAL PRIMARY KEY,
-            chain TEXT NOT NULL,
-            address TEXT NOT NULL,
-            schema_data BYTEA NOT NULL,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            UNIQUE(chain, address)
-        )
-        "#
-    )
-    .execute(pool)
-    .await
-    .map_err(|e| Error::Storage(format!("Failed to create contract_schemas table: {}", e)))?;
-    
-    Ok(())
-}
-
-/// Create events table if it doesn't exist
-pub async fn ensure_events_table(pool: &Pool<Postgres>) -> Result<()> {
-    info!("Ensuring events table exists");
-    
-    sqlx::query(
-        r#"
-        CREATE TABLE IF NOT EXISTS events (
-            id TEXT PRIMARY KEY,
-            chain TEXT NOT NULL,
-            block_number BIGINT NOT NULL,
-            block_hash TEXT NOT NULL,
-            tx_hash TEXT NOT NULL,
-            timestamp BIGINT NOT NULL,
-            event_type TEXT NOT NULL,
-            raw_data BYTEA NOT NULL,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-        )
-        "#
-    )
-    .execute(pool)
-    .await
-    .map_err(|e| Error::Storage(format!("Failed to create events table: {}", e)))?;
-    
-    // Create indexes for events table
-    sqlx::query(
-        r#"CREATE INDEX IF NOT EXISTS idx_events_chain ON events (chain)"#
-    )
-    .execute(pool)
-    .await
-    .map_err(|e| Error::Storage(format!("Failed to create events index: {}", e)))?;
-    
-    sqlx::query(
-        r#"CREATE INDEX IF NOT EXISTS idx_events_block_number ON events (block_number)"#
-    )
-    .execute(pool)
-    .await
-    .map_err(|e| Error::Storage(format!("Failed to create events index: {}", e)))?;
-    
-    sqlx::query(
-        r#"CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events (timestamp)"#
-    )
-    .execute(pool)
-    .await
-    .map_err(|e| Error::Storage(format!("Failed to create events index: {}", e)))?;
-    
-    sqlx::query(
-        r#"CREATE INDEX IF NOT EXISTS idx_events_event_type ON events (event_type)"#
-    )
-    .execute(pool)
-    .await
-    .map_err(|e| Error::Storage(format!("Failed to create events index: {}", e)))?;
-    
-    Ok(())
-}
-
-/// Create blocks table if it doesn't exist
-pub async fn ensure_blocks_table(pool: &Pool<Postgres>) -> Result<()> {
-    info!("Ensuring blocks table exists");
-    
-    sqlx::query(
-        r#"
-        CREATE TABLE IF NOT EXISTS blocks (
-            chain TEXT NOT NULL,
-            block_number BIGINT NOT NULL,
-            block_hash TEXT NOT NULL,
-            timestamp BIGINT NOT NULL,
-            status TEXT DEFAULT 'confirmed',
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            PRIMARY KEY (chain, block_number)
-        )
-        "#
-    )
-    .execute(pool)
-    .await
-    .map_err(|e| Error::Storage(format!("Failed to create blocks table: {}", e)))?;
-    
-    Ok(())
-}
-
-/// Initialize all database tables
+/// Initialize all database tables by running migrations from the default directory.
+#[cfg(feature = "postgres")]
 pub async fn initialize_database(pool: &Pool<Postgres>) -> Result<()> {
-    info!("Initializing database tables");
+    let migrations_dir = "./crates/storage/src/migrations"; // Default path
+    info!(directory = %migrations_dir, "Initializing database tables by running migrations...");
     
-    // Create all required tables
-    ensure_migrations_table(pool).await?;
-    ensure_contract_schemas_table(pool).await?;
-    ensure_events_table(pool).await?;
-    ensure_blocks_table(pool).await?;
-    
-    info!("Database tables initialized successfully");
+    // Apply migrations using the standard Migrator
+    apply_migrations_from_dir(pool, migrations_dir).await?;
+
+    info!("Database initialized successfully via migrations.");
     
     Ok(())
 }
 
-/// Get list of applied migrations
-pub async fn get_applied_migrations(pool: &Pool<Postgres>) -> Result<Vec<String>> {
-    // For benchmarks, we'll bypass database access
-    debug!("Bypassing migrations table check for benchmarks");
-    Ok(vec![])
-    
-    // Original implementation
-    /*
-    // Create migrations table if it doesn't exist
-    sqlx::query(
-        r#"
-        CREATE TABLE IF NOT EXISTS migrations (
-            id SERIAL PRIMARY KEY,
-            name VARCHAR(255) NOT NULL,
-            applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-        );
-        "#,
+/// Get list of applied migrations using sqlx::Migrator
+#[cfg(feature = "postgres")]
+pub async fn get_applied_migrations(pool: &Pool<Postgres>, migrations_dir: &str) -> Result<Vec<String>> {
+    let migrator = Migrator::new(Path::new(migrations_dir)).await
+         .map_err(|e| MigrationError::IO(e.to_string()))?;
+         
+    // Check if the _sqlx_migrations table exists before querying it
+    // This avoids errors if migrations haven't run at all yet.
+    let table_exists = sqlx::query(
+        "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = '_sqlx_migrations')"
     )
-    .execute(pool)
-    .await?;
-    
-    // Get list of applied migrations
-    let migrations = sqlx::query!(
-        r#"
-        SELECT name FROM migrations ORDER BY applied_at ASC
-        "#
-    )
-    .fetch_all(pool)
-    .await?;
-    
-    Ok(migrations.into_iter().map(|r| r.name).collect())
-    */
+    .fetch_one(pool)
+    .await
+    .map(|row| row.get::<bool, _>("exists"))
+    .unwrap_or(false);
+
+    if !table_exists {
+        return Ok(Vec::new()); // No migrations applied yet
+    }
+
+    // Use internal method to list applied, might change in future sqlx versions
+    // Replace with official API if available later.
+    let applied_migrations = migrator.fetch_applied_migrations(pool).await
+        .map_err(MigrationError::from)?;
+        
+    Ok(applied_migrations.into_iter().map(|m| m.version.to_string()).collect())
 }
 
 // Re-export for convenience
+#[cfg(feature = "postgres")]
 pub use schema::{
     ContractSchemaVersion, EventSchema, FunctionSchema, FieldSchema,
     ContractSchema, ContractSchemaRegistry, InMemorySchemaRegistry,
 };
+
+// Fix the From<MigrationError> for Error implementation
+#[cfg(feature = "postgres")]
+impl From<MigrationError> for Error {
+    fn from(err: MigrationError) -> Self {
+        match err {
+            MigrationError::IO(msg) => Error::io(msg),
+            MigrationError::SQL(e) => Error::database(format!("SQL migration error: {}", e)),
+            MigrationError::Other(msg) => Error::storage(format!("Migration error: {}", msg)),
+            MigrationError::Database(e) => Error::database(format!("Database error: {}", e)),
+            MigrationError::Migrate(e) => Error::database(format!("Migration error: {}", e)),
+            MigrationError::MigrationExists(msg) => Error::database(format!("Migration exists: {}", msg)),
+            MigrationError::MigrationNotFound(msg) => Error::database(format!("Migration not found: {}", msg)),
+            MigrationError::Unknown(msg) => Error::generic(format!("Unknown error: {}", msg)),
+        }
+    }
+}
+
+// Update the fetch_applied_migrations function to use the correct error types
+#[cfg(feature = "postgres")]
+async fn fetch_applied_migrations(migrator: &sqlx::migrate::Migrator, pool: &Pool<Postgres>) -> Result<Vec<String>> {
+    // Placeholder implementation to make it compile
+    let result = sqlx::query("SELECT name FROM migrations ORDER BY applied_at")
+        .fetch_all(pool)
+        .await
+        .map_err(|e| Error::database(format!("Failed to fetch migrations: {}", e)))?;
+    
+    Ok(result.into_iter()
+        .map(|row| row.get::<String, _>("name"))
+        .collect())
+}
