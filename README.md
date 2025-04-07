@@ -148,14 +148,6 @@ The system is designed to meet the following performance targets:
 - Complex query latency for PostgreSQL < 500ms (95th percentile)
 - Support for at least 100 concurrent read queries
 
-## Project Status
-
-The project is actively under development.
-
-## Credit
-
-- Cover image from [Gaine's New-York pocket almanack for the year 1789](https://www.loc.gov/resource/rbc0001.2022madison98629)
-
 ## Cross-Chain Testing
 
 The project now includes full Ethereum contract implementations for testing cross-chain functionality:
@@ -192,3 +184,7 @@ The project now includes full Ethereum contract implementations for testing cros
    - Clean up all resources after completion
 
 This implementation provides a robust framework for testing cross-chain interactions between Ethereum and Cosmos chains.
+
+## Credit
+
+- Cover image from [Gaine's New-York pocket almanack for the year 1789](https://www.loc.gov/resource/rbc0001.2022madison98629)
