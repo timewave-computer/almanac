@@ -64,6 +64,7 @@ lib/
 $TMPDIR/
 $CARGO_TARGET_DIR/
 tmp/
+postgres_data/
 
 # Reth Source (if cloned locally)
 /reth-src/

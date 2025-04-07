@@ -1,7 +1,57 @@
-# reth.nix - Module for running a reth Ethereum node
-{ lib, pkgs, ... }:
+# reth.nix - Module for building and running reth v0.2.0-beta.5 from source
+{ lib, pkgs, config, ... }:
 
 let
+  # Fetch Reth source code for v0.2.0-beta.5
+  reth-src = pkgs.fetchFromGitHub {
+    owner = "paradigmxyz";
+    repo = "reth";
+    rev = "v0.2.0-beta.5";
+    hash = "sha256-2z66Q+Y1W8I4z4y9X8H7C6f6A3Z8F9D0b1G2H3J4K5c="; # Needs correct hash
+    # Let's try fetching submodules, might be needed
+    fetchSubmodules = true; 
+  };
+
+  # Define build inputs for Reth
+  rethBuildInputs = with pkgs; [ 
+    pkg-config openssl protobuf cmake
+  ] ++ lib.optionals stdenv.isDarwin [ 
+    darwin.apple_sdk.frameworks.Security 
+    darwin.apple_sdk.frameworks.SystemConfiguration
+  ] ++ lib.optionals stdenv.isLinux [ 
+    libclang.lib llvmPackages.libcxxClang
+  ];
+
+  # Build Reth from source
+  reth-pkg = pkgs.rustPlatform.buildRustPackage {
+    pname = "reth";
+    version = "0.2.0-beta.5";
+    src = reth-src;
+
+    # Cargo lock file location might differ in older versions, adjust if needed
+    cargoLock = {
+      lockFile = "${reth-src}/Cargo.lock";
+    };
+
+    nativeBuildInputs = rethBuildInputs;
+    buildInputs = rethBuildInputs; # Some dependencies might be needed at runtime too
+
+    # Environment variables needed for build
+    LIBCLANG_PATH = pkgs.lib.optionalString pkgs.stdenv.isLinux "${pkgs.llvmPackages.libclang.lib}/lib";
+    OPENSSL_DIR = pkgs.openssl.dev;
+    OPENSSL_LIB_DIR = "${pkgs.openssl.out}/lib";
+    OPENSSL_INCLUDE_DIR = "${pkgs.openssl.dev}/include";
+    PROTOC = "${pkgs.protobuf}/bin/protoc";
+    PROTOC_INCLUDE = "${pkgs.protobuf}/include";
+
+    # Reth might have specific check flags or need some skipped
+    # Add checkFlags or doCheck = false; if needed
+    # doCheck = false; # Example: Skip checks if they fail
+    
+    # Disable default features if necessary, enable specific ones
+    # cargoBuildFlags = [ "--no-default-features" "--features=xxx" ];
+  };
+
   # Define default configuration for reth
   defaultRethConfig = {
     # Network related settings
@@ -124,7 +174,7 @@ let
       defaultAccount = builtins.elemAt finalConfig.genesisAccounts 0;
     };
 
-  # Script to start reth with the given config
+  # Script to start reth using the built package
   makeRethStartScript = { name ? "start-reth", config ? {} }:
     let
       rethCfg = makeRethConfig config;
@@ -156,7 +206,7 @@ let
         # Initialize if needed
         if [ ! -d "$DATA_DIR/db" ]; then
           echo "Initializing reth node with genesis block..."
-          ${pkgs.reth}/bin/reth init --datadir "$DATA_DIR" --chain "$DATA_DIR/config/genesis.json"
+          ${reth-pkg}/bin/reth init --datadir "$DATA_DIR" --chain "$DATA_DIR/config/genesis.json"
         fi
         
         # Start reth
@@ -184,14 +234,14 @@ let
         EOF
         
         # Start with appropriate parameters
-        ${pkgs.reth}/bin/reth node \
+        ${reth-pkg}/bin/reth node \
           --datadir "$DATA_DIR" \
           --config "$DATA_DIR/config/reth.toml" \
           --dev \
           "$@"
       '';
 
-  # Script to purge reth data
+  # Script to clean reth data
   makeRethCleanScript = { name ? "clean-reth", config ? {} }:
     let
       rethCfg = makeRethConfig config;
@@ -208,7 +258,7 @@ let
         echo "Done."
       '';
 
-  # Import genesis accounts into a running node
+  # Script to import accounts (needs Geth still, unrelated to reth build)
   makeRethImportAccountsScript = { name ? "import-reth-accounts", config ? {} }:
     let
       rethCfg = makeRethConfig config;
@@ -232,7 +282,7 @@ let
         echo "Done importing accounts."
       '';
 
-  # Script to export reth configuration for integrating with other systems
+  # Script to export config (no changes needed)
   makeRethExportConfigScript = { name ? "export-reth-config", config ? {} }:
     let
       rethCfg = makeRethConfig config;
@@ -256,66 +306,43 @@ let
         
         echo "Exported reth configuration to $(pwd)/config/reth/config.json"
       '';
+
 in
 {
-  # Export Nix functions for use in other modules
-  inherit makeRethConfig makeRethStartScript makeRethCleanScript makeRethImportAccountsScript makeRethExportConfigScript;
-  
-  # Default configurations for different environments
-  testConfig = makeRethConfig {
-    dataDir = "~/.reth-test";
-    rpcPort = 8545;
-    wsPort = 8546;
-    p2pPort = 30303;
-    chainId = 31337;
-  };
-  
-  devConfig = makeRethConfig {
-    dataDir = "~/.reth-dev";
-    rpcPort = 8545;
-    wsPort = 8546;
-    p2pPort = 30303;
-    chainId = 31337;
-    blockTime = 1; # Faster blocks for development
-  };
-  
-  # Packages available to the flake
-  perSystem = { config, self', inputs', pkgs, ... }: {
-    packages = {
-      # Start a reth node with default test configuration
-      start-reth = makeRethStartScript { config = {}; };
-      
-      # Clean reth data
-      clean-reth = makeRethCleanScript { config = {}; };
-      
-      # Import accounts
-      import-reth-accounts = makeRethImportAccountsScript { config = {}; };
-      
-      # Export configuration
-      export-reth-config = makeRethExportConfigScript { config = {}; };
-    };
-    
-    # Apps for the flake
+  # Define options for this module (can be empty if no configuration needed)
+  options = {}; 
+
+  # Define configuration based on options and defaults
+  config = {
+    # Expose the built reth package
+    packages.reth = reth-pkg;
+
+    # Define apps using the generated scripts
     apps = {
       start-reth = {
         type = "app";
-        program = "${self'.packages.start-reth}/bin/start-reth";
+        program = "${makeRethStartScript {}}";
       };
       
       clean-reth = {
         type = "app";
-        program = "${self'.packages.clean-reth}/bin/clean-reth";
+        program = "${makeRethCleanScript {}}";
       };
       
       import-reth-accounts = {
         type = "app";
-        program = "${self'.packages.import-reth-accounts}/bin/import-reth-accounts";
+        program = "${makeRethImportAccountsScript {}}";
       };
       
       export-reth-config = {
         type = "app";
-        program = "${self'.packages.export-reth-config}/bin/export-reth-config";
+        program = "${makeRethExportConfigScript {}}";
       };
     };
+
+    # Define shellHook (if needed, e.g., to export env vars)
+    # shellHook = '''
+    #   export RETH_DATA_DIR="${builtins.replaceStrings ["~"] [builtins.getEnv "HOME"] (makeRethConfig {}).dataDir}"
+    # ''';
   };
 } 

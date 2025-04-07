@@ -15,10 +15,11 @@ use indexer_core::event::Event;
 #[cfg(feature = "rocks")]
 use rocksdb::{Options, DB, WriteBatch, IteratorMode, Direction, BlockBasedOptions, BoundColumnFamily, ColumnFamily};
 use serde::{Deserialize, Serialize};
-use tracing::{debug, warn};
+use tracing::{debug, warn, info};
 use serde_json;
 use num_cpus;
 use bincode;
+use std::str::FromUtf8Error;
 
 use crate::EventFilter;
 use crate::Storage;
@@ -220,11 +221,11 @@ impl Storage for RocksStorage {
         let mut latest_block = 0;
         for item in iter {
             let (key_bytes, value_bytes) = item.map_err(|e| Error::database(format!("RocksDB iterator error: {}", e)))?;
-            let key_str = String::from_utf8(key_bytes.to_vec())?;
+            let key_str = string_from_utf8(key_bytes.to_vec())?;
             let parts: Vec<&str> = key_str.split(':').collect();
             if parts.len() >= 3 {
                  if let Ok(block_num) = parts[2].parse::<u64>() {
-                     let current_status_str = String::from_utf8(value_bytes.to_vec())?;
+                     let current_status_str = string_from_utf8(value_bytes.to_vec())?;
                      if current_status_str == status.as_str() {
                          if block_num > latest_block {
                              latest_block = block_num;
@@ -243,7 +244,7 @@ impl Storage for RocksStorage {
         for block_num in from_block..=to_block {
             let key = Key::new("block_status", format!("{}:{}", chain, block_num));
             if let Some(status_bytes) = self.db.get_cf(cf, key.to_bytes())? {
-                let status_str = String::from_utf8(status_bytes)?;
+                let status_str = string_from_utf8(status_bytes)?;
                 if status_str == status.as_str() {
                     // If status matches, get events for this block
                     let block_events = self.get_events(chain, block_num, block_num).await?;
@@ -512,7 +513,7 @@ impl Storage for RocksStorage {
     
     async fn get_valence_processor_state(&self, processor_id: &str) -> Result<Option<ValenceProcessorState>> {
         let key = self.valence_processor_state_key(processor_id);
-        let cf = self.cf_processor_states()?;
+        let cf = self.cf_block_status()?;
         if let Some(data) = self.db.get_cf(cf, key)? {
             let state: ValenceProcessorState = serde_json::from_slice(&data)?;
             Ok(Some(state))
@@ -523,7 +524,7 @@ impl Storage for RocksStorage {
     
     async fn set_valence_processor_state(&self, processor_id: &str, state: &ValenceProcessorState) -> Result<()> {
         let key = self.valence_processor_state_key(processor_id);
-        let cf = self.cf_processor_states()?;
+        let cf = self.cf_block_status()?;
         let data = serde_json::to_vec(state)?;
         self.db.put_cf(cf, key, data)?;
         Ok(())
@@ -536,7 +537,7 @@ impl Storage for RocksStorage {
         state: &ValenceProcessorState,
     ) -> Result<()> {
         let key = self.historical_valence_processor_state_key(processor_id, block_number);
-        let cf = self.cf_historical_processor_states()?;
+        let cf = self.cf_historical_valence_state()?;
         let data = serde_json::to_vec(state)?;
         self.db.put_cf(cf, key, data)?;
         Ok(())
@@ -548,7 +549,7 @@ impl Storage for RocksStorage {
         block_number: u64,
     ) -> Result<Option<ValenceProcessorState>> {
         let key = self.historical_valence_processor_state_key(processor_id, block_number);
-        let cf = self.cf_historical_processor_states()?;
+        let cf = self.cf_historical_valence_state()?;
         if let Some(data) = self.db.get_cf(cf, key)? {
             let state: ValenceProcessorState = serde_json::from_slice(&data)?;
             Ok(Some(state))
@@ -699,8 +700,8 @@ impl Storage for RocksStorage {
     }
 
     async fn reorg_chain(&self, chain: &str, from_block: u64) -> Result<()> {
-        info!(chain, from_block, "Handling reorg in RocksDB");
-
+        info!("Handling reorg in RocksDB for chain {} from block {}", chain, from_block);
+        
         // Simplified reorg: Delete blocks and associated data from `from_block` onwards.
         // A more robust implementation might move data or mark it as orphaned.
 
@@ -712,7 +713,7 @@ impl Storage for RocksStorage {
         let mut block_iter = self.db.prefix_iterator_cf(block_status_cf, block_status_prefix);
         while let Some(item) = block_iter.next() {
             let (key_bytes, _) = item?;
-            let key_str = String::from_utf8(key_bytes.to_vec())?;
+            let key_str = string_from_utf8(key_bytes.to_vec())?;
             let parts: Vec<&str> = key_str.split(':').collect();
             if parts.len() >= 3 {
                 if let Ok(block_num) = parts[2].parse::<u64>() {
@@ -732,7 +733,7 @@ impl Storage for RocksStorage {
 
         while let Some(item) = chain_block_iter.next() {
             let (index_key_bytes, event_id_bytes) = item?;
-            let index_key_str = String::from_utf8(index_key_bytes.to_vec())?;
+            let index_key_str = string_from_utf8(index_key_bytes.to_vec())?;
             let parts: Vec<&str> = index_key_str.split(':').collect(); // e.g., index:chain_block:eth:0x...block_num
             if parts.len() >= 4 {
                 if let Ok(block_num) = u64::from_str_radix(parts[3], 16) {
@@ -757,17 +758,77 @@ impl Storage for RocksStorage {
 
         // 4. Update latest block
         // Find the highest block *before* from_block that exists.
-        let new_latest_block = self.find_latest_block_before(chain, from_block).await?;
+        let new_latest_block = self.get_latest_block(chain, from_block).await?;
         let latest_block_key = Key::new("latest_block", chain);
         batch.put(&latest_block_key, new_latest_block.to_string().as_bytes());
 
         // Write the batch
         self.write_batch(batch)?;
 
-        info!(chain, from_block, new_latest_block, "Reorg complete in RocksDB");
+        info!("Reorg complete in RocksDB for chain {} from block {} - new latest block: {}", 
+              chain, from_block, new_latest_block);
         Ok(())
     }
 
+    pub async fn set_processor_state(&self, chain: &str, block_number: u64, state: &str) -> Result<()> {
+        let cf = self.cf_block_status()?;
+        let key = Key::new("processor_state", format!("{}:{}", chain, block_number));
+        self.db.put_cf(cf, key.to_bytes(), state.as_bytes())?;
+        Ok(())
+    }
+
+    pub async fn get_processor_state(&self, chain: &str, block_number: u64) -> Result<Option<String>> {
+        let cf = self.cf_block_status()?;
+        let key = Key::new("processor_state", format!("{}:{}", chain, block_number));
+        if let Some(bytes) = self.db.get_cf(cf, key.to_bytes())? {
+            let state = string_from_utf8(bytes)?;
+            Ok(Some(state))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub async fn set_historical_processor_state(&self, chain: &str, block_number: u64, state: &str) -> Result<()> {
+        let cf = self.cf_historical_valence_state()?;
+        let key = Key::new("historical_processor_state", format!("{}:{}", chain, block_number));
+        self.db.put_cf(cf, key.to_bytes(), state.as_bytes())?;
+        Ok(())
+    }
+
+    pub async fn get_historical_processor_state(&self, chain: &str, block_number: u64) -> Result<Option<String>> {
+        let cf = self.cf_historical_valence_state()?;
+        let key = Key::new("historical_processor_state", format!("{}:{}", chain, block_number));
+        if let Some(bytes) = self.db.get_cf(cf, key.to_bytes())? {
+            let state = string_from_utf8(bytes)?;
+            Ok(Some(state))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn get_latest_block(&self, chain: &str, before_block: u64) -> Result<u64> {
+        let block_status_cf = self.cf_block_status()?;
+        let mut latest_block = 0;
+        
+        // Create a prefix iterator for blocks in this chain up to before_block
+        let prefix = format!("block_status:{}:", chain);
+        let iter = self.db.prefix_iterator_cf(block_status_cf, prefix.as_bytes());
+        
+        for item in iter {
+            let (key_bytes, _) = item.map_err(|e| Error::database(format!("RocksDB iterator error: {}", e)))?;
+            let key_str = string_from_utf8(key_bytes.to_vec())?;
+            let parts: Vec<&str> = key_str.split(':').collect();
+            if parts.len() >= 3 {
+                if let Ok(block_num) = parts[2].parse::<u64>() {
+                    if block_num < before_block && block_num > latest_block {
+                        latest_block = block_num;
+                    }
+                }
+            }
+        }
+        
+        Ok(latest_block)
+    }
 }
 
 impl RocksStorage {
@@ -1148,4 +1209,14 @@ impl KeyBatch {
     pub fn inner(self) -> WriteBatch {
         self.batch
     }
+
+    pub fn delete_key_bytes(&mut self, key: &[u8], cf: &ColumnFamily) -> &mut Self {
+        self.batch.delete_cf(cf, key);
+        self
+    }
+}
+
+// Fix the String::from_utf8 errors by adding this helper function
+fn string_from_utf8(bytes: Vec<u8>) -> Result<String> {
+    String::from_utf8(bytes).map_err(|e| Error::Custom(format!("UTF8 conversion error: {}", e)))
 }

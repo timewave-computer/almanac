@@ -6,13 +6,14 @@ use async_trait::async_trait;
 #[cfg(feature = "postgres")]
 use sqlx::migrate::Migrator;
 #[cfg(feature = "postgres")]
-use sqlx::{Pool, Postgres};
+use sqlx::{Pool, Postgres, Row};
 #[cfg(feature = "postgres")]
 use thiserror::Error;
 #[cfg(feature = "postgres")]
 use tracing::{debug, info};
 #[cfg(feature = "postgres")]
 use std::path::Path;
+use std::fs;
 
 #[cfg(feature = "postgres")]
 use indexer_core::{Error, Result};
@@ -694,3 +695,27 @@ pub use schema::{
     ContractSchemaVersion, EventSchema, FunctionSchema, FieldSchema,
     ContractSchema, ContractSchemaRegistry, InMemorySchemaRegistry,
 };
+
+// Add an implementation of From<MigrationError> for Error
+impl From<MigrationError> for Error {
+    fn from(err: MigrationError) -> Self {
+        match err {
+            MigrationError::IO(msg) => Error::IO(msg),
+            MigrationError::SQL(e) => Error::Database(format!("SQL migration error: {}", e)),
+            MigrationError::Other(msg) => Error::Custom(format!("Migration error: {}", msg)),
+        }
+    }
+}
+
+// Stub implementation for the fetch_applied_migrations function
+async fn fetch_applied_migrations(migrator: &sqlx::migrate::Migrator, pool: &Pool<Postgres>) -> Result<Vec<String>> {
+    // Placeholder implementation to make it compile
+    let result = sqlx::query("SELECT name FROM migrations ORDER BY applied_at")
+        .fetch_all(pool)
+        .await
+        .map_err(|e| Error::database(format!("Failed to fetch migrations: {}", e)))?;
+    
+    Ok(result.into_iter()
+        .map(|row| row.get::<String, _>("name"))
+        .collect())
+}

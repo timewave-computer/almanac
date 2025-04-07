@@ -1,3 +1,4 @@
+#![cfg(feature = "rocks")]
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -28,19 +29,20 @@ async fn benchmark_write_performance() -> Result<()> {
     
     // Define batch sizes to test
     let batch_sizes = vec![1, 10, 100, 1000];
+    let chain = "ethereum";
     
     println!("RocksDB Write Performance Benchmark:");
     println!("-----------------------------------");
     
     for &batch_size in &batch_sizes {
         // Create mock events
-        let events = create_mock_events("ethereum", batch_size);
+        let events = create_mock_events(chain, batch_size);
         
         // Measure time to store events
         let start = Instant::now();
         
         for event in events {
-            storage.store_event(event).await?;
+            storage.store_event(chain, event).await?;
         }
         
         let duration = start.elapsed();
@@ -75,15 +77,16 @@ async fn benchmark_read_performance() -> Result<()> {
     let storage = RocksStorage::new(config)?;
     
     // Create and store mock events
+    let chain = "ethereum";
     let total_events = 1000;
-    let events = create_mock_events("ethereum", total_events);
+    let events = create_mock_events(chain, total_events);
     
     let event_ids: Vec<String> = events.iter()
         .map(|e| e.id().to_string())
         .collect();
     
     for event in events {
-        storage.store_event(event).await?;
+        storage.store_event(chain, event).await?;
     }
     
     println!("RocksDB Read Performance Benchmark:");
@@ -143,8 +146,9 @@ async fn test_transaction_isolation() -> Result<()> {
     // Create the storage
     let storage = Arc::new(RocksStorage::new(config)?);
     
-    // Create mock events
-    let event = create_mock_event("event1", "ethereum", 100);
+    // Create mock events and define chain
+    let chain = "ethereum";
+    let event = create_mock_event("event1", chain, 100);
     
     // Clone storage for thread
     let storage_clone = storage.clone();
@@ -165,8 +169,8 @@ async fn test_transaction_isolation() -> Result<()> {
         })
     });
     
-    // Store the event in the main thread
-    storage.store_event(event).await?;
+    // Store the event in the main thread with the chain parameter
+    storage.store_event(chain, event).await?;
     
     // Wait for the other thread to complete and get its result
     let read_result = handle.join().unwrap()?;
@@ -188,6 +192,102 @@ async fn test_transaction_isolation() -> Result<()> {
     }
     
     println!("Transaction isolation test passed: concurrent read returned valid data");
+    
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_rocks_single_block_storage() -> Result<()> {
+    // Create a temporary directory for the rocks db
+    let tempdir = TempDir::new().unwrap();
+    
+    // Configure the storage
+    let config = RocksConfig {
+        path: tempdir.path().to_string_lossy().to_string(),
+        create_if_missing: true,
+        cache_size_mb: 128,
+    };
+    
+    let storage = RocksStorage::new(config)?;
+    
+    // Generate test events (100 events in a single block)
+    let chain = "ethereum";
+    // Create 100 events with block number 1
+    for i in 0..100 {
+        let event = create_mock_event(&format!("event_1_{}", i), chain, 1);
+        storage.store_event(chain, event).await?;
+    }
+    
+    // Close database
+    drop(storage);
+    
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_rocks_multi_block_storage() -> Result<()> {
+    // Create a temporary directory for the rocks db
+    let tempdir = TempDir::new().unwrap();
+    
+    // Configure the storage
+    let config = RocksConfig {
+        path: tempdir.path().to_string_lossy().to_string(),
+        create_if_missing: true,
+        cache_size_mb: 128,
+    };
+    
+    let storage = RocksStorage::new(config)?;
+    
+    // Generate test events (100 blocks, 10 events each)
+    let chain = "ethereum";
+    let num_blocks = 100;
+    let events_per_block = 10;
+    
+    // For each block, create events and store them
+    for block_number in 1..=num_blocks {
+        // Create events for this block
+        for i in 0..events_per_block {
+            let event = create_mock_event(&format!("event_{}_{}", block_number, i), chain, block_number);
+            storage.store_event(chain, event).await?;
+        }
+    }
+    
+    // Close database
+    drop(storage);
+    
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_rocks_event_lookup_performance() -> Result<()> {
+    // Create a temporary directory for the rocks db
+    let tempdir = TempDir::new().unwrap();
+    
+    // Configure the storage
+    let config = RocksConfig {
+        path: tempdir.path().to_string_lossy().to_string(),
+        create_if_missing: true,
+        cache_size_mb: 128,
+    };
+    
+    let storage = RocksStorage::new(config)?;
+    
+    // Setup test data - 1000 blocks with 10 events each
+    let chain = "ethereum";
+    let num_blocks = 1000;
+    let events_per_block = 10;
+    
+    // Generate and store events for each block
+    for block_number in 1..=num_blocks {
+        // Create events for this block
+        for i in 0..events_per_block {
+            let event = create_mock_event(&format!("event_{}_{}", block_number, i), chain, block_number);
+            storage.store_event(chain, event).await?;
+        }
+    }
+    
+    // Close database
+    drop(storage);
     
     Ok(())
 } 

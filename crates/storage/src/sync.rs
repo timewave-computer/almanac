@@ -213,7 +213,7 @@ impl StorageSynchronizer {
         };
         
         // Get events from primary
-        let events = primary.get_events(vec![filter]).await?;
+        let events = primary.get_events(chain, start_block, end_block).await?;
         
         if events.is_empty() {
             debug!("No events to synchronize for chain {}", chain);
@@ -233,9 +233,10 @@ impl StorageSynchronizer {
         for event in events {
             let secondary_clone = secondary.clone();
             let event_clone = event.clone();
+            let chain_clone = chain.to_string();
             
             futures.push(tokio::spawn(async move {
-                secondary_clone.store_event(event_clone).await
+                secondary_clone.store_event(&chain_clone, event_clone).await
             }));
         }
         
@@ -294,7 +295,7 @@ impl StorageSynchronizer {
             block_number: latest_block,
         });
         
-        secondary.store_event(event).await
+        secondary.store_event(chain, event).await
     }
 
     /// Manually process an event
