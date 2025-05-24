@@ -17,9 +17,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value as JsonValue};
 use tracing::info;
 
-use indexer_common::{Error, Result};
+use indexer_core::{Error, Result};
 use indexer_core::service::BoxedEventService;
-use indexer_storage::migrations::schema::{
+use crate::{
     ContractSchemaVersion, ContractSchema, EventSchema, FunctionSchema, FieldSchema,
     ContractSchemaRegistry,
 };
@@ -178,17 +178,17 @@ impl QueryRoot {
         // If version is provided, get that specific version
         // Otherwise, get the latest
         if let Some(version) = version {
-            if let Some(schema_version) = state.schema_registry.get_schema(&version, &address, &chain) {
-                Ok(Some(schema_version.schema.clone()))
-            } else {
-                Ok(None)
+            match state.schema_registry.get_schema(&chain, &address, &version) {
+                Ok(Some(schema)) => Ok(Some(schema)),
+                Ok(None) => Ok(None),
+                Err(e) => Err(async_graphql::Error::new(format!("Failed to get schema: {}", e))),
             }
         } else {
             // Get the latest schema
-            if let Some(schema_version) = state.schema_registry.get_latest_schema(&address, &chain) {
-                Ok(Some(schema_version.schema.clone()))
-            } else {
-                Ok(None)
+            match state.schema_registry.get_latest_schema(&chain, &address) {
+                Ok(Some(schema)) => Ok(Some(schema)),
+                Ok(None) => Ok(None),
+                Err(e) => Err(async_graphql::Error::new(format!("Failed to get latest schema: {}", e))),
             }
         }
     }
@@ -316,11 +316,10 @@ impl MutationRoot {
         
         // Convert input to ContractSchemaVersion
         let schema_version = ContractSchemaVersion {
-            id: format!("{}:{}:{}", input.version, input.contract_address, input.chain_id),
-            contract_address: input.contract_address,
-            chain_id: input.chain_id,
-            version: input.version,
+            version: input.version.clone(),
             schema: ContractSchema {
+                chain: input.chain_id.clone(),
+                address: input.contract_address.clone(),
                 name: input.name,
                 events: input.events.into_iter().map(|e| EventSchema {
                     name: e.name,
