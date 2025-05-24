@@ -1,6 +1,6 @@
 /// Event correlation and pattern matching functionality
 use std::collections::HashMap;
-use std::time::{SystemTime, Duration};
+use std::time::SystemTime;
 use async_trait::async_trait;
 
 use crate::event::Event;
@@ -170,7 +170,6 @@ impl EventCorrelator for DefaultEventCorrelator {
                 }
                 
                 let event = events[idx].as_ref();
-                let mut correlatable = true;
                 
                 // Check if this event correlates with at least one other in the group
                 for &other_idx in &event_indices {
@@ -331,7 +330,7 @@ impl DefaultPatternMatcher {
         pattern: &EventPattern,
         start_idx: usize,
     ) -> Option<PatternMatchResult> {
-        let mut matched_events = Vec::new();
+        let mut matched_events: Vec<usize> = Vec::new();
         let mut current_idx = start_idx;
         let mut step_idx = 0;
         
@@ -354,7 +353,8 @@ impl DefaultPatternMatcher {
             // Check block gap constraint
             if let Some(max_gap) = pattern.max_gap {
                 if !matched_events.is_empty() {
-                    let last_block = events[*matched_events.last().unwrap()].block_number();
+                    let last_idx = *matched_events.last().unwrap();
+                    let last_block = events[last_idx].block_number();
                     if event.block_number() > last_block + max_gap {
                         break;
                     }
