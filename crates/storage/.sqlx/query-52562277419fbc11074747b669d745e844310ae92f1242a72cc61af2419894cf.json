@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO contract_schemas (chain, address, schema_data)\n            VALUES ($1, $2, $3)\n            ON CONFLICT (chain, address) DO UPDATE SET\n                schema_data = EXCLUDED.schema_data,\n                updated_at = NOW()\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Varchar",
+        "Varchar",
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "52562277419fbc11074747b669d745e844310ae92f1242a72cc61af2419894cf"
+}

@@ -7,9 +7,11 @@ use crate::{
     ValenceLibraryUsage, ValenceLibraryState, ValenceLibraryApproval
 };
 #[cfg(feature = "postgres")]
-use tracing::{debug, info, warn};
+use tracing::{debug, info, warn, instrument};
 #[cfg(feature = "postgres")]
 use std::sync::Arc;
+#[cfg(feature = "postgres")]
+use std::time::SystemTime;
 #[cfg(feature = "postgres")]
 use std::collections::HashMap;
 
@@ -20,13 +22,13 @@ use indexer_pipeline::{Error, Result, BlockStatus};
 #[cfg(feature = "postgres")]
 use indexer_core::event::Event;
 #[cfg(feature = "postgres")]
-use sqlx::{Pool, Postgres, types::Json, Transaction};
+use indexer_core::types::{ChainId, EventFilter};
 #[cfg(feature = "postgres")]
-use tracing::instrument;
+use sqlx::{Pool, Postgres};
+#[cfg(feature = "postgres")]
+use chrono::{DateTime, Utc};
 
-use crate::EventFilter;
 use crate::Storage;
-use crate::migrations::initialize_database;
 use crate::{ValenceAccountInfo, ValenceAccountLibrary, ValenceAccountExecution, ValenceAccountState};
 
 #[cfg(feature = "postgres")]
@@ -34,13 +36,19 @@ pub mod repositories;
 #[cfg(feature = "postgres")]
 pub mod migrations;
 
-// Use the repositories directly instead of using paths
 #[cfg(feature = "postgres")]
 use repositories::event_repository::{EventRepository, PostgresEventRepository};
 #[cfg(feature = "postgres")]
 use repositories::contract_schema_repository::{
     ContractSchemaRepository, PostgresContractSchemaRepository
 };
+#[cfg(feature = "postgres")]
+use self::migrations::initialize_database;
+
+#[cfg(feature = "postgres")]
+fn timestamp_to_datetime(time: SystemTime) -> DateTime<Utc> {
+    DateTime::<Utc>::from(time)
+}
 
 /// PostgreSQL storage configuration
 #[derive(Debug, Clone)]
@@ -82,7 +90,7 @@ pub struct PostgresStorage {
 #[async_trait]
 impl Storage for PostgresStorage {
     async fn store_event(&self, _chain: &str, event: Box<dyn Event>) -> Result<()> {
-        let mut transaction = self.pool.begin().await?;
+        let transaction = self.pool.begin().await?;
         
         // Store the event using the repository
         self.event_repository.store_event(event).await?;
@@ -96,10 +104,12 @@ impl Storage for PostgresStorage {
     async fn get_events(&self, chain: &str, from_block: u64, to_block: u64) -> Result<Vec<Box<dyn Event>>> {
         // Construct filters based on input
         let filter = EventFilter {
+            chain_id: Some(ChainId::from(chain)),
             chain: Some(chain.to_string()),
             block_range: Some((from_block, to_block)),
             time_range: None,
             event_types: None,
+            custom_filters: HashMap::new(),
             limit: None,
             offset: None,
         };
@@ -116,21 +126,21 @@ impl Storage for PostgresStorage {
         // TODO: Implement properly - currently relies on update_block_status
         // Potentially store tx_hash in the blocks table as well?
          let status_str = status.as_str();
-         sqlx::query!(
+         sqlx::query(
              r#"
-             INSERT INTO blocks (chain, block_number, block_hash, timestamp, status)
+             INSERT INTO blocks (chain, number, hash, timestamp, status)
              VALUES ($1, $2, $3, $4, $5)
-             ON CONFLICT (chain, block_number) DO UPDATE SET
+             ON CONFLICT (chain, number) DO UPDATE SET
                  status = EXCLUDED.status,
-                 block_hash = EXCLUDED.block_hash, -- Keep hash updated
-                 timestamp = EXCLUDED.timestamp; -- Keep timestamp updated
-             "#,
-             chain,
-             block_number as i64,
-             tx_hash, // Assuming tx_hash can stand in for block_hash here, needs clarification
-             0i64, // Placeholder for timestamp
-             status_str
+                 hash = EXCLUDED.hash,
+                 timestamp = EXCLUDED.timestamp
+             "#
          )
+         .bind(chain)
+         .bind(block_number as i64)
+         .bind(tx_hash) // Assuming tx_hash can stand in for block_hash here, needs clarification
+         .bind(0i64) // Placeholder for timestamp
+         .bind(status_str)
          .execute(&self.pool)
          .await?;
          Ok(())
@@ -144,16 +154,16 @@ impl Storage for PostgresStorage {
         let status_str = status.as_str();
         
         // Update the status in the blocks table
-        sqlx::query!(
+        sqlx::query(
             r#"
             UPDATE blocks
             SET status = $1
-            WHERE chain = $2 AND block_number = $3
-            "#,
-            status_str,
-            chain,
-            block_number as i64
+            WHERE chain = $2 AND number = $3
+            "#
         )
+        .bind(status_str)
+        .bind(chain)
+        .bind(block_number as i64)
         .execute(&mut *transaction)
         .await?;
         
@@ -168,20 +178,22 @@ impl Storage for PostgresStorage {
         let status_str = status.as_str();
         
         // Query the latest block with the given status
-        let result = sqlx::query!(
+        let result: Option<(Option<i64>,)> = sqlx::query_as(
             r#"
-            SELECT MAX(block_number) as max_block
+            SELECT MAX(number) as max_block
             FROM blocks
             WHERE chain = $1 AND status = $2
-            "#,
-            chain,
-            status_str
+            "#
         )
-        .fetch_one(&self.pool)
+        .bind(chain)
+        .bind(status_str)
+        .fetch_optional(&self.pool)
         .await?;
         
         // Return the max block or 0 if no blocks found
-        let max_block = result.max_block.unwrap_or(0) as u64;
+        let max_block = result
+            .and_then(|(max_block,)| max_block)
+            .unwrap_or(0) as u64;
         
         Ok(max_block)
     }
@@ -190,22 +202,22 @@ impl Storage for PostgresStorage {
         let status_str = status.as_str();
         
         // Get the set of block numbers with the given status in the range
-        let blocks = sqlx::query!(
+        let blocks: Vec<(i64,)> = sqlx::query_as(
             r#"
-            SELECT block_number
+            SELECT number
             FROM blocks
-            WHERE chain = $1 AND status = $2 AND block_number >= $3 AND block_number <= $4
-            ORDER BY block_number ASC
-            "#,
-            chain,
-            status_str,
-            from_block as i64,
-            to_block as i64
+            WHERE chain = $1 AND status = $2 AND number >= $3 AND number <= $4
+            ORDER BY number ASC
+            "#
         )
+        .bind(chain)
+        .bind(status_str)
+        .bind(from_block as i64)
+        .bind(to_block as i64)
         .fetch_all(&self.pool)
         .await?;
         
-        let block_numbers: Vec<u64> = blocks.into_iter().map(|r| r.block_number as u64).collect();
+        let block_numbers: Vec<u64> = blocks.into_iter().map(|(number,)| number as u64).collect();
         
         if block_numbers.is_empty() {
             return Ok(Vec::new());
@@ -213,10 +225,12 @@ impl Storage for PostgresStorage {
 
         // Create filters for each matching block
         let filters: Vec<EventFilter> = block_numbers.iter().map(|&b| EventFilter {
+             chain_id: Some(ChainId::from(chain)),
              chain: Some(chain.to_string()),
              block_range: Some((b, b)), // Filter for this specific block
              time_range: None,
              event_types: None,
+             custom_filters: HashMap::new(),
              limit: None,
              offset: None,
          }).collect();
@@ -227,104 +241,121 @@ impl Storage for PostgresStorage {
         self.event_repository.get_events(filters).await
     }
 
+    /// Handle chain reorganization
     async fn reorg_chain(&self, chain: &str, from_block: u64) -> Result<()> {
-        info!(chain, from_block, "Handling reorg in PostgreSQL");
-        let mut tx = self.pool.begin().await?;
+        self.handle_chain_reorg(chain, from_block).await
+    }
 
-        // 1. Delete events >= from_block
-        sqlx::query!(
-            "DELETE FROM events WHERE chain = $1 AND block_number >= $2",
-            chain,
-            from_block as i64
-        )
-        .execute(&mut *tx)
-        .await?;
-
-        // 2. Delete blocks >= from_block
-        sqlx::query!(
-            "DELETE FROM blocks WHERE chain = $1 AND block_number >= $2",
-            chain,
-            from_block as i64
-        )
-        .execute(&mut *tx)
-        .await?;
+    /// Stores a record of an execution triggered by a Valence account.
+    #[instrument(skip(self, execution_info), fields(account_id = %execution_info.account_id))]
+    async fn store_valence_execution(
+        &self,
+        execution_info: ValenceAccountExecution,
+    ) -> Result<()> {
+        // Convert SystemTime to DateTime<Utc> for PostgreSQL
+        let executed_at: DateTime<Utc> = DateTime::<Utc>::from(execution_info.executed_at);
         
-        // 3. Delete valence account executions >= from_block
-        sqlx::query!(
-             "DELETE FROM valence_account_executions WHERE chain_id = $1 AND block_number >= $2",
-             chain,
-             from_block as i64
-         )
-         .execute(&mut *tx)
-         .await?;
-         
-        // 4. Revert Valence Account/Processor/Auth/Library state
-        // This is complex. Ideally, you'd have historical state tables or 
-        // revert based on event logs. For simplicity, we might just log a warning.
-        warn!(chain, from_block, "PostgreSQL reorg: Valence contract state not automatically reverted. Manual intervention may be required.");
+        // Use regular SQLx query to avoid compile-time validation
+        sqlx::query(
+            r#"
+            INSERT INTO valence_account_executions (
+                chain_id,
+                account_id,
+                executor_address,
+                payload,
+                raw_msgs,
+                tx_hash,
+                block_number,
+                message_index,
+                executed_at,
+                correlated_event_ids
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            "#
+        )
+        .bind(&execution_info.chain_id)
+        .bind(&execution_info.account_id)
+        .bind(&execution_info.executor_address)
+        .bind(&execution_info.payload)
+        .bind(&execution_info.raw_msgs)
+        .bind(&execution_info.tx_hash)
+        .bind(execution_info.block_number as i64)
+        .bind(execution_info.message_index)
+        .bind(executed_at)
+        .bind(execution_info.correlated_event_ids.as_deref())
+        .execute(&self.pool)
+        .await?;
 
-        tx.commit().await?;
-        info!(chain, from_block, "Reorg complete in PostgreSQL");
+        debug!(
+            account_id = %execution_info.account_id, 
+            tx_hash = %execution_info.tx_hash, 
+            "Stored Valence execution"
+        );
         Ok(())
     }
 
-    #[instrument(skip(self, account_info, initial_libraries), fields(account_id = %account_info.id))]
+    /// Retrieves the current state of a Valence account.
+    #[instrument(skip(self), fields(account_id = %account_id))]
+    async fn get_valence_account_state(&self, account_id: &str) -> Result<Option<ValenceAccountState>> {
+        use sqlx::Row;
+        
+        // Fetch account details using regular SQLx query
+        let account_row_result = sqlx::query(
+            r#"
+            SELECT 
+                chain_id, 
+                contract_address, 
+                current_owner, 
+                pending_owner, 
+                pending_owner_expiry, 
+                last_updated_block, 
+                last_updated_tx 
+            FROM valence_accounts WHERE id = $1
+            "#
+        )
+        .bind(account_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        if let Some(account_row) = account_row_result {
+            // Fetch associated libraries using regular SQLx query
+            let library_rows = sqlx::query(
+                "SELECT library_address FROM valence_account_libraries WHERE account_id = $1"
+            )
+            .bind(account_id)
+            .fetch_all(&self.pool)
+            .await?;
+            
+            let libraries: Vec<String> = library_rows.into_iter()
+                .map(|row| row.get("library_address"))
+                .collect();
+
+            Ok(Some(ValenceAccountState {
+                account_id: account_id.to_string(),
+                chain_id: account_row.get("chain_id"),
+                address: account_row.get("contract_address"),
+                current_owner: account_row.get("current_owner"),
+                pending_owner: account_row.get("pending_owner"),
+                pending_owner_expiry: account_row.get::<Option<i64>, _>("pending_owner_expiry").map(|v| v as u64),
+                libraries,
+                last_update_block: account_row.get::<i64, _>("last_updated_block") as u64,
+                last_update_tx: account_row.get("last_updated_tx"),
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Stores information about a new Valence Account contract instantiation.
     async fn store_valence_account_instantiation(
         &self,
         account_info: ValenceAccountInfo,
         initial_libraries: Vec<ValenceAccountLibrary>,
     ) -> Result<()> {
-        let mut tx = self.pool.begin().await?;
-
-        // Insert into valence_accounts
-        sqlx::query!(
-            r#"
-            INSERT INTO valence_accounts (id, chain_id, contract_address, created_at_block, created_at_tx, current_owner, pending_owner, pending_owner_expiry, last_updated_block, last_updated_tx)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-            ON CONFLICT (id) DO UPDATE SET
-                current_owner = EXCLUDED.current_owner, -- Allow re-instantiation/update if needed?
-                pending_owner = EXCLUDED.pending_owner,
-                pending_owner_expiry = EXCLUDED.pending_owner_expiry,
-                last_updated_block = EXCLUDED.last_updated_block,
-                last_updated_tx = EXCLUDED.last_updated_tx;
-            "#,
-            account_info.id,
-            account_info.chain_id,
-            account_info.contract_address,
-            account_info.created_at_block as i64,
-            account_info.created_at_tx,
-            account_info.current_owner,
-            account_info.pending_owner,
-            account_info.pending_owner_expiry.map(|v| v as i64),
-            account_info.last_updated_block as i64,
-            account_info.last_updated_tx
-        )
-        .execute(&mut *tx)
-        .await?;
-
-        // Insert initial libraries
-        for lib in initial_libraries {
-            sqlx::query!(
-                r#"
-                INSERT INTO valence_account_libraries (account_id, library_address, approved_at_block, approved_at_tx)
-                VALUES ($1, $2, $3, $4)
-                ON CONFLICT (account_id, library_address) DO NOTHING; -- Ignore if already approved
-                "#,
-                lib.account_id,
-                lib.library_address,
-                lib.approved_at_block as i64,
-                lib.approved_at_tx
-            )
-            .execute(&mut *tx)
-            .await?;
-        }
-
-        tx.commit().await?;
-        debug!(account_id = %account_info.id, "Stored Valence account instantiation");
-        Ok(())
+        todo!("Implement store_valence_account_instantiation")
     }
 
-    #[instrument(skip(self, library_info), fields(account_id = %account_id, library = %library_info.library_address))]
+    /// Adds a library to an existing Valence account's approved list.
     async fn store_valence_library_approval(
         &self,
         account_id: &str,
@@ -332,43 +363,10 @@ impl Storage for PostgresStorage {
         update_block: u64,
         update_tx: &str,
     ) -> Result<()> {
-        let mut tx = self.pool.begin().await?;
-
-        // Insert library approval
-        sqlx::query!(
-            r#"
-            INSERT INTO valence_account_libraries (account_id, library_address, approved_at_block, approved_at_tx)
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT (account_id, library_address) DO NOTHING; -- Ignore if already approved
-            "#,
-            account_id,
-            library_info.library_address,
-            library_info.approved_at_block as i64,
-            library_info.approved_at_tx
-        )
-        .execute(&mut *tx)
-        .await?;
-
-        // Update account's last_updated timestamp
-        sqlx::query!(
-            r#"
-            UPDATE valence_accounts
-            SET last_updated_block = $1, last_updated_tx = $2
-            WHERE id = $3;
-            "#,
-            update_block as i64,
-            update_tx,
-            account_id
-        )
-        .execute(&mut *tx)
-        .await?;
-
-        tx.commit().await?;
-        debug!(account_id = %account_id, library = %library_info.library_address, "Stored Valence library approval");
-        Ok(())
+        todo!("Implement store_valence_library_approval")
     }
 
-    #[instrument(skip(self), fields(account_id = %account_id, library = %library_address))]
+    /// Removes a library from an existing Valence account's approved list.
     async fn store_valence_library_removal(
         &self,
         account_id: &str,
@@ -376,40 +374,10 @@ impl Storage for PostgresStorage {
         update_block: u64,
         update_tx: &str,
     ) -> Result<()> {
-        let mut tx = self.pool.begin().await?;
-
-        // Remove library
-        sqlx::query!(
-            r#"
-            DELETE FROM valence_account_libraries
-            WHERE account_id = $1 AND library_address = $2;
-            "#,
-            account_id,
-            library_address
-        )
-        .execute(&mut *tx)
-        .await?;
-
-        // Update account's last_updated timestamp
-         sqlx::query!(
-            r#"
-            UPDATE valence_accounts
-            SET last_updated_block = $1, last_updated_tx = $2
-            WHERE id = $3;
-            "#,
-            update_block as i64,
-            update_tx,
-            account_id
-        )
-        .execute(&mut *tx)
-        .await?;
-
-        tx.commit().await?;
-        debug!(account_id = %account_id, library = %library_address, "Stored Valence library removal");
-        Ok(())
+        todo!("Implement store_valence_library_removal")
     }
 
-    #[instrument(skip(self, new_owner, new_pending_owner), fields(account_id = %account_id))]
+    /// Updates the ownership details of a Valence account.
     async fn store_valence_ownership_update(
         &self,
         account_id: &str,
@@ -419,93 +387,7 @@ impl Storage for PostgresStorage {
         update_block: u64,
         update_tx: &str,
     ) -> Result<()> {
-        sqlx::query!(
-            r#"
-            UPDATE valence_accounts
-            SET current_owner = $1, pending_owner = $2, pending_owner_expiry = $3, last_updated_block = $4, last_updated_tx = $5
-            WHERE id = $6;
-            "#,
-            new_owner,
-            new_pending_owner,
-            new_pending_expiry.map(|v| v as i64),
-            update_block as i64,
-            update_tx,
-            account_id
-        )
-        .execute(&self.pool) // Can run outside tx if simple update
-        .await?;
-        debug!(account_id = %account_id, "Stored Valence ownership update");
-        Ok(())
-    }
-
-    #[instrument(skip(self, execution_info), fields(account_id = %execution_info.account_id, tx_hash = %execution_info.tx_hash))]
-    async fn store_valence_execution(
-        &self,
-        execution_info: ValenceAccountExecution,
-    ) -> Result<()> {
-        // Convert SystemTime to chrono::DateTime<Utc> for sqlx
-        let executed_at_chrono = chrono::DateTime::from(execution_info.executed_at);
-
-        sqlx::query!(
-            r#"
-            INSERT INTO valence_account_executions (account_id, chain_id, block_number, tx_hash, executor_address, message_index, correlated_event_ids, raw_msgs, payload, executed_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
-            "#,
-            execution_info.account_id,
-            execution_info.chain_id,
-            execution_info.block_number as i64,
-            execution_info.tx_hash,
-            execution_info.executor_address,
-            execution_info.message_index,
-            execution_info.correlated_event_ids.as_deref(),
-            execution_info.raw_msgs, // Use Option<Value> directly, sqlx handles JSONB
-            execution_info.payload,
-            executed_at_chrono
-        )
-        .execute(&self.pool)
-        .await?;
-        debug!(account_id = %execution_info.account_id, tx_hash=%execution_info.tx_hash, "Stored Valence execution");
-        Ok(())
-    }
-
-    #[instrument(skip(self), fields(account_id = %account_id))]
-    async fn get_valence_account_state(&self, account_id: &str) -> Result<Option<ValenceAccountState>> {
-        // Fetch account details
-        let account_row = sqlx::query!(
-            r#"
-            SELECT chain_id, contract_address, current_owner, pending_owner, pending_owner_expiry, last_updated_block, last_updated_tx 
-            FROM valence_accounts WHERE id = $1
-            "#,
-            account_id
-        )
-        .fetch_optional(&self.pool)
-        .await?;
-
-        if let Some(row) = account_row {
-            // Fetch associated libraries
-            let libraries_result = sqlx::query!(
-                "SELECT library_address FROM valence_account_libraries WHERE account_id = $1",
-                account_id
-            )
-            .fetch_all(&self.pool)
-            .await?;
-
-            let libraries = libraries_result.into_iter().map(|r| r.library_address).collect();
-
-            Ok(Some(ValenceAccountState {
-                account_id: account_id.to_string(),
-                chain_id: row.chain_id,
-                address: row.contract_address,
-                current_owner: row.current_owner,
-                pending_owner: row.pending_owner,
-                pending_owner_expiry: row.pending_owner_expiry.map(|v| v as u64),
-                libraries,
-                last_update_block: row.last_updated_block as u64,
-                last_update_tx: row.last_updated_tx,
-            }))
-        } else {
-            Ok(None)
-        }
+        todo!("Implement store_valence_ownership_update")
     }
 
     // --- Default Implementations for New Valence Methods ---
@@ -827,26 +709,29 @@ impl Storage for PostgresStorage {
 }
 
 impl PostgresStorage {
-    /// Create a new PostgreSQL storage
+    /// Create a new PostgreSQL storage instance
     pub async fn new(config: PostgresConfig) -> Result<Self> {
-        // Create a connection pool
+        // Configure the connection pool
         let pool_options = sqlx::postgres::PgPoolOptions::new()
             .max_connections(config.max_connections)
             .acquire_timeout(std::time::Duration::from_secs(config.connection_timeout));
         
+        // Create the pool
         let pool = pool_options.connect(&config.url)
             .await
-            .map_err(|e| Error::generic(format!("Failed to connect to PostgreSQL: {}", e)))?;
+            .map_err(|e| Error::Storage(format!("Failed to connect to PostgreSQL: {}", e)))?;
         
         info!("Connected to PostgreSQL database");
-        
-        // Initialize database tables
-        initialize_database(&pool).await?;
         
         // Create repositories
         let event_repository = Arc::new(PostgresEventRepository::new(pool.clone()));
         let contract_schema_repository = Arc::new(PostgresContractSchemaRepository::new(pool.clone()));
         
+        // Run database migrations - for dev/test only
+        // In production, migrations should be run separately before starting the application
+        initialize_database(&config.url, "./crates/storage/migrations").await?;
+        
+        // Create the storage instance
         Ok(Self {
             pool,
             event_repository,
@@ -862,5 +747,48 @@ impl PostgresStorage {
     /// Get a contract schema
     pub async fn get_contract_schema(&self, chain: &str, address: &str) -> Result<Option<Vec<u8>>> {
         self.contract_schema_repository.get_schema(chain, address).await
+    }
+
+    /// Reorgs the chain in response to a blockchain reorg
+    #[instrument(skip(self), fields(chain = %chain, from_block = %from_block))]
+    pub async fn handle_chain_reorg(&self, chain: &str, from_block: u64) -> Result<()> {
+        info!(chain, from_block, "Handling reorg in PostgreSQL");
+        let mut tx = self.pool.begin().await?;
+
+        // 1. Delete events >= from_block
+        sqlx::query(
+            "DELETE FROM events WHERE chain = $1 AND block_number >= $2"
+        )
+        .bind(chain)
+        .bind(from_block as i64)
+        .execute(&mut *tx)
+        .await?;
+
+        // 2. Delete blocks >= from_block
+        sqlx::query(
+            "DELETE FROM blocks WHERE chain = $1 AND number >= $2"
+        )
+        .bind(chain)
+        .bind(from_block as i64)
+        .execute(&mut *tx)
+        .await?;
+        
+        // 3. Delete valence account executions >= from_block
+        sqlx::query(
+             "DELETE FROM valence_account_executions WHERE chain_id = $1 AND block_number >= $2"
+         )
+         .bind(chain)
+         .bind(from_block as i64)
+         .execute(&mut *tx)
+         .await?;
+         
+        // 4. Revert Valence Account/Processor/Auth/Library state
+        // This is complex. Ideally, you'd have historical state tables or 
+        // revert based on event logs. For simplicity, we might just log a warning.
+        warn!(chain, from_block, "PostgreSQL reorg: Valence contract state not automatically reverted. Manual intervention may be required.");
+
+        tx.commit().await?;
+        info!(chain, from_block, "Reorg complete in PostgreSQL");
+        Ok(())
     }
 }

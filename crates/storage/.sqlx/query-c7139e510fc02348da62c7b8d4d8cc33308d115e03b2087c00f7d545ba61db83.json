@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT number\n            FROM blocks\n            WHERE chain = $1 AND status = $2 AND number >= $3 AND number <= $4\n            ORDER BY number ASC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "number",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "c7139e510fc02348da62c7b8d4d8cc33308d115e03b2087c00f7d545ba61db83"
+}

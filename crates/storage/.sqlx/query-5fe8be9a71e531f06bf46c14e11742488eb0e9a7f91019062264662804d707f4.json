@@ -1,0 +1,68 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                SELECT id, chain, block_number, block_hash, tx_hash, timestamp, event_type, raw_data, created_at\n                FROM events\n                ORDER BY timestamp DESC\n                LIMIT 100\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "chain",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "block_number",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "block_hash",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "tx_hash",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
+        "name": "timestamp",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 6,
+        "name": "event_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 7,
+        "name": "raw_data",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 8,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "5fe8be9a71e531f06bf46c14e11742488eb0e9a7f91019062264662804d707f4"
+}

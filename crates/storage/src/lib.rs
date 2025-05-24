@@ -8,7 +8,6 @@ pub use indexer_core::{Error, Result, BlockStatus};
 
 // Common module imports
 use std::sync::Arc;
-use async_trait::async_trait;
 use indexer_core::event::Event;
 use serde::{Serialize, Deserialize};
 
@@ -373,9 +372,10 @@ pub use postgres::repositories;
 
 /// Re-export contract schema types for convenience
 #[cfg(feature = "postgres")]
-pub use crate::migrations::schema::{
-    ContractSchemaVersion, EventSchema, FieldSchema, FunctionSchema,
-    ContractSchema, ContractSchemaRegistry, InMemorySchemaRegistry,
+pub use postgres::migrations::schema::{
+    ContractSchema,
+    ContractSchemaRegistry,
+    InMemorySchemaRegistry,
 };
 
 // Add structs to pass Valence data around
@@ -710,27 +710,8 @@ pub mod storage_defaults {
     }
 }
 
-/// Filter for querying events
-#[derive(Debug, Clone)]
-pub struct EventFilter {
-    /// Filter by chain
-    pub chain: Option<String>,
-    
-    /// Filter by block range (inclusive)
-    pub block_range: Option<(u64, u64)>,
-    
-    /// Filter by time range (inclusive)
-    pub time_range: Option<(u64, u64)>,
-    
-    /// Filter by event types
-    pub event_types: Option<Vec<String>>,
-    
-    /// Limit the number of results
-    pub limit: Option<usize>,
-    
-    /// Offset for pagination
-    pub offset: Option<usize>,
-}
+// Re-export the EventFilter from indexer-core to avoid duplication
+pub use indexer_core::types::EventFilter;
 
 // Other exports for convenience
 #[cfg(feature = "rocks")]
@@ -739,8 +720,55 @@ pub use rocks::RocksConfig;
 #[cfg(feature = "postgres")]
 pub use postgres::PostgresConfig;
 
-#[cfg(feature = "postgres")]
-pub use crate::migrations::schema::{
-    ContractSchemaVersion, EventSchema, FunctionSchema, FieldSchema,
-    ContractSchema, ContractSchemaRegistry, InMemorySchemaRegistry,
-}; 
+#[cfg(not(feature = "postgres"))]
+pub mod schema {
+    use std::collections::HashMap;
+    
+    /// Registry for contract schemas
+    pub trait ContractSchemaRegistry {
+        /// Get schema for a contract
+        fn get_schema(&self, chain: &str, address: &str) -> Option<&ContractSchema>;
+        
+        /// Store schema for a contract
+        fn store_schema(&mut self, chain: &str, address: &str, schema: ContractSchema);
+    }
+    
+    /// Contract ABI schema
+    #[derive(Debug, Clone)]
+    pub struct ContractSchema {
+        /// The contract chain
+        pub chain: String,
+        
+        /// The contract address
+        pub address: String,
+        
+        /// Raw schema data
+        pub schema_data: Vec<u8>,
+    }
+    
+    /// In-memory schema registry implementation
+    pub struct InMemorySchemaRegistry {
+        schemas: HashMap<String, ContractSchema>,
+    }
+    
+    impl InMemorySchemaRegistry {
+        /// Create a new in-memory schema registry
+        pub fn new() -> Self {
+            Self {
+                schemas: HashMap::new(),
+            }
+        }
+    }
+    
+    impl ContractSchemaRegistry for InMemorySchemaRegistry {
+        fn get_schema(&self, chain: &str, address: &str) -> Option<&ContractSchema> {
+            let key = format!("{}:{}", chain, address);
+            self.schemas.get(&key)
+        }
+        
+        fn store_schema(&mut self, chain: &str, address: &str, schema: ContractSchema) {
+            let key = format!("{}:{}", chain, address);
+            self.schemas.insert(key, schema);
+        }
+    }
+} 

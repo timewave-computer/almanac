@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO events (id, chain, block_number, block_hash, tx_hash, timestamp, event_type, raw_data)\n            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Varchar",
+        "Int8",
+        "Varchar",
+        "Varchar",
+        "Int8",
+        "Varchar",
+        "Bytea"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1ead561df80ce1e37ab43ace0f2ae950c96682a104cfd372a4a3524bb17a4bd5"
+}

@@ -1,8 +1,7 @@
-/// Storage synchronization implementation for multi-store consistency
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::sync::Arc;
+use std::time::Duration;
 use std::any::Any;
+use std::collections::HashMap;
 
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
@@ -10,19 +9,18 @@ use tokio::time;
 use futures::future::join_all;
 use tracing::{debug, info, error, warn};
 
-use indexer_pipeline::{BlockStatus, Result, Error};
+use indexer_pipeline::{BlockStatus, Result};
 use indexer_core::event::Event;
+use indexer_core::types::ChainId;
 
 use crate::{BoxedStorage, EventFilter};
+#[cfg(feature = "rocks")]
 use crate::rocks::RocksStorage;
 #[cfg(feature = "postgres")]
 use crate::postgres::PostgresStorage;
 use crate::Storage;
 
-use chrono::Utc;
-use futures::stream::FuturesUnordered;
 use futures::StreamExt;
-use tokio::sync::mpsc::{self, Receiver, Sender};
 
 /// Configuration for storage synchronization
 #[derive(Debug, Clone)]
@@ -86,35 +84,23 @@ impl StorageSynchronizer {
     }
     
     /// Create a new storage synchronizer with RocksDB as primary and PostgreSQL as secondary
-    #[cfg(feature = "postgres")]
+    #[cfg(all(feature = "rocks", feature = "postgres"))]
     pub async fn new_rocks_postgres(
-        rocks: Arc<RocksStorage>, 
+        rocks: Arc<RocksStorage>,
         postgres: Arc<PostgresStorage>,
         config: SyncConfig
     ) -> Self {
-        Self {
-            primary: rocks as BoxedStorage,
-            secondary: postgres as BoxedStorage,
-            config,
-            task_handle: RwLock::new(None),
-            running: RwLock::new(false),
-        }
+        Self::new_generic(rocks, postgres, config).await
     }
     
     /// Create a new storage synchronizer with PostgreSQL as primary and RocksDB as secondary
-    #[cfg(feature = "postgres")]
+    #[cfg(all(feature = "rocks", feature = "postgres"))]
     pub async fn new_postgres_rocks(
-        postgres: Arc<PostgresStorage>, 
+        postgres: Arc<PostgresStorage>,
         rocks: Arc<RocksStorage>,
         config: SyncConfig
     ) -> Self {
-        Self {
-            primary: postgres as BoxedStorage,
-            secondary: rocks as BoxedStorage,
-            config,
-            task_handle: RwLock::new(None),
-            running: RwLock::new(false),
-        }
+        Self::new_generic(postgres, rocks, config).await
     }
     
     /// Start synchronization
@@ -207,10 +193,12 @@ impl StorageSynchronizer {
         
         // Create filter to get events from the primary storage
         let filter = EventFilter {
+            chain_id: Some(ChainId::from(chain)),
             chain: Some(chain.to_string()),
             block_range: Some((start_block, end_block)),
             time_range: None,
             event_types: None,
+            custom_filters: HashMap::new(),
             limit: None,
             offset: None,
         };

@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM valence_account_executions WHERE chain_id = $1 AND block_number >= $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1ca1ebd650cb6deb98c4eddd43e5a6006490b5eb15d610ea119edc99a15b47ad"
+}
