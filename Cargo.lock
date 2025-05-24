@@ -4882,6 +4882,7 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "tracing",
+ "uuid 1.17.0",
  "valence-domain-clients",
 ]
 

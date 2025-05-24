@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use regex::Regex;
+use std::time::SystemTime;
 
 /// Chain identifier
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
@@ -675,6 +676,199 @@ pub struct ApiConfig {
     
     /// Additional API configuration parameters
     pub params: HashMap<String, String>,
+}
+
+/// Time period for aggregation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum TimePeriod {
+    Hour,
+    Day,
+    Week,
+    Month,
+    Year,
+    Custom { seconds: u64 },
+}
+
+/// Aggregation function type
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum AggregationFunction {
+    Count,
+    Sum { field: String },
+    Average { field: String },
+    Min { field: String },
+    Max { field: String },
+    Distinct { field: String },
+}
+
+/// Aggregation configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AggregationConfig {
+    /// Time period for grouping
+    pub time_period: TimePeriod,
+    
+    /// Aggregation functions to apply
+    pub functions: Vec<AggregationFunction>,
+    
+    /// Additional grouping fields
+    pub group_by: Option<Vec<String>>,
+    
+    /// Time range for aggregation
+    pub time_range: Option<(SystemTime, SystemTime)>,
+    
+    /// Maximum number of buckets to return
+    pub max_buckets: Option<usize>,
+}
+
+/// Result of an aggregation query
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AggregationResult {
+    /// Time bucket start
+    pub time_bucket: SystemTime,
+    
+    /// Grouping field values
+    pub group_values: HashMap<String, String>,
+    
+    /// Aggregation results
+    pub aggregations: HashMap<String, AggregationValue>,
+}
+
+/// Value from aggregation calculation
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum AggregationValue {
+    Count(u64),
+    Sum(f64),
+    Average(f64),
+    Min(f64),
+    Max(f64),
+    Distinct(u64),
+}
+
+impl Default for AggregationConfig {
+    fn default() -> Self {
+        Self {
+            time_period: TimePeriod::Hour,
+            functions: vec![AggregationFunction::Count],
+            group_by: None,
+            time_range: None,
+            max_buckets: Some(100),
+        }
+    }
+}
+
+/// Event correlation configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CorrelationConfig {
+    /// Fields to correlate on
+    pub correlation_fields: Vec<String>,
+    
+    /// Time window for correlation (in seconds)
+    pub time_window: Option<u64>,
+    
+    /// Maximum distance between correlated events (in block numbers)
+    pub max_block_distance: Option<u64>,
+    
+    /// Minimum number of events required for correlation
+    pub min_events: Option<usize>,
+    
+    /// Chains to include in correlation
+    pub chains: Option<Vec<String>>,
+}
+
+/// Event pattern definition
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EventPattern {
+    /// Pattern name
+    pub name: String,
+    
+    /// Sequence of event patterns to match
+    pub sequence: Vec<EventPatternStep>,
+    
+    /// Time window for pattern matching (in seconds)
+    pub time_window: Option<u64>,
+    
+    /// Whether pattern steps must be consecutive
+    pub strict_order: bool,
+    
+    /// Maximum gap between pattern steps (in block numbers)
+    pub max_gap: Option<u64>,
+}
+
+/// Single step in an event pattern
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EventPatternStep {
+    /// Event type to match
+    pub event_type: Option<String>,
+    
+    /// Chain to match
+    pub chain: Option<String>,
+    
+    /// Address to match
+    pub address: Option<String>,
+    
+    /// Attributes that must match
+    pub required_attributes: Option<HashMap<String, String>>,
+    
+    /// Optional step (pattern can continue without this step)
+    pub optional: bool,
+    
+    /// Repeat this step (min, max) times
+    pub repeat: Option<(usize, usize)>,
+}
+
+/// Result of event correlation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CorrelationResult {
+    /// Correlation ID
+    pub correlation_id: String,
+    
+    /// Events that are correlated
+    pub events: Vec<String>, // Event IDs
+    
+    /// Field values that caused the correlation
+    pub correlation_values: HashMap<String, String>,
+    
+    /// Time span of correlated events
+    pub time_span: Option<(SystemTime, SystemTime)>,
+    
+    /// Block span of correlated events
+    pub block_span: Option<(u64, u64)>,
+    
+    /// Chains involved in correlation
+    pub chains: Vec<String>,
+}
+
+/// Result of pattern matching
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PatternMatchResult {
+    /// Pattern that was matched
+    pub pattern_name: String,
+    
+    /// Events that matched the pattern (in order)
+    pub matched_events: Vec<String>, // Event IDs
+    
+    /// Time when pattern started
+    pub start_time: SystemTime,
+    
+    /// Time when pattern completed
+    pub end_time: SystemTime,
+    
+    /// Confidence score (0.0 to 1.0)
+    pub confidence: f32,
+    
+    /// Additional metadata about the match
+    pub metadata: HashMap<String, String>,
+}
+
+impl Default for CorrelationConfig {
+    fn default() -> Self {
+        Self {
+            correlation_fields: vec!["tx_hash".to_string()],
+            time_window: Some(3600), // 1 hour
+            max_block_distance: Some(100),
+            min_events: Some(2),
+            chains: None,
+        }
+    }
 }
 
 #[cfg(test)]

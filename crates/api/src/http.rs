@@ -23,7 +23,10 @@ use uuid::Uuid;
 use indexer_core::{Error, Result, BlockStatus};
 use indexer_core::event::Event;
 use indexer_core::service::BoxedEventService;
-use indexer_core::types::{ChainId, EventFilter as CoreEventFilter, TextSearchConfig, TextSearchMode};
+use indexer_core::types::{
+    ChainId, EventFilter as CoreEventFilter, TextSearchConfig, TextSearchMode,
+    AggregationConfig, AggregationResult, AggregationFunction, TimePeriod
+};
 use indexer_core::security::{RateLimiter, ConnectionManager};
 use crate::{ContractSchemaRegistry, auth::{AuthState, OptionalUser}};
 
@@ -153,6 +156,30 @@ pub struct EventsQuery {
     pub text_search_mode: Option<String>,
     /// Case sensitive search
     pub case_sensitive: Option<bool>,
+}
+
+/// Aggregation request for POST endpoints
+#[derive(Debug, Deserialize)]
+pub struct AggregationRequest {
+    /// Time period for aggregation
+    pub time_period: String,
+    /// Aggregation functions to apply
+    pub functions: Vec<String>,
+    /// Additional grouping fields
+    pub group_by: Option<Vec<String>>,
+    /// Start time for aggregation (ISO 8601 format)
+    pub start_time: Option<String>,
+    /// End time for aggregation (ISO 8601 format) 
+    pub end_time: Option<String>,
+    /// Maximum number of buckets to return
+    pub max_buckets: Option<usize>,
+}
+
+/// Aggregation response
+#[derive(Debug, Serialize)]
+pub struct AggregationResponse {
+    pub results: Vec<AggregationResult>,
+    pub total_buckets: usize,
 }
 
 /// REST API errors
@@ -715,4 +742,74 @@ async fn get_version() -> Json<Value> {
         "git_commit": option_env!("GIT_COMMIT").unwrap_or("unknown"),
         "build_time": option_env!("BUILD_TIME").unwrap_or("unknown")
     }))
+}
+
+/// Convert API aggregation request to core aggregation config
+impl TryFrom<AggregationRequest> for AggregationConfig {
+    type Error = String;
+    
+    fn try_from(request: AggregationRequest) -> Result<Self, Self::Error> {
+        // Parse time period
+        let time_period = match request.time_period.as_str() {
+            "hour" => TimePeriod::Hour,
+            "day" => TimePeriod::Day,
+            "week" => TimePeriod::Week,
+            "month" => TimePeriod::Month,
+            "year" => TimePeriod::Year,
+            _ => {
+                if let Ok(seconds) = request.time_period.parse::<u64>() {
+                    TimePeriod::Custom { seconds }
+                } else {
+                    return Err(format!("Invalid time period: {}", request.time_period));
+                }
+            }
+        };
+        
+        // Parse aggregation functions
+        let mut functions = Vec::new();
+        for func_str in request.functions {
+            let function = if func_str == "count" {
+                AggregationFunction::Count
+            } else if let Some(field) = func_str.strip_prefix("sum:") {
+                AggregationFunction::Sum { field: field.to_string() }
+            } else if let Some(field) = func_str.strip_prefix("avg:") {
+                AggregationFunction::Average { field: field.to_string() }
+            } else if let Some(field) = func_str.strip_prefix("min:") {
+                AggregationFunction::Min { field: field.to_string() }
+            } else if let Some(field) = func_str.strip_prefix("max:") {
+                AggregationFunction::Max { field: field.to_string() }
+            } else if let Some(field) = func_str.strip_prefix("distinct:") {
+                AggregationFunction::Distinct { field: field.to_string() }
+            } else {
+                return Err(format!("Invalid aggregation function: {}", func_str));
+            };
+            functions.push(function);
+        };
+        
+        // Parse time range
+        let time_range = if let (Some(start_str), Some(end_str)) = (request.start_time, request.end_time) {
+            use std::time::{SystemTime, UNIX_EPOCH};
+            
+            // For simplicity, parse as Unix timestamps
+            let start_timestamp = start_str.parse::<u64>()
+                .map_err(|_| format!("Invalid start time format: {}", start_str))?;
+            let end_timestamp = end_str.parse::<u64>()
+                .map_err(|_| format!("Invalid end time format: {}", end_str))?;
+                
+            let start_time = UNIX_EPOCH + std::time::Duration::from_secs(start_timestamp);
+            let end_time = UNIX_EPOCH + std::time::Duration::from_secs(end_timestamp);
+            
+            Some((start_time, end_time))
+        } else {
+            None
+        };
+        
+        Ok(AggregationConfig {
+            time_period,
+            functions,
+            group_by: request.group_by,
+            time_range,
+            max_buckets: request.max_buckets,
+        })
+    }
 } 

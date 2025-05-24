@@ -383,11 +383,6 @@ mod tests {
     #[tokio::test]
     async fn test_contains_search() {
         let searcher = DefaultTextSearcher::new();
-        let events = vec![
-            create_test_event("1", "transfer", "Alice sent 100 tokens to Bob"),
-            create_test_event("2", "mint", "Minted 50 tokens for Charlie"),
-            create_test_event("3", "burn", "Burned 25 tokens from Dave"),
-        ];
         
         let config = TextSearchConfig {
             mode: TextSearchMode::Contains,
@@ -395,10 +390,22 @@ mod tests {
             ..Default::default()
         };
         
-        let results = searcher.search("tokens", &config, events.clone()).await.unwrap();
+        let events1 = vec![
+            create_test_event("1", "transfer", "Alice sent 100 tokens to Bob"),
+            create_test_event("2", "mint", "Minted 50 tokens for Charlie"),
+            create_test_event("3", "burn", "Burned 25 tokens from Dave"),
+        ];
+        
+        let results = searcher.search("tokens", &config, events1).await.unwrap();
         assert_eq!(results.len(), 3); // All events contain "tokens"
         
-        let results = searcher.search("Alice", &config, events).await.unwrap();
+        let events2 = vec![
+            create_test_event("1", "transfer", "Alice sent 100 tokens to Bob"),
+            create_test_event("2", "mint", "Minted 50 tokens for Charlie"),
+            create_test_event("3", "burn", "Burned 25 tokens from Dave"),
+        ];
+        
+        let results = searcher.search("Alice", &config, events2).await.unwrap();
         assert_eq!(results.len(), 1); // Only first event contains "Alice"
     }
     
@@ -443,8 +450,8 @@ mod tests {
     async fn test_phrase_search() {
         let searcher = DefaultTextSearcher::new();
         let events = vec![
-            create_test_event("1", "transfer", "Alice sent 100 tokens to Bob"),
-            create_test_event("2", "transfer", "Bob received tokens from Alice"),
+            create_test_event("1", "transfer", "Alice sent tokens to Bob"),
+            create_test_event("2", "transfer", "Bob received tokens from Alice"), // Should not match "sent tokens"
             create_test_event("3", "transfer", "Charlie sent tokens"),
         ];
         
@@ -455,18 +462,19 @@ mod tests {
         };
         
         let results = searcher.search("sent tokens", &config, events).await.unwrap();
-        assert_eq!(results.len(), 2); // Events 1 and 3 contain the exact phrase
+        // Only events 1 and 3 should match the exact phrase "sent tokens"
+        assert_eq!(results.len(), 2, "Expected 2 events with 'sent tokens' phrase, got {}", results.len());
+        
+        // Check the IDs of matching events
+        let matching_ids: Vec<&str> = results.iter().map(|r| r.event.id()).collect();
+        assert!(matching_ids.contains(&"1"), "Event 1 should match");
+        assert!(matching_ids.contains(&"3"), "Event 3 should match");
+        assert!(!matching_ids.contains(&"2"), "Event 2 should not match");
     }
     
     #[tokio::test]
     async fn test_boolean_search() {
         let searcher = DefaultTextSearcher::new();
-        let events = vec![
-            create_test_event("1", "transfer", "Alice sent tokens to Bob"),
-            create_test_event("2", "transfer", "Alice received tokens"),
-            create_test_event("3", "transfer", "Bob sent tokens"),
-            create_test_event("4", "mint", "Charlie minted tokens"),
-        ];
         
         let config = TextSearchConfig {
             mode: TextSearchMode::Boolean,
@@ -474,10 +482,24 @@ mod tests {
             ..Default::default()
         };
         
-        let results = searcher.search("Alice and tokens", &config, events.clone()).await.unwrap();
+        let events1 = vec![
+            create_test_event("1", "transfer", "Alice sent tokens to Bob"),
+            create_test_event("2", "transfer", "Alice received tokens"),
+            create_test_event("3", "transfer", "Bob sent tokens"),
+            create_test_event("4", "mint", "Charlie minted tokens"),
+        ];
+        
+        let results = searcher.search("Alice and tokens", &config, events1).await.unwrap();
         assert_eq!(results.len(), 2); // Events 1 and 2 contain both "Alice" and "tokens"
         
-        let results = searcher.search("Alice or Charlie", &config, events).await.unwrap();
+        let events2 = vec![
+            create_test_event("1", "transfer", "Alice sent tokens to Bob"),
+            create_test_event("2", "transfer", "Alice received tokens"),
+            create_test_event("3", "transfer", "Bob sent tokens"),
+            create_test_event("4", "mint", "Charlie minted tokens"),
+        ];
+        
+        let results = searcher.search("Alice or Charlie", &config, events2).await.unwrap();
         assert_eq!(results.len(), 3); // Events 1, 2, and 4 contain either "Alice" or "Charlie"
     }
     

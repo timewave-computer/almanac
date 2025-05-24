@@ -14,6 +14,12 @@ use crate::{
     ValenceAccountExecution, ValenceAccountState
 };
 
+use indexer_core::{
+    types::{EventFilter, SortField, SortDirection},
+    aggregation::{Aggregator, DefaultAggregator},
+    types::{AggregationConfig, AggregationResult},
+};
+
 /// In-memory storage implementation suitable for examples
 pub struct MemoryStorage {
     /// Events storage
@@ -754,5 +760,30 @@ impl Storage for MemoryStorage {
     ) -> Result<Vec<ValenceLibraryUsage>> {
         // Simplified implementation for examples
         Ok(Vec::new())
+    }
+
+    /// Get aggregated event data
+    pub async fn aggregate_events(&self, config: AggregationConfig) -> Result<Vec<AggregationResult>> {
+        let events = self.events.read().unwrap();
+        
+        // Convert stored events to Event trait objects
+        let event_objects: Vec<Box<dyn Event>> = events.iter()
+            .map(|e| {
+                let memory_event = MemoryEvent {
+                    id: e.id.clone(),
+                    chain: e.chain.clone(),
+                    block_number: e.block_number,
+                    block_hash: e.block_hash.clone(),
+                    tx_hash: e.tx_hash.clone(),
+                    timestamp: std::time::UNIX_EPOCH + std::time::Duration::from_secs(e.timestamp),
+                    event_type: e.event_type.clone(),
+                    raw_data: e.raw_data.clone(),
+                };
+                Box::new(memory_event) as Box<dyn Event>
+            })
+            .collect();
+        
+        let aggregator = DefaultAggregator::new();
+        aggregator.aggregate(event_objects, &config).await
     }
 } 
