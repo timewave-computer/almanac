@@ -21,6 +21,7 @@ use std::{
     fs::{self, File, read_to_string},
     io::BufReader,
     path::{Path, PathBuf},
+    str::FromStr,
     sync::Arc,
 };
 use clap::{Parser, Subcommand};
@@ -606,7 +607,7 @@ impl RethClient {
         
         // Create filter
         let filter = Filter::new()
-            .address(contract_info.address.into())
+            .address(contract_info.address)
             .topic0(event.signature())
             .from_block(from_block)
             .to_block(to_block);

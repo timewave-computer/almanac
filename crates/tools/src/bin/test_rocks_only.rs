@@ -168,7 +168,9 @@ impl RocksDBStore {
         let mut iter = self.db.iterator_cf(&blocks_cf, rocksdb::IteratorMode::End);
         let mut latest_block = 0;
         
-        while let Some(Ok((key, _))) = iter.next() {
+        while let Some(result) = iter.next() {
+            let (key, _value) = result?;
+            let key = key.to_vec();
             let key_str = String::from_utf8_lossy(&key);
             let parts: Vec<&str> = key_str.split(':').collect();
             
@@ -196,7 +198,10 @@ impl RocksDBStore {
         let mut iter = self.db.iterator_cf(&blocks_cf, rocksdb::IteratorMode::End);
         let mut latest_block = 0;
         
-        while let Some(Ok((key, value))) = iter.next() {
+        while let Some(result) = iter.next() {
+            let (key, value) = result?;
+            let key = key.to_vec();
+            let value = value.to_vec();
             let key_str = String::from_utf8_lossy(&key);
             let parts: Vec<&str> = key_str.split(':').collect();
             
@@ -231,14 +236,16 @@ impl RocksDBStore {
             rocksdb::Direction::Forward,
         ));
         
-        while let Some(Ok((key, _))) = iter.next() {
-            let key_str = String::from_utf8_lossy(&key);
+        while let Some(result) = iter.next() {
+            let (key, _) = result?;
+            let key_vec = key.to_vec();
+            let key_str = String::from_utf8_lossy(&key_vec);
             let parts: Vec<&str> = key_str.split(':').collect();
             
             if parts.len() >= 2 && parts[0] == chain {
                 if let Ok(block_number) = parts[1].parse::<u64>() {
                     if block_number >= from_block {
-                        batch.delete_cf(&events_cf, key);
+                        batch.delete_cf(&events_cf, &key_vec);
                     }
                 }
             }
@@ -251,14 +258,16 @@ impl RocksDBStore {
             rocksdb::Direction::Forward,
         ));
         
-        while let Some(Ok((key, _))) = iter.next() {
-            let key_str = String::from_utf8_lossy(&key);
+        while let Some(result) = iter.next() {
+            let (key, _) = result?;
+            let key_vec = key.to_vec();
+            let key_str = String::from_utf8_lossy(&key_vec);
             let parts: Vec<&str> = key_str.split(':').collect();
             
             if parts.len() == 2 && parts[0] == chain {
                 if let Ok(block_number) = parts[1].parse::<u64>() {
                     if block_number >= from_block {
-                        batch.delete_cf(&blocks_cf, key);
+                        batch.delete_cf(&blocks_cf, &key_vec);
                     }
                 }
             }

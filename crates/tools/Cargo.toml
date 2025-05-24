@@ -16,3 +16,5 @@ indexer-common = { path = "../common" }
 tracing = "0.1" 
 clap.workspace = true
 hex.workspace = true
+rocksdb = "0.21"
+tempfile = "3.8"

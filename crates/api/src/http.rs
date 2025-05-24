@@ -748,7 +748,7 @@ async fn get_version() -> Json<Value> {
 impl TryFrom<AggregationRequest> for AggregationConfig {
     type Error = String;
     
-    fn try_from(request: AggregationRequest) -> Result<Self, Self::Error> {
+    fn try_from(request: AggregationRequest) -> std::result::Result<Self, Self::Error> {
         // Parse time period
         let time_period = match request.time_period.as_str() {
             "hour" => TimePeriod::Hour,

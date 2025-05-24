@@ -7859,6 +7859,85 @@ rec {
         sha256 = "1439m3r3jy3xqck8aa13q658visn71ki76qa93cy55wkmalwlqsv";
 
       };
+      "combine" = rec {
+        crateName = "combine";
+        version = "4.6.7";
+        edition = "2018";
+        sha256 = "1z8rh8wp59gf8k23ar010phgs0wgf5i8cx4fg01gwcnzfn5k0nms";
+        authors = [
+          "Markus Westerlind <marwes91@gmail.com>"
+        ];
+        dependencies = [
+          {
+            name = "bytes";
+            packageId = "bytes";
+            optional = true;
+          }
+          {
+            name = "futures-core";
+            packageId = "futures-core";
+            rename = "futures-core-03";
+            optional = true;
+            usesDefaultFeatures = false;
+          }
+          {
+            name = "memchr";
+            packageId = "memchr";
+            usesDefaultFeatures = false;
+          }
+          {
+            name = "pin-project-lite";
+            packageId = "pin-project-lite";
+            optional = true;
+          }
+          {
+            name = "tokio";
+            packageId = "tokio";
+            rename = "tokio-dep";
+            optional = true;
+            usesDefaultFeatures = false;
+          }
+          {
+            name = "tokio-util";
+            packageId = "tokio-util";
+            optional = true;
+            usesDefaultFeatures = false;
+            features = [ "codec" ];
+          }
+        ];
+        devDependencies = [
+          {
+            name = "bytes";
+            packageId = "bytes";
+          }
+          {
+            name = "tokio";
+            packageId = "tokio";
+            rename = "tokio-dep";
+            features = [ "fs" "macros" "rt" "rt-multi-thread" "io-util" ];
+          }
+        ];
+        features = {
+          "bytes" = [ "dep:bytes" ];
+          "bytes_05" = [ "dep:bytes_05" ];
+          "default" = [ "std" ];
+          "futures-03" = [ "pin-project" "std" "futures-core-03" "futures-io-03" "pin-project-lite" ];
+          "futures-core-03" = [ "dep:futures-core-03" ];
+          "futures-io-03" = [ "dep:futures-io-03" ];
+          "pin-project" = [ "pin-project-lite" ];
+          "pin-project-lite" = [ "dep:pin-project-lite" ];
+          "regex" = [ "dep:regex" ];
+          "std" = [ "memchr/std" "bytes" "alloc" ];
+          "tokio" = [ "tokio-dep" "tokio-util/io" "futures-core-03" "pin-project-lite" ];
+          "tokio-02" = [ "pin-project" "std" "tokio-02-dep" "futures-core-03" "pin-project-lite" "bytes_05" ];
+          "tokio-02-dep" = [ "dep:tokio-02-dep" ];
+          "tokio-03" = [ "pin-project" "std" "tokio-03-dep" "futures-core-03" "pin-project-lite" ];
+          "tokio-03-dep" = [ "dep:tokio-03-dep" ];
+          "tokio-dep" = [ "dep:tokio-dep" ];
+          "tokio-util" = [ "dep:tokio-util" ];
+        };
+        resolvedDefaultFeatures = [ "alloc" "bytes" "futures-core-03" "pin-project-lite" "std" "tokio" "tokio-dep" "tokio-util" ];
+      };
       "const-hex" = rec {
         crateName = "const-hex";
         version = "1.14.1";
@@ -12184,7 +12263,7 @@ rec {
           "zlib-ng-compat" = [ "zlib" "libz-sys/zlib-ng" ];
           "zlib-rs" = [ "any_zlib" "libz-rs-sys" ];
         };
-        resolvedDefaultFeatures = [ "any_impl" "miniz_oxide" "rust_backend" ];
+        resolvedDefaultFeatures = [ "any_impl" "default" "miniz_oxide" "rust_backend" ];
       };
       "flex-error" = rec {
         crateName = "flex-error";
@@ -13922,7 +14001,7 @@ rec {
           }
           {
             name = "socket2";
-            packageId = "socket2";
+            packageId = "socket2 0.5.9";
             optional = true;
             features = [ "all" ];
           }
@@ -14444,7 +14523,7 @@ rec {
           }
           {
             name = "socket2";
-            packageId = "socket2";
+            packageId = "socket2 0.5.9";
             optional = true;
             features = [ "all" ];
           }
@@ -17581,6 +17660,15 @@ rec {
             packageId = "async-trait";
           }
           {
+            name = "chrono";
+            packageId = "chrono";
+            features = [ "serde" ];
+          }
+          {
+            name = "flate2";
+            packageId = "flate2";
+          }
+          {
             name = "futures";
             packageId = "futures";
           }
@@ -17591,6 +17679,15 @@ rec {
           {
             name = "indexer-pipeline";
             packageId = "indexer-pipeline";
+          }
+          {
+            name = "md5";
+            packageId = "md5";
+          }
+          {
+            name = "redis";
+            packageId = "redis";
+            features = [ "tokio-comp" ];
           }
           {
             name = "regex";
@@ -17618,7 +17715,7 @@ rec {
             name = "sqlx";
             packageId = "sqlx";
             optional = true;
-            features = [ "runtime-tokio-rustls" "postgres" "macros" "chrono" "uuid" "json" "migrate" ];
+            features = [ "runtime-tokio-rustls" "postgres" "macros" "chrono" "uuid" "json" ];
           }
           {
             name = "thiserror";
@@ -17632,6 +17729,11 @@ rec {
           {
             name = "tracing";
             packageId = "tracing";
+          }
+          {
+            name = "uuid";
+            packageId = "uuid 1.17.0";
+            features = [ "v4" ];
           }
           {
             name = "valence-domain-clients";
@@ -18101,6 +18203,10 @@ rec {
             packageId = "indexer-common";
           }
           {
+            name = "rocksdb";
+            packageId = "rocksdb";
+          }
+          {
             name = "serde";
             packageId = "serde";
             features = [ "derive" ];
@@ -18108,6 +18214,10 @@ rec {
           {
             name = "serde_json";
             packageId = "serde_json";
+          }
+          {
+            name = "tempfile";
+            packageId = "tempfile";
           }
           {
             name = "tokio";
@@ -19353,6 +19463,27 @@ rec {
           "md5-asm" = [ "dep:md5-asm" ];
           "oid" = [ "digest/oid" ];
           "std" = [ "digest/std" ];
+        };
+        resolvedDefaultFeatures = [ "default" "std" ];
+      };
+      "md5" = rec {
+        crateName = "md5";
+        version = "0.7.0";
+        edition = "2015";
+        sha256 = "0wcps37hrhz59fkhf8di1ppdnqld6l1w5sdy7jp7p51z0i4c8329";
+        authors = [
+          "Ivan Ukhov <ivan.ukhov@gmail.com>"
+          "Kamal Ahmad <shibe@openmailbox.org>"
+          "Konstantin Stepanov <milezv@gmail.com>"
+          "Lukas Kalbertodt <lukas.kalbertodt@gmail.com>"
+          "Nathan Musoke <nathan.musoke@gmail.com>"
+          "Scott Mabin <scott@mabez.dev>"
+          "Tony Arcieri <bascule@gmail.com>"
+          "Wim de With <register@dewith.io>"
+          "Yosef Dinerstein <yosefdi@gmail.com>"
+        ];
+        features = {
+          "default" = [ "std" ];
         };
         resolvedDefaultFeatures = [ "default" "std" ];
       };
@@ -22972,6 +23103,143 @@ rec {
         };
         resolvedDefaultFeatures = [ "default" ];
       };
+      "redis" = rec {
+        crateName = "redis";
+        version = "0.24.0";
+        edition = "2021";
+        sha256 = "1kc4mzvc6fmlh25l0j30hkk5gjb2daprvkv7ing4f6qxpv5xk065";
+        dependencies = [
+          {
+            name = "async-trait";
+            packageId = "async-trait";
+            optional = true;
+          }
+          {
+            name = "bytes";
+            packageId = "bytes";
+            optional = true;
+          }
+          {
+            name = "combine";
+            packageId = "combine";
+            usesDefaultFeatures = false;
+            features = [ "std" ];
+          }
+          {
+            name = "futures-util";
+            packageId = "futures-util";
+            optional = true;
+            usesDefaultFeatures = false;
+          }
+          {
+            name = "itoa";
+            packageId = "itoa";
+          }
+          {
+            name = "percent-encoding";
+            packageId = "percent-encoding";
+          }
+          {
+            name = "pin-project-lite";
+            packageId = "pin-project-lite";
+            optional = true;
+          }
+          {
+            name = "ryu";
+            packageId = "ryu";
+          }
+          {
+            name = "sha1_smol";
+            packageId = "sha1_smol";
+            optional = true;
+          }
+          {
+            name = "socket2";
+            packageId = "socket2 0.4.10";
+            optional = true;
+            usesDefaultFeatures = false;
+          }
+          {
+            name = "tokio";
+            packageId = "tokio";
+            optional = true;
+            features = [ "rt" "net" "time" ];
+          }
+          {
+            name = "tokio-util";
+            packageId = "tokio-util";
+            optional = true;
+          }
+          {
+            name = "url";
+            packageId = "url";
+          }
+        ];
+        devDependencies = [
+          {
+            name = "socket2";
+            packageId = "socket2 0.4.10";
+          }
+          {
+            name = "tokio";
+            packageId = "tokio";
+            features = [ "rt" "macros" "rt-multi-thread" "time" ];
+          }
+        ];
+        features = {
+          "ahash" = [ "dep:ahash" ];
+          "aio" = [ "bytes" "pin-project-lite" "futures-util" "futures-util/alloc" "futures-util/sink" "tokio/io-util" "tokio-util" "tokio-util/codec" "tokio/sync" "combine/tokio" "async-trait" ];
+          "arc-swap" = [ "dep:arc-swap" ];
+          "async-native-tls" = [ "dep:async-native-tls" ];
+          "async-std" = [ "dep:async-std" ];
+          "async-std-comp" = [ "aio" "async-std" ];
+          "async-std-native-tls-comp" = [ "async-std-comp" "async-native-tls" "tls-native-tls" ];
+          "async-std-rustls-comp" = [ "async-std-comp" "futures-rustls" "tls-rustls" ];
+          "async-std-tls-comp" = [ "async-std-native-tls-comp" ];
+          "async-trait" = [ "dep:async-trait" ];
+          "bytes" = [ "dep:bytes" ];
+          "cluster" = [ "crc16" "rand" ];
+          "cluster-async" = [ "cluster" "futures" "futures-util" "log" ];
+          "connection-manager" = [ "arc-swap" "futures" "aio" "tokio-retry" ];
+          "crc16" = [ "dep:crc16" ];
+          "default" = [ "acl" "streams" "geospatial" "script" "keep-alive" ];
+          "futures" = [ "dep:futures" ];
+          "futures-rustls" = [ "dep:futures-rustls" ];
+          "futures-util" = [ "dep:futures-util" ];
+          "json" = [ "serde" "serde/derive" "serde_json" ];
+          "keep-alive" = [ "socket2" ];
+          "log" = [ "dep:log" ];
+          "native-tls" = [ "dep:native-tls" ];
+          "pin-project-lite" = [ "dep:pin-project-lite" ];
+          "r2d2" = [ "dep:r2d2" ];
+          "rand" = [ "dep:rand" ];
+          "rustls" = [ "dep:rustls" ];
+          "rustls-native-certs" = [ "dep:rustls-native-certs" ];
+          "rustls-pemfile" = [ "dep:rustls-pemfile" ];
+          "rustls-webpki" = [ "dep:rustls-webpki" ];
+          "script" = [ "sha1_smol" ];
+          "sentinel" = [ "rand" ];
+          "serde" = [ "dep:serde" ];
+          "serde_json" = [ "dep:serde_json" ];
+          "sha1_smol" = [ "dep:sha1_smol" ];
+          "socket2" = [ "dep:socket2" ];
+          "tls" = [ "tls-native-tls" ];
+          "tls-native-tls" = [ "native-tls" ];
+          "tls-rustls" = [ "rustls" "rustls-native-certs" "rustls-webpki" "rustls-pemfile" ];
+          "tls-rustls-insecure" = [ "tls-rustls" "rustls/dangerous_configuration" ];
+          "tls-rustls-webpki-roots" = [ "tls-rustls" "webpki-roots" ];
+          "tokio" = [ "dep:tokio" ];
+          "tokio-comp" = [ "aio" "tokio" "tokio/net" ];
+          "tokio-native-tls" = [ "dep:tokio-native-tls" ];
+          "tokio-native-tls-comp" = [ "tokio-comp" "tls-native-tls" "tokio-native-tls" ];
+          "tokio-retry" = [ "dep:tokio-retry" ];
+          "tokio-rustls" = [ "dep:tokio-rustls" ];
+          "tokio-rustls-comp" = [ "tokio-comp" "tls-rustls" "tokio-rustls" ];
+          "tokio-util" = [ "dep:tokio-util" ];
+          "webpki-roots" = [ "dep:webpki-roots" ];
+        };
+        resolvedDefaultFeatures = [ "acl" "aio" "async-trait" "bytes" "default" "futures-util" "geospatial" "keep-alive" "pin-project-lite" "script" "sha1_smol" "socket2" "streams" "tokio" "tokio-comp" "tokio-util" ];
+      };
       "redox_syscall" = rec {
         crateName = "redox_syscall";
         version = "0.5.12";
@@ -26062,6 +26330,19 @@ rec {
         };
         resolvedDefaultFeatures = [ "default" "std" ];
       };
+      "sha1_smol" = rec {
+        crateName = "sha1_smol";
+        version = "1.0.1";
+        edition = "2018";
+        sha256 = "0pbh2xjfnzgblws3hims0ib5bphv7r5rfdpizyh51vnzvnribymv";
+        authors = [
+          "Armin Ronacher <armin.ronacher@active-4.com>"
+        ];
+        features = {
+          "serde" = [ "dep:serde" ];
+          "std" = [ "alloc" ];
+        };
+      };
       "sha2 0.10.9" = rec {
         crateName = "sha2";
         version = "0.10.9";
@@ -26395,7 +26676,32 @@ rec {
         };
         resolvedDefaultFeatures = [ "const_generics" "const_new" "serde" "union" ];
       };
-      "socket2" = rec {
+      "socket2 0.4.10" = rec {
+        crateName = "socket2";
+        version = "0.4.10";
+        edition = "2018";
+        sha256 = "03ack54dxhgfifzsj14k7qa3r5c9wqy3v6mqhlim99cc03y1cycz";
+        authors = [
+          "Alex Crichton <alex@alexcrichton.com>"
+          "Thomas de Zeeuw <thomasdezeeuw@gmail.com>"
+        ];
+        dependencies = [
+          {
+            name = "libc";
+            packageId = "libc";
+            target = { target, features }: (target."unix" or false);
+          }
+          {
+            name = "winapi";
+            packageId = "winapi";
+            target = { target, features }: (target."windows" or false);
+            features = [ "handleapi" "ws2ipdef" "ws2tcpip" ];
+          }
+        ];
+        features = {
+        };
+      };
+      "socket2 0.5.9" = rec {
         crateName = "socket2";
         version = "0.5.9";
         edition = "2021";
@@ -29526,7 +29832,7 @@ rec {
           }
           {
             name = "socket2";
-            packageId = "socket2";
+            packageId = "socket2 0.5.9";
             optional = true;
             target = { target, features }: (!(builtins.elem "wasm" target."family"));
             features = [ "all" ];
@@ -29551,7 +29857,7 @@ rec {
           }
           {
             name = "socket2";
-            packageId = "socket2";
+            packageId = "socket2 0.5.9";
             target = {target, features}: (!(builtins.elem "wasm" target."family"));
           }
           {
@@ -30264,7 +30570,7 @@ rec {
           }
           {
             name = "socket2";
-            packageId = "socket2";
+            packageId = "socket2 0.5.9";
             optional = true;
             features = [ "all" ];
           }
@@ -32762,7 +33068,7 @@ rec {
         features = {
           "debug" = [ "impl-debug" ];
         };
-        resolvedDefaultFeatures = [ "consoleapi" "errhandlingapi" "fileapi" "handleapi" "knownfolders" "ntsecapi" "objbase" "processenv" "processthreadsapi" "shlobj" "std" "winbase" "wincon" "winerror" "wtypesbase" ];
+        resolvedDefaultFeatures = [ "consoleapi" "errhandlingapi" "fileapi" "handleapi" "knownfolders" "ntsecapi" "objbase" "processenv" "processthreadsapi" "shlobj" "std" "winbase" "wincon" "winerror" "ws2ipdef" "ws2tcpip" "wtypesbase" ];
       };
       "winapi-i686-pc-windows-gnu" = rec {
         crateName = "winapi-i686-pc-windows-gnu";
