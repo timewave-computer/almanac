@@ -23,7 +23,7 @@ use uuid::Uuid;
 use indexer_core::{Error, Result, BlockStatus};
 use indexer_core::event::Event;
 use indexer_core::service::BoxedEventService;
-use indexer_core::types::{ChainId, EventFilter as CoreEventFilter};
+use indexer_core::types::{ChainId, EventFilter as CoreEventFilter, TextSearchConfig, TextSearchMode};
 use indexer_core::security::{RateLimiter, ConnectionManager};
 use crate::{ContractSchemaRegistry, auth::{AuthState, OptionalUser}};
 
@@ -128,6 +128,14 @@ pub struct EventFilterRequest {
     pub to_height: Option<u64>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
+    /// Text search query
+    pub text_query: Option<String>,
+    /// Text search mode
+    pub text_search_mode: Option<String>,
+    /// Case sensitive search
+    pub case_sensitive: Option<bool>,
+    /// Maximum search results
+    pub max_search_results: Option<usize>,
 }
 
 /// Query parameters for GET endpoints
@@ -139,6 +147,12 @@ pub struct EventsQuery {
     pub from_height: Option<u64>,
     pub to_height: Option<u64>,
     pub event_type: Option<String>,
+    /// Text search query
+    pub text_query: Option<String>,
+    /// Text search mode (contains, fuzzy, regex, phrase, boolean)
+    pub text_search_mode: Option<String>,
+    /// Case sensitive search
+    pub case_sensitive: Option<bool>,
 }
 
 /// REST API errors
@@ -205,8 +219,7 @@ impl From<EventFilterRequest> for CoreEventFilter {
     fn from(filter: EventFilterRequest) -> Self {
         let mut core_filter = CoreEventFilter::new();
         
-        core_filter.chain_id = filter.chain_id.as_ref().map(|id| ChainId(id.clone()));
-        core_filter.chain = filter.chain_id;
+        core_filter.chain_ids = filter.chain_id.as_ref().map(|id| vec![ChainId(id.clone())]);
         
         if let (Some(from), Some(to)) = (filter.from_height, filter.to_height) {
             core_filter.block_range = Some((from, to));
@@ -228,6 +241,33 @@ impl From<EventFilterRequest> for CoreEventFilter {
         // Add address as a custom filter if provided
         if let Some(address) = filter.address {
             core_filter.custom_filters.insert("address".to_string(), address);
+        }
+        
+        // Add text search configuration
+        if let Some(text_query) = filter.text_query {
+            core_filter.text_query = Some(text_query);
+            
+            // Parse text search mode
+            let search_mode = match filter.text_search_mode.as_deref() {
+                Some("contains") => TextSearchMode::Contains,
+                Some("fulltext") => TextSearchMode::FullText,
+                Some("fuzzy") => TextSearchMode::Fuzzy { max_distance: 2 },
+                Some("regex") => TextSearchMode::Regex,
+                Some("phrase") => TextSearchMode::Phrase,
+                Some("boolean") => TextSearchMode::Boolean,
+                _ => TextSearchMode::Contains, // Default
+            };
+            
+            let text_config = TextSearchConfig {
+                mode: search_mode,
+                fields: None, // Search all fields
+                case_sensitive: filter.case_sensitive.unwrap_or(false),
+                use_stemming: false,
+                min_score: None,
+                max_results: filter.max_search_results,
+            };
+            
+            core_filter.text_search_config = Some(text_config);
         }
         
         core_filter.limit = filter.limit;
@@ -375,7 +415,7 @@ async fn get_events_by_address(
     
     // Create filter for this address
     let mut filter = CoreEventFilter::new();
-    filter.chain_id = Some(ChainId(chain_id.clone()));
+    filter.chain_ids = Some(vec![ChainId(chain_id.clone())]);
     filter.chain = Some(chain_id);
     filter.custom_filters.insert("address".to_string(), address);
     
@@ -385,6 +425,33 @@ async fn get_events_by_address(
     
     if let (Some(from), Some(to)) = (params.from_height, params.to_height) {
         filter.block_range = Some((from, to));
+    }
+    
+    // Add text search configuration
+    if let Some(text_query) = params.text_query {
+        filter.text_query = Some(text_query);
+        
+        // Parse text search mode
+        let search_mode = match params.text_search_mode.as_deref() {
+            Some("contains") => TextSearchMode::Contains,
+            Some("fulltext") => TextSearchMode::FullText,
+            Some("fuzzy") => TextSearchMode::Fuzzy { max_distance: 2 },
+            Some("regex") => TextSearchMode::Regex,
+            Some("phrase") => TextSearchMode::Phrase,
+            Some("boolean") => TextSearchMode::Boolean,
+            _ => TextSearchMode::Contains, // Default
+        };
+        
+        let text_config = TextSearchConfig {
+            mode: search_mode,
+            fields: None, // Search all fields
+            case_sensitive: params.case_sensitive.unwrap_or(false),
+            use_stemming: false,
+            min_score: None,
+            max_results: None,
+        };
+        
+        filter.text_search_config = Some(text_config);
     }
     
     // Get events from the service
@@ -426,7 +493,7 @@ async fn get_events_by_chain(
     
     // Create filter for this chain
     let mut filter = CoreEventFilter::new();
-    filter.chain_id = Some(ChainId(chain_id.clone()));
+    filter.chain_ids = Some(vec![ChainId(chain_id.clone())]);
     filter.chain = Some(chain_id);
     
     if let Some(event_type) = params.event_type {
@@ -435,6 +502,33 @@ async fn get_events_by_chain(
     
     if let (Some(from), Some(to)) = (params.from_height, params.to_height) {
         filter.block_range = Some((from, to));
+    }
+    
+    // Add text search configuration
+    if let Some(text_query) = params.text_query {
+        filter.text_query = Some(text_query);
+        
+        // Parse text search mode
+        let search_mode = match params.text_search_mode.as_deref() {
+            Some("contains") => TextSearchMode::Contains,
+            Some("fulltext") => TextSearchMode::FullText,
+            Some("fuzzy") => TextSearchMode::Fuzzy { max_distance: 2 },
+            Some("regex") => TextSearchMode::Regex,
+            Some("phrase") => TextSearchMode::Phrase,
+            Some("boolean") => TextSearchMode::Boolean,
+            _ => TextSearchMode::Contains, // Default
+        };
+        
+        let text_config = TextSearchConfig {
+            mode: search_mode,
+            fields: None, // Search all fields
+            case_sensitive: params.case_sensitive.unwrap_or(false),
+            use_stemming: false,
+            min_score: None,
+            max_results: None,
+        };
+        
+        filter.text_search_config = Some(text_config);
     }
     
     // Get events from the service

@@ -190,16 +190,9 @@ async fn benchmark_rocksdb_query_performance(path: PathBuf) {
     let start = Instant::now();
     
     // Just to track the EventFilter data, we're not actually using it
-    let _eth_filter = EventFilter {
-        chain_id: None,
-        chain: Some("ethereum".to_string()),
-        block_range: None,
-        time_range: None,
-        event_types: None,
-        custom_filters: std::collections::HashMap::new(),
-        limit: None,
-        offset: None,
-    };
+    let mut _eth_filter = EventFilter::new();
+    _eth_filter.chain_ids = Some(vec![indexer_core::types::ChainId::from("ethereum")]);
+    _eth_filter.chain = Some("ethereum".to_string());
     
     // Get latest block for range
     let latest_block = storage.get_latest_block("ethereum").await.expect("Failed to get latest block");

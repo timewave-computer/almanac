@@ -58,6 +58,18 @@ pub enum Error {
     /// Authorization error
     #[error("Authorization error: {0}")]
     Authorization(String),
+    
+    /// Configuration error
+    #[error("Configuration error: {0}")]
+    Config(String),
+    
+    /// API error
+    #[error("API error: {0}")]
+    Api(String),
+    
+    /// Invalid event error
+    #[error("Invalid event: {0}")]
+    InvalidEvent(String),
 }
 
 impl Error {
@@ -112,6 +124,21 @@ impl Error {
     /// Create a new authorization error
     pub fn authorization<S: Into<String>>(msg: S) -> Self {
         Error::Authorization(msg.into())
+    }
+    
+    /// Create a new configuration error
+    pub fn config<S: Into<String>>(msg: S) -> Self {
+        Error::Config(msg.into())
+    }
+    
+    /// Create a new API error
+    pub fn api<S: Into<String>>(msg: S) -> Self {
+        Error::Api(msg.into())
+    }
+    
+    /// Create a new invalid event error
+    pub fn invalid_event<S: Into<String>>(msg: S) -> Self {
+        Error::InvalidEvent(msg.into())
     }
 }
 
@@ -169,6 +196,49 @@ impl BlockStatus {
             "justified" => Some(BlockStatus::Justified),
             "finalized" => Some(BlockStatus::Finalized),
             _ => None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_block_status_string_conversion() {
+        assert_eq!(BlockStatus::Confirmed.as_str(), "confirmed");
+        assert_eq!(BlockStatus::Safe.as_str(), "safe");
+        assert_eq!(BlockStatus::Justified.as_str(), "justified");
+        assert_eq!(BlockStatus::Finalized.as_str(), "finalized");
+
+        assert_eq!(BlockStatus::from_str("confirmed"), Some(BlockStatus::Confirmed));
+        assert_eq!(BlockStatus::from_str("safe"), Some(BlockStatus::Safe));
+        assert_eq!(BlockStatus::from_str("justified"), Some(BlockStatus::Justified));
+        assert_eq!(BlockStatus::from_str("finalized"), Some(BlockStatus::Finalized));
+        assert_eq!(BlockStatus::from_str("unknown"), None);
+    }
+
+    #[test]
+    fn test_error_creation_methods() {
+        let generic_err = Error::generic("test error");
+        match generic_err {
+            Error::Generic(msg) => assert_eq!(msg, "test error"),
+            _ => panic!("Wrong error type"),
+        }
+
+        let db_err = Error::database("db error");
+        match db_err {
+            Error::Database(msg) => assert_eq!(msg, "db error"),
+            _ => panic!("Wrong error type"),
+        }
+
+        let chain_err = Error::chain("ethereum", "tx failed");
+        match chain_err {
+            Error::Chain { chain, message } => {
+                assert_eq!(chain, "ethereum");
+                assert_eq!(message, "tx failed");
+            },
+            _ => panic!("Wrong error type"),
         }
     }
 } 

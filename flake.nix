@@ -86,6 +86,61 @@
                   pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
                 ];
               };
+              
+              # RocksDB system dependencies
+              librocksdb-sys = attrs: {
+                nativeBuildInputs = with pkgs; [
+                  pkg-config
+                  cmake
+                ];
+                buildInputs = with pkgs; [
+                  zlib
+                  bzip2
+                  lz4
+                  zstd
+                  snappy
+                ] ++ lib.optionals pkgs.stdenv.isDarwin [
+                  pkgs.darwin.apple_sdk.frameworks.Security
+                  pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
+                ];
+                
+                # Set environment variables for RocksDB compilation
+                preBuild = ''
+                  export ZLIB_INCLUDE_DIR=${pkgs.zlib.dev}/include
+                  export ZLIB_LIB_DIR=${pkgs.zlib}/lib
+                  export BZIP2_INCLUDE_DIR=${pkgs.bzip2.dev}/include
+                  export BZIP2_LIB_DIR=${pkgs.bzip2}/lib
+                  export LZ4_INCLUDE_DIR=${pkgs.lz4.dev}/include
+                  export LZ4_LIB_DIR=${pkgs.lz4}/lib
+                  export ZSTD_INCLUDE_DIR=${pkgs.zstd.dev}/include
+                  export ZSTD_LIB_DIR=${pkgs.zstd}/lib
+                  export SNAPPY_INCLUDE_DIR=${pkgs.snappy}/include
+                  export SNAPPY_LIB_DIR=${pkgs.snappy}/lib
+                '';
+              };
+              
+              # OpenSSL system dependencies
+              openssl-sys = attrs: {
+                nativeBuildInputs = with pkgs; [ pkg-config ];
+                buildInputs = [ pkgs.openssl ];
+                preBuild = ''
+                  export OPENSSL_DIR=${pkgs.openssl.dev}
+                  export OPENSSL_LIB_DIR=${pkgs.openssl.out}/lib
+                  export OPENSSL_INCLUDE_DIR=${pkgs.openssl.dev}/include
+                '';
+              };
+              
+              # Protocol Buffers dependencies
+              prost-build = attrs: {
+                nativeBuildInputs = [ pkgs.protobuf ];
+              };
+              
+              # Additional system crates that might need overrides
+              ring = attrs: {
+                buildInputs = lib.optionals pkgs.stdenv.isDarwin [
+                  pkgs.darwin.apple_sdk.frameworks.Security
+                ];
+              };
             };
           } else null;
           
@@ -289,6 +344,7 @@ EOF
           basicDevShell = pkgs.mkShell {
             packages = [ 
               rustToolchain 
+              pkgs.cargo
               pkgs.pkg-config 
               pkgs.openssl
               pkgs.postgresql_15
@@ -388,19 +444,6 @@ EOF
             wasm-bindgen-pkg = pkgs.wasm-bindgen-cli;
             init-databases = initDatabasesScript;
             stop-databases = stopDatabasesScript;
-            
-            # crate2nix-generated packages (conditionally included if Cargo.nix exists)
-            almanac = project.workspaceMembers.almanac.build;
-            indexer-core = project.workspaceMembers.indexer-core.build;
-            indexer-storage = project.workspaceMembers.indexer-storage.build;
-            indexer-ethereum = project.workspaceMembers.indexer-ethereum.build;
-            indexer-cosmos = project.workspaceMembers.indexer-cosmos.build;
-            indexer-api = project.workspaceMembers.indexer-api.build;
-            indexer-pipeline = project.workspaceMembers.indexer-pipeline.build;
-            indexer-query = project.workspaceMembers.indexer-query.build;
-            indexer-tools = project.workspaceMembers.indexer-tools.build;
-            indexer-common = project.workspaceMembers.indexer-common.build;
-            indexer-benchmarks = project.workspaceMembers.indexer-benchmarks.build;
             
             # Script to generate Cargo.nix using crate2nix
             generate-cargo-nix = pkgs.writeShellApplication {
@@ -508,7 +551,7 @@ EOF
                 exit $?
               '';
             };
-            default = project.workspaceMembers.almanac.build;
+            default = pkgs.wasm-bindgen-cli;
             
             # Add workflow packages
             workflow-menu = workflows.packages.${system}.workflow-menu;
@@ -516,7 +559,20 @@ EOF
             reth-workflow = workflows.packages.${system}.reth-workflow;
             cosmwasm-workflow = workflows.packages.${system}.cosmwasm-workflow;
             all-workflows = workflows.packages.${system}.all-workflows;
-          };
+          } // (if project != null then {
+            # crate2nix-generated packages (only available when Cargo.nix exists)
+            almanac = project.workspaceMembers.almanac.build;
+            indexer-core = project.workspaceMembers.indexer-core.build;
+            indexer-storage = project.workspaceMembers.indexer-storage.build;
+            indexer-ethereum = project.workspaceMembers.indexer-ethereum.build;
+            indexer-cosmos = project.workspaceMembers.indexer-cosmos.build;
+            indexer-api = project.workspaceMembers.indexer-api.build;
+            indexer-pipeline = project.workspaceMembers.indexer-pipeline.build;
+            indexer-query = project.workspaceMembers.indexer-query.build;
+            indexer-tools = project.workspaceMembers.indexer-tools.build;
+            indexer-common = project.workspaceMembers.indexer-common.build;
+            indexer-benchmarks = project.workspaceMembers.indexer-benchmarks.build;
+          } else {});
           
           # Add apps for workflow environments
           apps = {

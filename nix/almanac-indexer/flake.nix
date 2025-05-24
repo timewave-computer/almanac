@@ -36,6 +36,58 @@
           CONFIG_FILE="almanac-config.json"
           DATA_DIR="data"
           ROCKSDB_DIR="$DATA_DIR/rocksdb"
+          POSTGRES_DIR="$DATA_DIR/postgres"
+
+          # Database initialization function (inline implementation)
+          init_databases() {
+            echo "Initializing PostgreSQL and RocksDB..."
+            # Create data directories if they don't exist
+            mkdir -p "$POSTGRES_DIR"
+            mkdir -p "$ROCKSDB_DIR"
+            
+            # Initialize PostgreSQL if needed
+            if [ ! -f "$POSTGRES_DIR/PG_VERSION" ]; then
+              echo "Initializing PostgreSQL database..."
+              ${pkgs.postgresql}/bin/initdb -D "$POSTGRES_DIR" -U postgres
+              # Configure PostgreSQL for local development
+              echo "listen_addresses = 'localhost'" >> "$POSTGRES_DIR/postgresql.conf"
+              echo "port = 5432" >> "$POSTGRES_DIR/postgresql.conf"
+            fi
+            
+            # Start PostgreSQL if not running
+            if ! ${pkgs.postgresql}/bin/pg_ctl status -D "$POSTGRES_DIR" > /dev/null 2>&1; then
+              echo "Starting PostgreSQL..."
+              ${pkgs.postgresql}/bin/pg_ctl start -D "$POSTGRES_DIR" -l "$POSTGRES_DIR/logfile"
+              
+              # Wait for PostgreSQL to start
+              for i in {1..10}; do
+                if ${pkgs.postgresql}/bin/pg_isready -h localhost -p 5432 -U postgres > /dev/null 2>&1; then
+                  break
+                fi
+                echo "Waiting for PostgreSQL to start ($i/10)..."
+                sleep 1
+              done
+            fi
+            
+            # Create indexer database if it doesn't exist
+            if ! echo "SELECT 1 FROM pg_database WHERE datname = 'indexer'" | ${pkgs.postgresql}/bin/psql -h localhost -p 5432 -U postgres -t | grep -q 1; then
+              echo "Creating indexer database..."
+              ${pkgs.postgresql}/bin/createdb -h localhost -p 5432 -U postgres indexer
+            fi
+            
+            echo "Databases initialized successfully"
+            echo "PostgreSQL is running at localhost:5432"
+            echo "Database: indexer"
+            return 0
+          }
+
+          # Function to stop the database
+          stop_databases() {
+            echo "Stopping PostgreSQL..."
+            ${pkgs.postgresql}/bin/pg_ctl stop -D "$POSTGRES_DIR" -m fast
+            echo "PostgreSQL stopped"
+            return 0
+          }
 
           # Help function
           show_help() {
@@ -141,13 +193,13 @@
           mkdir -p $ROCKSDB_DIR
 
           # Check if PostgreSQL is running
-          if ! pg_isready -h localhost -p 5432 -U postgres > /dev/null 2>&1; then
+          if ! ${pkgs.postgresql}/bin/pg_isready -h localhost -p 5432 -U postgres > /dev/null 2>&1; then
             echo -e "''${RED}Error: PostgreSQL is not running''${NC}"
             echo -e "''${YELLOW}Attempting to initialize databases...''${NC}"
             
             # Try to initialize the databases
             if ! init_databases; then
-              echo -e "''${RED}Failed to initialize databases. Please run 'init_databases' manually.''${NC}"
+              echo -e "''${RED}Failed to initialize databases.''${NC}"
               exit 1
             fi
           fi
@@ -165,7 +217,7 @@
           # Chain-specific checks
           if [ "$CHAIN_TYPE" = "ethereum" ]; then
             # Check if the Ethereum node is running
-            if ! curl -s -X POST -H "Content-Type: application/json" --data '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' "$ETHEREUM_URL" > /dev/null; then
+            if ! ${pkgs.curl}/bin/curl -s -X POST -H "Content-Type: application/json" --data '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' "$ETHEREUM_URL" > /dev/null; then
               echo -e "''${RED}Error: Ethereum node ($NODE_TYPE) is not running at $ETHEREUM_URL''${NC}"
               case "$NODE_TYPE" in
                 anvil)
@@ -179,7 +231,7 @@
             fi
             
             # Verify chain ID matches expected
-            CHAIN_ID_HEX=$(curl -s -X POST -H "Content-Type: application/json" --data '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' "$ETHEREUM_URL" | grep -o '"result":"0x[0-9a-f]*"' | cut -d'"' -f4)
+            CHAIN_ID_HEX=$(${pkgs.curl}/bin/curl -s -X POST -H "Content-Type: application/json" --data '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' "$ETHEREUM_URL" | ${pkgs.gnugrep}/bin/grep -o '"result":"0x[0-9a-f]*"' | cut -d'"' -f4)
             
             # Check if contracts are deployed
             if [ ! -f "$CONTRACT_ADDRESSES_FILE" ]; then
@@ -260,7 +312,8 @@
           echo -e "''${BLUE}Building and running the Almanac indexer...''${NC}"
 
           # First try to build the almanac binary
-          cargo build --bin almanac
+          cd $(git rev-parse --show-toplevel)
+          ${pkgs.cargo}/bin/cargo build --bin almanac
 
           # Check if the build was successful
           if [ $? -ne 0 ]; then
@@ -273,9 +326,9 @@
           
           # Create the command based on the chain type
           if [ "$CHAIN_TYPE" = "ethereum" ]; then
-            COMMAND="cargo run --bin almanac -- run --config $CONFIG_FILE --eth-rpc $ETHEREUM_URL"
+            COMMAND="${pkgs.cargo}/bin/cargo run --bin almanac -- run --config $CONFIG_FILE --eth-rpc $ETHEREUM_URL"
           else
-            COMMAND="cargo run --bin almanac -- run --config $CONFIG_FILE --cosmos-rpc $WASMD_RPC"
+            COMMAND="${pkgs.cargo}/bin/cargo run --bin almanac -- run --config $CONFIG_FILE --cosmos-rpc $WASMD_RPC"
           fi
           
           # Execute the command with a timeout
@@ -312,7 +365,7 @@
           wait $INDEXER_PID 2>/dev/null || true
           
           # Check indexing status
-          tail -n 20 $LOG_FILE 2>/dev/null || echo "No log file found"
+          ${pkgs.coreutils}/bin/tail -n 20 $LOG_FILE 2>/dev/null || echo "No log file found"
           
           echo -e "''${GREEN}✓ Indexing completed after $INDEX_DURATION''${NC}"
           echo -e "''${BLUE}Log file available at: $LOG_FILE''${NC}"

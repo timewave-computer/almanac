@@ -19,7 +19,6 @@ broadcast/
 artifacts/
 typechain/
 typechain-types/
-deployments/
 
 # VSCode
 .vscode/
@@ -33,14 +32,18 @@ deployments/
 /tmp/osmosis-source*
 /benchmark_results/
 
-# Runtime
+# Rust build artifacts
+target/
+# Cargo.lock # Uncomment to ignore Cargo.lock (only for libraries, not applications)
+
+# Runtime data
 data/
 logs/
-# .sqlx/ # Keep sqlx offline data
-target/
+# .sqlx/ # Keep sqlx offline data for verification
 
-# Testing
+# Testing and logs
 *.log
+test_run.log
 
 # Project specific
 *.env
@@ -50,6 +53,10 @@ target/
 # Cache files
 .cache/
 cache/
+*.backup
+*.bak
+*.tmp
+*.old
 
 # Working files
 work/
@@ -58,13 +65,14 @@ lib/
 
 # Database
 .db_env
-.sqlx/
+postgres_data/
+.sqlx/ # Uncomment if you want to ignore sqlx offline query data
 
-# Temp
+# Temp directories
 $TMPDIR/
 $CARGO_TARGET_DIR/
 tmp/
-postgres_data/
+/tmp/
 
 # Reth Source (if cloned locally)
 /reth-src/
@@ -72,4 +80,29 @@ postgres_data/
 # Valence
 valence-protocol/
 infra/
-cosmos-nix/
+cosmos.nix/
+
+# Editor and IDE files
+*.swp
+*.swo
+*~
+.#*
+\#*#
+.vimrc.local
+
+# OS-specific files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Compiled output
+*.exe
+*.dll
+*.dylib
+*.so
+
+# Profiling and debugging
+*.profraw
+perf.data*
+flamegraph.svg
+callgrind.out.*

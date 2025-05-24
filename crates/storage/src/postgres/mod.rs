@@ -102,17 +102,12 @@ impl Storage for PostgresStorage {
     }
     
     async fn get_events(&self, chain: &str, from_block: u64, to_block: u64) -> Result<Vec<Box<dyn Event>>> {
-        // Construct filters based on input
-        let filter = EventFilter {
-            chain_id: Some(ChainId::from(chain)),
-            chain: Some(chain.to_string()),
-            block_range: Some((from_block, to_block)),
-            time_range: None,
-            event_types: None,
-            custom_filters: HashMap::new(),
-            limit: None,
-            offset: None,
-        };
+        let mut filter = EventFilter::new();
+        filter.chain_ids = Some(vec![ChainId::from(chain)]);
+        filter.chain = Some(chain.to_string());
+        filter.block_range = Some((from_block, to_block));
+        filter.limit = Some(1);
+        filter.offset = Some(0);
         // Get events using the repository
         self.event_repository.get_events(vec![filter]).await
     }
@@ -224,16 +219,13 @@ impl Storage for PostgresStorage {
         }
 
         // Create filters for each matching block
-        let filters: Vec<EventFilter> = block_numbers.iter().map(|&b| EventFilter {
-             chain_id: Some(ChainId::from(chain)),
-             chain: Some(chain.to_string()),
-             block_range: Some((b, b)), // Filter for this specific block
-             time_range: None,
-             event_types: None,
-             custom_filters: HashMap::new(),
-             limit: None,
-             offset: None,
-         }).collect();
+        let filters: Vec<EventFilter> = block_numbers.iter().map(|&b| {
+            let mut filter = EventFilter::new();
+            filter.chain_ids = Some(vec![ChainId::from(chain)]);
+            filter.chain = Some(chain.to_string());
+            filter.block_range = Some((b, b)); // Filter for this specific block
+            filter
+        }).collect();
 
         // Get events for the matching blocks
         // Note: This might be inefficient if there are many matching blocks.

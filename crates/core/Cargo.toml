@@ -20,6 +20,9 @@ serde.workspace = true
 serde_json.workspace = true
 serde_bytes.workspace = true
 
+# Text search
+regex = "1.10"
+
 # Logging and error handling
 tracing.workspace = true
 thiserror.workspace = true
@@ -34,6 +37,9 @@ indexer-pipeline = { path = "../pipeline" }
 
 # Internal dependencies
 indexer-common = { path = "../common" }
+
+# Valence domain clients for proto integration
+valence-domain-clients = { git = "https://github.com/timewave-computer/valence-domain-clients", rev = "766a1b593bcea9ed67b45c8c1ea9c548d0692a71" }
 
 [features]
 default = []

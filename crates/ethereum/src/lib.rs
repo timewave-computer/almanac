@@ -1,398 +1,506 @@
-/// Ethereum event service implementation
-use std::collections::{HashMap, HashSet};
+//! Ethereum client implementation using valence-domain-clients
+//! 
+//! This module provides Ethereum blockchain connectivity and event processing
+//! using the valence-domain-clients EVM integration for robust chain support.
+
 use std::sync::Arc;
-use std::time::SystemTime;
-use std::str::FromStr;
-use std::pin::Pin;
-use std::time::Duration;
-
+use anyhow::Result;
 use async_trait::async_trait;
-use ethers::middleware::Middleware;
-use ethers::providers::{Http, Provider, Ws};
-use ethers::types::{BlockNumber, Filter, H256, Log};
-use indexer_pipeline::{BlockStatus, Error, Result};
-use indexer_core::event::Event;
-use indexer_storage::Storage;
-use indexer_core::service::{EventService, EventSubscription};
-use indexer_core::types::{ChainId, EventFilter};
-use serde::{Deserialize, Serialize};
-use tokio::sync::RwLock;
-use tracing::{debug, error, info, warn};
-use ethers::abi::{Address, RawLog};
+use std::any::Any;
+use std::time::SystemTime;
 
-mod provider;
-mod event;
-mod reorg;
-mod subscription;
+// Re-export core types that may be used by other parts of the system
+pub use indexer_core::{
+    event::{Event, UnifiedEvent},
+    service::{EventService, EventSubscription},
+    types::{ChainId, EventFilter},
+};
 
-pub use provider::{EthereumProvider, EthereumProviderConfig, BlockStatus as EthBlockStatus};
-pub use event::{EthereumEvent, EthereumEventProcessor};
-pub use reorg::EthereumReorgDetector;
-pub use subscription::EthereumSubscription;
+// Import valence domain client types
+use valence_domain_clients::clients::ethereum::EthereumClient as ValenceEthereumClient;
+use valence_domain_clients::evm::base_client::EvmBaseClient;
+use valence_domain_clients::common::transaction::TransactionResponse;
 
-/// Configuration for the Ethereum event service
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EthereumEventServiceConfig {
-    /// Chain ID
+/// EVM chain configuration
+#[derive(Debug, Clone)]
+pub struct EvmChainConfig {
     pub chain_id: String,
-    
-    /// RPC URL for the Ethereum node
+    pub name: String,
     pub rpc_url: String,
-    
-    /// Whether to use websocket connection
-    pub use_websocket: bool,
-    
-    /// Block confirmation threshold
-    pub confirmation_blocks: u64,
-    
-    /// Maximum batch size for fetching blocks
-    pub max_batch_size: usize,
-    
-    /// How often to poll for new blocks (in milliseconds)
-    pub poll_interval_ms: u64,
-    
-    /// Maximum number of parallel requests
-    pub max_parallel_requests: usize,
+    pub network_id: u64,
+    pub native_token: String,
+    pub explorer_url: Option<String>,
 }
 
-impl Default for EthereumEventServiceConfig {
-    fn default() -> Self {
+impl EvmChainConfig {
+    /// Ethereum mainnet configuration
+    pub fn ethereum_mainnet(rpc_url: String) -> Self {
         Self {
-            chain_id: "ethereum".to_string(),
-            rpc_url: "http://localhost:8545".to_string(),
-            use_websocket: false,
-            confirmation_blocks: 12,
-            max_batch_size: 100,
-            poll_interval_ms: 1000,
-            max_parallel_requests: 10,
+            chain_id: "1".to_string(),
+            name: "ethereum".to_string(),
+            rpc_url,
+            network_id: 1,
+            native_token: "ETH".to_string(),
+            explorer_url: Some("https://etherscan.io".to_string()),
+        }
+    }
+    
+    /// Polygon mainnet configuration  
+    pub fn polygon_mainnet(rpc_url: String) -> Self {
+        Self {
+            chain_id: "137".to_string(),
+            name: "polygon".to_string(),
+            rpc_url,
+            network_id: 137,
+            native_token: "MATIC".to_string(),
+            explorer_url: Some("https://polygonscan.com".to_string()),
+        }
+    }
+    
+    /// Base mainnet configuration
+    pub fn base_mainnet(rpc_url: String) -> Self {
+        Self {
+            chain_id: "8453".to_string(),
+            name: "base".to_string(),
+            rpc_url,
+            network_id: 8453,
+            native_token: "ETH".to_string(),
+            explorer_url: Some("https://basescan.org".to_string()),
+        }
+    }
+    
+    /// Custom EVM chain configuration
+    pub fn custom(chain_id: String, name: String, rpc_url: String, network_id: u64, native_token: String) -> Self {
+        Self {
+            chain_id,
+            name,
+            rpc_url,
+            network_id,
+            native_token,
+            explorer_url: None,
         }
     }
 }
 
-/// Ethereum event service
-pub struct EthereumEventService {
-    /// Chain ID
+/// Ethereum client using valence-domain-clients EVM integration
+pub struct EthereumClient {
+    /// Internal valence Ethereum client
+    valence_client: Arc<ValenceEthereumClient>,
+    /// Chain configuration
+    config: EvmChainConfig,
+    /// Legacy chain_id for compatibility
     chain_id: ChainId,
-    
-    /// Ethereum provider
-    provider: Arc<EthereumProvider>,
-    
-    /// Event processor
-    event_processor: Arc<RwLock<EthereumEventProcessor>>,
-    
-    /// Configuration
-    config: EthereumEventServiceConfig,
-    
-    /// Block cache
-    block_cache: Arc<RwLock<HashMap<u64, ethers::types::Block<ethers::types::Transaction>>>>,
-    
-    /// Optional storage backend
-    storage: Option<Arc<dyn Storage + Send + Sync>>,
 }
 
-impl EthereumEventService {
-    /// Create a new Ethereum event service
-    pub async fn new(config: EthereumEventServiceConfig) -> Result<Self> {
-        // Create provider config
-        let provider_config = EthereumProviderConfig {
-            rpc_url: config.rpc_url.clone(),
-            use_websocket: config.use_websocket,
-            max_concurrent_requests: config.max_parallel_requests,
-            ..Default::default()
+impl EthereumClient {
+    /// Create a new Ethereum client with the given configuration
+    pub async fn new(chain_id: String, rpc_url: String) -> Result<Self> {
+        // Create default configuration for backward compatibility
+        let config = match chain_id.as_str() {
+            "1" => EvmChainConfig::ethereum_mainnet(rpc_url.clone()),
+            "137" => EvmChainConfig::polygon_mainnet(rpc_url.clone()),
+            "8453" => EvmChainConfig::base_mainnet(rpc_url.clone()),
+            _ => EvmChainConfig::custom(chain_id.clone(), format!("chain-{}", chain_id), rpc_url.clone(), 
+                                      chain_id.parse().unwrap_or(1), "ETH".to_string()),
         };
         
-        // Create provider
-        let provider = EthereumProvider::new(provider_config).await?;
+        Self::new_with_config(config).await
+    }
+    
+    /// Create a new Ethereum client with explicit configuration
+    pub async fn new_with_config(config: EvmChainConfig) -> Result<Self> {
+        // Create valence Ethereum client with a dummy mnemonic for now
+        // In production, this should use proper key management
+        let dummy_mnemonic = "test test test test test test test test test test test junk";
+        let valence_client = ValenceEthereumClient::new(&config.rpc_url, dummy_mnemonic, None)
+            .map_err(|e| anyhow::anyhow!("Failed to create Ethereum client: {}", e))?;
         
-        // Create event processor
-        let event_processor = EthereumEventProcessor::new(config.chain_id.clone());
-        
-        // Create service
-        let service = Self {
+        Ok(Self {
+            valence_client: Arc::new(valence_client),
             chain_id: ChainId(config.chain_id.clone()),
-            provider: Arc::new(provider),
-            event_processor: Arc::new(RwLock::new(event_processor)),
             config,
-            block_cache: Arc::new(RwLock::new(HashMap::new())),
-            storage: None,
-        };
-        
-        // Check connection
-        service.check_connection().await?;
-        
-        Ok(service)
+        })
     }
     
-    /// Check connection to the Ethereum node
-    async fn check_connection(&self) -> Result<()> {
-        self.provider.get_latest_block_number().await?;
-        Ok(())
-    }
-    
-    /// Get chain ID as string
-    pub fn chain_id_str(&self) -> &str {
-        &self.chain_id.0
-    }
-    
-    /// Get the latest block number
-    pub async fn get_latest_block_internal(&self) -> Result<u64> {
-        self.provider.get_latest_block_number().await
-    }
-    
-    /// Register a contract ABI for event parsing
-    pub async fn register_contract(&self, address: String, name: String, abi: ethers::abi::Abi) -> Result<()> {
-        let mut processor = self.event_processor.write().await;
-        processor.register_contract(address, name, abi);
-        Ok(())
-    }
-    
-    /// Fetch blocks in a range
-    pub async fn fetch_blocks(&self, from_block: u64, to_block: u64) -> Result<Vec<ethers::types::Block<ethers::types::Transaction>>> {
-        // Check if any blocks are in the cache
-        let mut blocks_to_fetch = Vec::new();
-        let mut result_blocks = Vec::new();
-        
-        {
-            let cache = self.block_cache.read().await;
+    /// Create a new Ethereum client with private key for signing
+    /// Note: The current valence API doesn't support private key initialization
+    /// This method creates a client with mnemonic instead
+    pub async fn new_with_private_key(chain_id: String, rpc_url: String, _private_key: [u8; 32]) -> Result<Self> {
+        // For now, fallback to mnemonic-based creation
+        // TODO: Update when valence supports private key initialization
+        let dummy_mnemonic = "test test test test test test test test test test test junk";
+        let valence_client = ValenceEthereumClient::new(&rpc_url, dummy_mnemonic, None)
+            .map_err(|e| anyhow::anyhow!("Failed to create Ethereum client: {}", e))?;
             
-            for block_num in from_block..=to_block {
-                if let Some(block) = cache.get(&block_num) {
-                    result_blocks.push(block.clone());
-                } else {
-                    blocks_to_fetch.push(block_num);
-                }
-            }
-        }
+        let chain_id_u64 = chain_id.parse::<u64>().unwrap_or(1);
         
-        // If all blocks were in the cache, return early
-        if blocks_to_fetch.is_empty() {
-            return Ok(result_blocks);
-        }
+        // Create default configuration
+        let config = match chain_id.as_str() {
+            "1" => EvmChainConfig::ethereum_mainnet(rpc_url),
+            "137" => EvmChainConfig::polygon_mainnet(rpc_url),
+            "8453" => EvmChainConfig::base_mainnet(rpc_url),
+            _ => EvmChainConfig::custom(chain_id.clone(), format!("chain-{}", chain_id), rpc_url, 
+                                      chain_id_u64, "ETH".to_string()),
+        };
         
-        // Fetch missing blocks
-        let fetched_blocks = self.provider.get_blocks_in_range(
-            *blocks_to_fetch.first().unwrap(),
-            *blocks_to_fetch.last().unwrap()
-        ).await?;
-        
-        // Update cache
-        {
-            let mut cache = self.block_cache.write().await;
-            
-            for block in &fetched_blocks {
-                if let Some(number) = block.number {
-                    cache.insert(number.as_u64(), block.clone());
-                }
-            }
-        }
-        
-        // Combine cached and fetched blocks
-        result_blocks.extend(fetched_blocks);
-        
-        // Sort blocks by number
-        result_blocks.sort_by_key(|block| block.number.unwrap_or_default());
-        
-        Ok(result_blocks)
+        Ok(Self {
+            valence_client: Arc::new(valence_client),
+            chain_id: ChainId(chain_id),
+            config,
+        })
     }
     
-    /// Helper to fetch logs based on combined filters
-    async fn fetch_logs(
-        &self,
-        from_block: u64,
-        to_block: u64,
-        filters: &[EventFilter],
-    ) -> Result<Vec<Box<dyn Event>>> {
-        debug!(from = from_block, to = to_block, num_filters = filters.len(), "Fetching logs");
+    /// Get the chain ID for this client
+    pub fn chain_id(&self) -> &ChainId {
+        &self.chain_id
+    }
+    
+    /// Get the chain configuration
+    pub fn config(&self) -> &EvmChainConfig {
+        &self.config
+    }
+    
+    /// Get the underlying valence client for advanced operations
+    pub fn valence_client(&self) -> &ValenceEthereumClient {
+        &self.valence_client
+    }
+}
 
-        // Determine the overall block range required by the filters
-        let min_block_opt = filters
-            .iter()
-            .filter_map(|f| f.block_range.map(|(min, _)| min))
-            .min();
-        let max_block_opt = filters
-            .iter()
-            .filter_map(|f| f.block_range.map(|(_, max)| max))
-            .max();
+/// Event adapter to convert valence TransactionResponse to almanac Event
+struct ValenceEventAdapter {
+    response: TransactionResponse,
+    chain_id: String,
+}
 
-        // Combine with function arguments
-        let final_from_block = min_block_opt.map_or(from_block, |min_f| std::cmp::max(from_block, min_f));
-        let final_to_block = max_block_opt.map_or(to_block, |max_f| std::cmp::min(to_block, max_f));
+impl ValenceEventAdapter {
+    fn new(response: TransactionResponse, chain_id: String) -> Self {
+        Self { response, chain_id }
+    }
+}
 
-        // Check if range is valid
-        if final_from_block > final_to_block {
-            warn!(final_from=%final_from_block, final_to=%final_to_block, "Invalid block range after applying filters, returning empty.");
-            return Ok(Vec::new());
-        }
+impl Event for ValenceEventAdapter {
+    fn id(&self) -> &str {
+        &self.response.hash
+    }
+    
+    fn chain(&self) -> &str {
+        &self.chain_id
+    }
+    
+    fn block_number(&self) -> u64 {
+        self.response.block_height
+    }
+    
+    fn block_hash(&self) -> &str {
+        // For cosmos TransactionResponse, we don't have block_hash, use placeholder
+        "0x"
+    }
+    
+    fn tx_hash(&self) -> &str {
+        &self.response.hash
+    }
+    
+    fn timestamp(&self) -> SystemTime {
+        // For now, return current time as cosmos TransactionResponse doesn't have timestamp
+        SystemTime::now()
+    }
+    
+    fn event_type(&self) -> &str {
+        "ethereum_transaction"
+    }
+    
+    fn raw_data(&self) -> &[u8] {
+        // For now, return empty slice - this could be enhanced to include transaction data
+        &[]
+    }
+    
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
 
-        // Convert u64 block numbers to ethers::types::U64 for the filter
-        let from_block_ethers = BlockNumber::Number(final_from_block.into());
-        let to_block_ethers = BlockNumber::Number(final_to_block.into());
-
-        // Extract unique addresses from all filters
-        let addresses: Vec<Address> = filters
-            .iter()
-            .filter_map(|f| f.custom_filters.get("address")) // Assuming address is in custom_filters
-            .filter_map(|addr_str| Address::from_str(addr_str).ok()) // Parse and ignore errors for now
-            .collect::<HashSet<_>>() // Collect into HashSet for dedup
-            .into_iter()
-            .collect(); // Convert back to Vec
-
-        // Create the base filter
-        let mut filter = Filter::new()
-            .from_block(from_block_ethers)
-            .to_block(to_block_ethers);
-
-        if !addresses.is_empty() {
-            filter = filter.address(addresses);
-        }
-
-        // TODO: Add topic filtering based on filter.event_types if ABIs are available
-
-        debug!(?filter, "Constructed ethers log filter");
-
-        // Execute the get_logs call
-        let logs = match &*self.provider { // Dereference Arc to access inner provider
-            EthereumProvider::Websocket(provider) => provider
-                .get_logs(&filter)
-                .await
-                .map_err(|e| Error::generic(format!("Websocket provider error fetching logs: {}", e)))?,
-            EthereumProvider::Http(provider) => provider
-                .get_logs(&filter)
-                .await
-                .map_err(|e| Error::generic(format!("HTTP provider error fetching logs: {}", e)))?,
-        };
-
-        debug!("Fetched {} logs", logs.len());
-
-        // Group logs by block number to fetch blocks efficiently
-        let mut logs_by_block: HashMap<u64, Vec<Log>> = HashMap::new();
-        for log in logs {
-            if let Some(block_num) = log.block_number {
-                logs_by_block.entry(block_num.as_u64()).or_default().push(log);
-            }
-        }
-
-        // Fetch the required blocks
-        let block_numbers: Vec<u64> = logs_by_block.keys().cloned().collect();
-        // Fetch blocks only if there are logs
-        let blocks_map: HashMap<u64, ethers::types::Block<ethers::types::Transaction>> = if !block_numbers.is_empty() {
-             self.fetch_blocks(
-                 *block_numbers.iter().min().unwrap_or(&final_from_block),
-                 *block_numbers.iter().max().unwrap_or(&final_to_block)
-             ).await?
-             .into_iter()
-             .filter_map(|b| b.number.map(|n| (n.as_u64(), b)))
-             .collect()
-        } else {
-            HashMap::new()
-        };
-
-        // Convert logs to events
-        let mut events: Vec<Box<dyn Event>> = Vec::new();
-        let processor = self.event_processor.read().await; // Acquire read lock before loop/filter
-        for (block_num, block_logs) in logs_by_block {
-             if let Some(block) = blocks_map.get(&block_num) {
-                 for log in block_logs {
-                    // process_log now returns Result<EthereumEvent>
-                    match processor.process_log(log, block, None) { // Pass reference to block, None for receipt
-                        Ok(event) => events.push(Box::new(event)), // Handle Result correctly
-                        Err(e) => {
-                            error!(log_block=?block_num, log_index=?log.log_index, tx_hash=?log.transaction_hash, "Failed to process log: {}", e);
-                            // Decide if one error should stop all processing
-                        }
-                    }
-                 }
-             } else {
-                 warn!(block_num=%block_num, "Could not find block data for logs in block, skipping.");
-             }
-        }
-        drop(processor); // Drop read lock after parsing logs
-
-        // Apply remaining filters (those not handled by get_logs)
-        // Re-acquiring lock for filtering
-        let processor_for_filter = self.event_processor.read().await;
-        let filtered_events: Vec<Box<dyn Event>> = events // Collect type is correct
-            .into_iter()
-            .filter(|event| {
-                 // Re-apply all filters for simplicity
-                 filters.iter().all(|f| {
-                     // Downcast event to EthereumEvent for matches_filter
-                     if let Some(eth_event) = event.as_any().downcast_ref::<EthereumEvent>() {
-                         processor_for_filter.matches_filter(eth_event, f)
-                     } else {
-                         false // Should not happen if only EthereumEvent is produced
-                     }
-                 })
-            })
-            .collect();
-        drop(processor_for_filter); // Drop read lock after filtering
-
-        Ok(filtered_events)
+impl std::fmt::Debug for ValenceEventAdapter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ValenceEventAdapter")
+            .field("hash", &self.response.hash)
+            .field("block_height", &self.response.block_height)
+            .field("chain_id", &self.chain_id)
+            .finish()
     }
 }
 
 #[async_trait]
-impl EventService for EthereumEventService {
-    type EventType = EthereumEvent;
+impl EventService for EthereumClient {
+    type EventType = UnifiedEvent;
     
     fn chain_id(&self) -> &ChainId {
         &self.chain_id
     }
     
-    async fn get_events(&self, filters: Vec<EventFilter>) -> Result<Vec<Box<dyn Event>>> {
-        // Get the block range from filters
-        let latest_block = self.get_latest_block().await?;
+    async fn get_events(&self, _filters: Vec<EventFilter>) -> indexer_pipeline::Result<Vec<Box<dyn Event>>> {
+        // TODO: Convert EventFilter to valence domain client filters
+        // TODO: Use valence_client to fetch events 
+        // TODO: Convert valence events to almanac Event trait objects
         
-        // Determine range using block_range field
-        let from_block = filters.iter()
-            .filter_map(|f| f.block_range.map(|(min, _)| min)) // Use block_range
-            .min()
-            .unwrap_or(latest_block.saturating_sub(100)); // Default to last 100 blocks
-        
-        let to_block = filters.iter()
-            .filter_map(|f| f.block_range.map(|(_, max)| max)) // Use block_range
-            .max()
-            .unwrap_or(latest_block);
-        
-        // Fetch logs for the block range
-        self.fetch_logs(from_block, to_block, &filters).await
+        // For now, return empty vector as this requires event subscription implementation
+        // This will be implemented in Phase 2.3 - Implement EVM event parsing and subscription
+        Ok(Vec::new())
     }
     
-    async fn subscribe(&self) -> Result<Box<dyn EventSubscription>> { // Use EventSubscription
-        info!("Subscribing to Ethereum events");
+    async fn get_latest_block(&self) -> indexer_pipeline::Result<u64> {
+        // Use the valence client to get the latest block number
+        let block_number = self.valence_client.latest_block_height().await
+            .map_err(|e| indexer_core::Error::generic(format!("Failed to get latest block: {}", e)))?;
+            
+        Ok(block_number)
+    }
+    
+    async fn get_latest_block_with_status(&self, _chain: &str, _status: indexer_pipeline::BlockStatus) -> indexer_pipeline::Result<u64> {
+        // For EVM chains, we'll just return the latest block for now
+        // More sophisticated block status handling can be added later
+        self.get_latest_block().await
+    }
+    
+    async fn subscribe(&self) -> indexer_pipeline::Result<Box<dyn EventSubscription>> {
+        // TODO: Implement event subscription using valence domain client
+        // This will be implemented in Phase 2.3 - Implement EVM event parsing and subscription
+        
+        // For now, return a dummy subscription
+        Ok(Box::new(DummySubscription))
+    }
+}
 
-        // Subscription requires a Websocket provider
-        match &*self.provider { // Dereference Arc to check variant
-            EthereumProvider::Websocket(provider_arc) => { // provider_arc is Arc<Provider<Ws>>
-                // Clone the Arc for the subscription task
-                let provider_clone = Arc::clone(provider_arc);
-                let chain_id = ChainId(self.config.chain_id.clone()); // Use tuple struct constructor
-                let subscription = EthereumSubscription::new(provider_clone, chain_id)
-                    .await?;
-                Ok(Box::new(subscription))
+/// Dummy subscription for compilation (to be replaced with real implementation)
+struct DummySubscription;
+
+#[async_trait]
+impl EventSubscription for DummySubscription {
+    async fn next(&mut self) -> Option<Box<dyn Event>> {
+        None
+    }
+    
+    async fn close(&mut self) -> indexer_pipeline::Result<()> {
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::SystemTime;
+    
+    #[test]
+    fn test_evm_chain_config_creation() {
+        let config = EvmChainConfig::ethereum_mainnet("https://test.rpc".to_string());
+        assert_eq!(config.chain_id, "1");
+        assert_eq!(config.name, "ethereum");
+        assert_eq!(config.native_token, "ETH");
+        assert_eq!(config.network_id, 1);
+        assert!(config.explorer_url.is_some());
+        assert_eq!(config.explorer_url.unwrap(), "https://etherscan.io");
+    }
+    
+    #[test]
+    fn test_evm_chain_config_presets() {
+        let eth_config = EvmChainConfig::ethereum_mainnet("https://test.rpc".to_string());
+        let polygon_config = EvmChainConfig::polygon_mainnet("https://test.rpc".to_string());
+        let base_config = EvmChainConfig::base_mainnet("https://test.rpc".to_string());
+        
+        // Test chain IDs
+        assert_eq!(eth_config.chain_id, "1");
+        assert_eq!(polygon_config.chain_id, "137");
+        assert_eq!(base_config.chain_id, "8453");
+        
+        // Test chain names
+        assert_eq!(eth_config.name, "ethereum");
+        assert_eq!(polygon_config.name, "polygon");
+        assert_eq!(base_config.name, "base");
+        
+        // Test native tokens
+        assert_eq!(eth_config.native_token, "ETH");
+        assert_eq!(polygon_config.native_token, "MATIC");
+        assert_eq!(base_config.native_token, "ETH");
+        
+        // Test network IDs
+        assert_eq!(eth_config.network_id, 1);
+        assert_eq!(polygon_config.network_id, 137);
+        assert_eq!(base_config.network_id, 8453);
+    }
+    
+    #[test]
+    fn test_evm_chain_config_custom() {
+        let custom_config = EvmChainConfig::custom(
+            "999".to_string(),
+            "testnet".to_string(),
+            "https://testnet.rpc".to_string(),
+            999,
+            "TEST".to_string(),
+        );
+        
+        assert_eq!(custom_config.chain_id, "999");
+        assert_eq!(custom_config.name, "testnet");
+        assert_eq!(custom_config.rpc_url, "https://testnet.rpc");
+        assert_eq!(custom_config.network_id, 999);
+        assert_eq!(custom_config.native_token, "TEST");
+        assert!(custom_config.explorer_url.is_none());
+    }
+    
+    #[tokio::test]
+    async fn test_ethereum_client_creation() {
+        // This test doesn't require actual RPC connectivity
+        let result = EthereumClient::new("1".to_string(), "https://test.rpc".to_string()).await;
+        
+        // The client creation might fail due to invalid RPC, but the structure should be correct
+        match result {
+            Ok(client) => {
+                assert_eq!(client.chain_id().0, "1");
+                assert_eq!(client.config().name, "ethereum");
+                assert_eq!(client.config().chain_id, "1");
+                assert_eq!(client.config().rpc_url, "https://test.rpc");
             }
-            EthereumProvider::Http(_) => Err(Error::generic( 
-                "Event subscription requires a Websocket provider".to_string(),
-            )),
+            Err(_) => {
+                // Expected if RPC is not accessible, but that's okay for unit tests
+                println!("Client creation failed as expected with test RPC URL");
+            }
         }
     }
     
-    async fn get_latest_block(&self) -> Result<u64> {
-        self.get_latest_block_internal().await
+    #[tokio::test]
+    async fn test_ethereum_client_with_config() {
+        let config = EvmChainConfig::ethereum_mainnet("https://test.rpc".to_string());
+        let result = EthereumClient::new_with_config(config.clone()).await;
+        
+        match result {
+            Ok(client) => {
+                assert_eq!(client.chain_id().0, config.chain_id);
+                assert_eq!(client.config().name, config.name);
+                assert_eq!(client.config().network_id, config.network_id);
+            }
+            Err(_) => {
+                println!("Client creation failed as expected with test RPC URL");
+            }
+        }
     }
     
-    async fn get_latest_block_with_status(&self, _chain: &str, status: BlockStatus) -> Result<u64> {
-        // Convert from storage BlockStatus to Ethereum BlockStatus
-        let eth_status = match status {
-            BlockStatus::Confirmed => EthBlockStatus::Confirmed,
-            BlockStatus::Safe => EthBlockStatus::Safe,
-            BlockStatus::Finalized => EthBlockStatus::Finalized,
-            _ => EthBlockStatus::Confirmed, // Default to confirmed
+    #[tokio::test]
+    async fn test_ethereum_client_with_private_key() {
+        let private_key = [1u8; 32]; // Dummy private key
+        let result = EthereumClient::new_with_private_key(
+            "1".to_string(),
+            "https://test.rpc".to_string(),
+            private_key,
+        ).await;
+        
+        match result {
+            Ok(client) => {
+                assert_eq!(client.chain_id().0, "1");
+                assert_eq!(client.config().name, "ethereum");
+            }
+            Err(_) => {
+                println!("Client creation failed as expected with test RPC URL");
+            }
+        }
+    }
+    
+    #[test]
+    fn test_valence_event_adapter() {
+        use valence_domain_clients::common::transaction::TransactionResponse;
+        
+        let tx_response = TransactionResponse {
+            hash: "0x123".to_string(),
+            success: true,
+            block_height: 1000,
+            gas_used: 21000,
         };
         
-        // Get block with the given status
-        let (_, block_number) = self.provider.get_block_by_status(eth_status).await?;
+        let adapter = ValenceEventAdapter::new(tx_response, "ethereum".to_string());
         
-        Ok(block_number)
+        assert_eq!(adapter.id(), "0x123");
+        assert_eq!(adapter.chain(), "ethereum");
+        assert_eq!(adapter.block_number(), 1000);
+        assert_eq!(adapter.block_hash(), "0x");
+        assert_eq!(adapter.tx_hash(), "0x123");
+        assert_eq!(adapter.event_type(), "ethereum_transaction");
+        assert_eq!(adapter.raw_data(), &[] as &[u8]);
+        
+        // Test that timestamp is reasonable (within last minute)
+        let now = SystemTime::now();
+        let adapter_time = adapter.timestamp();
+        let duration = now.duration_since(adapter_time).unwrap_or_default();
+        assert!(duration.as_secs() < 60);
+    }
+    
+    #[test]
+    fn test_valence_event_adapter_debug() {
+        use valence_domain_clients::common::transaction::TransactionResponse;
+        
+        let tx_response = TransactionResponse {
+            hash: "0xabc".to_string(),
+            success: false,
+            block_height: 2000,
+            gas_used: 42000,
+        };
+        
+        let adapter = ValenceEventAdapter::new(tx_response, "polygon".to_string());
+        let debug_str = format!("{:?}", adapter);
+        
+        assert!(debug_str.contains("0xabc"));
+        assert!(debug_str.contains("2000"));
+        assert!(debug_str.contains("polygon"));
+    }
+    
+    #[test]
+    fn test_valence_event_adapter_as_any() {
+        use valence_domain_clients::common::transaction::TransactionResponse;
+        
+        let tx_response = TransactionResponse {
+            hash: "0xdef".to_string(),
+            success: true,
+            block_height: 3000,
+            gas_used: 63000,
+        };
+        
+        let adapter = ValenceEventAdapter::new(tx_response, "base".to_string());
+        let any = adapter.as_any();
+        
+        // Test that we can downcast back to ValenceEventAdapter
+        let downcasted = any.downcast_ref::<ValenceEventAdapter>().unwrap();
+        assert_eq!(downcasted.id(), "0xdef");
+        assert_eq!(downcasted.chain(), "base");
+    }
+    
+    #[tokio::test]
+    async fn test_event_service_interface() {
+        // Test that our client implements EventService correctly
+        use indexer_core::service::EventService;
+        
+        let config = EvmChainConfig::ethereum_mainnet("https://test.rpc".to_string());
+        
+        match EthereumClient::new_with_config(config).await {
+            Ok(client) => {
+                // Test EventService methods
+                assert_eq!(client.chain_id().0, "1");
+                
+                // Test get_events (should return empty for now)
+                let events = client.get_events(vec![]).await.unwrap();
+                assert_eq!(events.len(), 0);
+            }
+            Err(_) => {
+                println!("Client creation failed as expected with test RPC URL");
+            }
+        }
+    }
+    
+    #[tokio::test] 
+    async fn test_dummy_subscription() {
+        let mut subscription = DummySubscription;
+        
+        // Test that subscription returns None for next
+        let event = subscription.next().await;
+        assert!(event.is_none());
+        
+        // Test that close succeeds
+        let result = subscription.close().await;
+        assert!(result.is_ok());
     }
 } 

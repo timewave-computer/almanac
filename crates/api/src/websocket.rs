@@ -46,27 +46,6 @@ pub struct PersistedSubscription {
     pub active: bool,
 }
 
-/// Subscription persistence trait
-pub trait SubscriptionStorage: Send + Sync {
-    /// Save a subscription to persistent storage
-    async fn save_subscription(&self, subscription: &PersistedSubscription) -> Result<()>;
-    
-    /// Load subscriptions for a connection
-    async fn load_subscriptions(&self, connection_id: &str) -> Result<Vec<PersistedSubscription>>;
-    
-    /// Load all active subscriptions
-    async fn load_all_subscriptions(&self) -> Result<Vec<PersistedSubscription>>;
-    
-    /// Update subscription event count
-    async fn update_subscription_count(&self, subscription_id: &str, count: usize) -> Result<()>;
-    
-    /// Mark subscription as inactive
-    async fn deactivate_subscription(&self, subscription_id: &str) -> Result<()>;
-    
-    /// Remove old inactive subscriptions
-    async fn cleanup_old_subscriptions(&self, older_than_hours: u64) -> Result<()>;
-}
-
 /// In-memory subscription storage (for development/testing)
 #[derive(Debug, Clone)]
 pub struct InMemorySubscriptionStorage {
@@ -79,17 +58,15 @@ impl InMemorySubscriptionStorage {
             subscriptions: Arc::new(RwLock::new(HashMap::new())),
         }
     }
-}
 
-impl SubscriptionStorage for InMemorySubscriptionStorage {
-    async fn save_subscription(&self, subscription: &PersistedSubscription) -> Result<()> {
+    pub async fn save_subscription(&self, subscription: &PersistedSubscription) -> Result<()> {
         let mut subscriptions = self.subscriptions.write().await;
         subscriptions.insert(subscription.id.clone(), subscription.clone());
         debug!("Saved subscription {} to storage", subscription.id);
         Ok(())
     }
     
-    async fn load_subscriptions(&self, connection_id: &str) -> Result<Vec<PersistedSubscription>> {
+    pub async fn load_subscriptions(&self, connection_id: &str) -> Result<Vec<PersistedSubscription>> {
         let subscriptions = self.subscriptions.read().await;
         let results = subscriptions
             .values()
@@ -99,7 +76,7 @@ impl SubscriptionStorage for InMemorySubscriptionStorage {
         Ok(results)
     }
     
-    async fn load_all_subscriptions(&self) -> Result<Vec<PersistedSubscription>> {
+    pub async fn load_all_subscriptions(&self) -> Result<Vec<PersistedSubscription>> {
         let subscriptions = self.subscriptions.read().await;
         let results = subscriptions
             .values()
@@ -109,7 +86,7 @@ impl SubscriptionStorage for InMemorySubscriptionStorage {
         Ok(results)
     }
     
-    async fn update_subscription_count(&self, subscription_id: &str, count: usize) -> Result<()> {
+    pub async fn update_subscription_count(&self, subscription_id: &str, count: usize) -> Result<()> {
         let mut subscriptions = self.subscriptions.write().await;
         if let Some(subscription) = subscriptions.get_mut(subscription_id) {
             subscription.event_count = count;
@@ -117,7 +94,7 @@ impl SubscriptionStorage for InMemorySubscriptionStorage {
         Ok(())
     }
     
-    async fn deactivate_subscription(&self, subscription_id: &str) -> Result<()> {
+    pub async fn deactivate_subscription(&self, subscription_id: &str) -> Result<()> {
         let mut subscriptions = self.subscriptions.write().await;
         if let Some(subscription) = subscriptions.get_mut(subscription_id) {
             subscription.active = false;
@@ -126,7 +103,7 @@ impl SubscriptionStorage for InMemorySubscriptionStorage {
         Ok(())
     }
     
-    async fn cleanup_old_subscriptions(&self, older_than_hours: u64) -> Result<()> {
+    pub async fn cleanup_old_subscriptions(&self, older_than_hours: u64) -> Result<()> {
         let mut subscriptions = self.subscriptions.write().await;
         let cutoff_time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -249,8 +226,7 @@ impl From<EventFilters> for CoreEventFilter {
     fn from(filters: EventFilters) -> Self {
         let mut core_filter = CoreEventFilter::new();
         
-        core_filter.chain_id = filters.chain_id.as_ref().map(|id| ChainId(id.clone()));
-        core_filter.chain = filters.chain_id;
+        core_filter.chain_ids = filters.chain_id.as_ref().map(|id| vec![ChainId(id.clone())]);
         
         if let Some((from, to)) = filters.block_range {
             core_filter.block_range = Some((from, to));
@@ -379,7 +355,7 @@ pub struct ConnectionManager {
     /// Event broadcaster
     event_broadcast: broadcast::Sender<(String, EventData)>,
     /// Subscription storage
-    subscription_storage: Arc<dyn SubscriptionStorage>,
+    subscription_storage: Arc<InMemorySubscriptionStorage>,
 }
 
 impl ConnectionManager {

@@ -1,0 +1,19 @@
+[package]
+name = "indexer-benchmarks"
+version = "0.1.0"
+edition = "2021"
+description = "Benchmarks for Almanac indexer"
+
+[dependencies]
+indexer-storage = { path = "../storage" }
+indexer-core = { path = "../core" }
+indexer-common = { path = "../common" }
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sqlx = { version = "0.7", features = ["postgres", "runtime-tokio", "json"] }
+rocksdb = "0.21.0"
+chrono = { version = "0.4", features = ["serde"] }
+futures = "0.3"
+anyhow = "1.0" 

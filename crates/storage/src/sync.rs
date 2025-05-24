@@ -192,16 +192,14 @@ impl StorageSynchronizer {
         info!("Synchronizing chain {} from block {} to {}", chain, start_block, end_block);
         
         // Create filter to get events from the primary storage
-        let filter = EventFilter {
-            chain_id: Some(ChainId::from(chain)),
-            chain: Some(chain.to_string()),
-            block_range: Some((start_block, end_block)),
-            time_range: None,
-            event_types: None,
-            custom_filters: HashMap::new(),
-            limit: None,
-            offset: None,
-        };
+        let mut filter = EventFilter::new();
+        filter.chain_ids = Some(vec![ChainId::from(chain)]);
+        filter.chain = Some(chain.to_string());
+        filter.block_range = Some((start_block, end_block));
+        filter.time_range = None;
+        filter.event_types = None;
+        filter.limit = None;
+        filter.offset = None;
         
         // Get events from primary
         let events = primary.get_events(chain, start_block, end_block).await?;

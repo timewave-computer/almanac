@@ -182,6 +182,18 @@ impl ChainReorgTracker {
         }
     }
     
+    /// Set a new configuration for the tracker
+    pub fn set_config(&mut self, config: ReorgConfig) {
+        self.config = config;
+        // Update max_blocks based on the new config
+        self.max_blocks = (self.config.max_depth as usize) * 2;
+        
+        // Trim the recent_blocks if necessary based on the new max_blocks
+        while self.recent_blocks.len() > self.max_blocks {
+            self.recent_blocks.pop_back();
+        }
+    }
+    
     /// Check if a reorganization has occurred
     pub fn check_reorg(&self, new_block: &CanonicalBlock) -> Option<ReorgEvent> {
         // If this is the first block or the new block builds on the previous tip, no reorg

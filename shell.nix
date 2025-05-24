@@ -1,52 +1,39 @@
 # Direct shell.nix without requiring flake-compat
 { pkgs ? import <nixpkgs> {} }:
 
-pkgs.mkShell {
-  buildInputs = with pkgs; [
-    # Foundry tools
-    foundry
-    jq
-    
-    # Node.js for scripts
-    nodejs
-    
-    # Rust development
-    rustc
-    cargo
-    rustfmt
-    clippy
-    
-    # Build dependencies
-    rocksdb
-    postgresql_15
-  ];
+let
+  # Import the flake to get access to its outputs
+  flake = builtins.getFlake (toString ./.);
   
-  # Set environment variables directly
-  MACOSX_DEPLOYMENT_TARGET = "11.0";
-  SOURCE_DATE_EPOCH = "1672531200";
+  # Get the default devShell for the current system
+  devShell = flake.devShells.${builtins.currentSystem}.default;
   
-  shellHook = ''
-    # Set environment variables again to ensure they're available in all shell contexts
-    export MACOSX_DEPLOYMENT_TARGET="11.0"
-    export SOURCE_DATE_EPOCH="1672531200"
+  # Create a wrapped shell with explicit environment variables
+  wrappedShell = pkgs.mkShell {
+    # Inherit packages from the flake's devShell
+    inputsFrom = [ devShell ];
     
-    # Set other environment variables
-    export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/indexer"
-    export ROCKSDB_PATH="./data/rocksdb"
-    export ETH_RPC_URL="http://localhost:8545"
-    export RETH_DATA_DIR="./data/reth"
-    export COSMOS_RPC_URL="http://localhost:26657"
+    # Add explicit packages needed for building
+    packages = with pkgs; [
+      rustc
+      cargo
+      pkg-config
+      openssl
+      libiconv
+      postgresql_15
+      sqlx-cli
+    ];
     
-    # Ensure directories exist
-    mkdir -p ./data/rocksdb
-    mkdir -p ./data/reth
-    mkdir -p ./data/postgres
-    mkdir -p ./logs
-    
-    echo "Environment ready with proper macOS variables set"
-    echo "  MACOSX_DEPLOYMENT_TARGET=$MACOSX_DEPLOYMENT_TARGET"
-    echo "  SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH"
-    echo ""
-    echo "Run cargo commands directly, the environment is properly set"
-  '';
-} 
+    # Explicitly set MACOSX_DEPLOYMENT_TARGET
+    shellHook = ''
+      # Set macOS deployment target explicitly
+      export MACOSX_DEPLOYMENT_TARGET="11.0"
+      
+      # Then run the original shellHook
+      ${devShell.shellHook}
+      
+      # Make sure the variable is set and not empty
+      echo "MACOSX_DEPLOYMENT_TARGET is set to: $MACOSX_DEPLOYMENT_TARGET"
+    '';
+  };
+in wrappedShell 

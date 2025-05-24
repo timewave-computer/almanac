@@ -11,7 +11,9 @@ description = "API interface for the indexer"
 # Internal crates
 indexer-core = { path = "../core" }
 indexer-pipeline = { path = "../pipeline" }
-indexer-storage = { path = "../storage" }
+indexer-storage = { path = "../storage", features = ["postgres", "rocks"] }
+indexer-ethereum = { path = "../ethereum" }
+indexer-cosmos = { path = "../cosmos" }
 
 # Async runtime
 tokio.workspace = true
@@ -32,22 +34,30 @@ serde.workspace = true
 serde_json.workspace = true
 
 # Base64 encoding for binary data
-base64 = "0.21.7"
+base64.workspace = true
 
 # Date and time
 chrono = { version = "0.4", features = ["serde"] }
 
 # Logging and error handling
 tracing.workspace = true
+tracing-subscriber.workspace = true
 thiserror.workspace = true
 anyhow = "1.0"
 uuid = { version = "1.6", features = ["v4", "serde"] }
+
+# Authentication and security
+jsonwebtoken = "8.3"
+bcrypt = "0.15"
+
+# CLI
+clap.workspace = true
 
 # Testing
 axum-test-helper = { version = "0.3.0", optional = true }
 
 [features]
-default = []
+default = ["postgres", "rocks"]
 postgres = ["indexer-core/postgres"]
 rocks = ["indexer-core/rocks"]
 test-utils = ["axum-test-helper"] 

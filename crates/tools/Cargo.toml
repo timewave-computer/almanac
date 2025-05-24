@@ -1,0 +1,18 @@
+[package]
+name = "indexer-tools"
+version = "0.1.0"
+edition = "2021"
+description = "Tools for Almanac indexer"
+
+[dependencies]
+ethers = { version = "2.0", features = ["ws", "rustls"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+futures = "0.3"
+eyre = "0.6"
+anyhow = "1.0"
+indexer-common = { path = "../common" }
+tracing = "0.1" 
+clap.workspace = true
+hex.workspace = true

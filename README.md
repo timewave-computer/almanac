@@ -1,18 +1,20 @@
 # Almanac: Cross-Chain Indexer
 
-A performant indexer designed to track Valence, Causality and associated contract state across multiple chains. Almanac currently supports Ethereum and Cosmos chains, with easy extensibility to others in the future.
+A performant indexer designed to track Valence, Causality and associated contract state across multiple chains. Almanac currently supports Ethereum and Cosmos chains using the `valence-domain-clients` library for robust blockchain connectivity, with easy extensibility to others in the future.
 
 ![](./almanac.png)
 
-## Status
-
-Still under development. Basic intexing works, but a simulation system still being scaffolded to test the system properly.
 
 ## Project Overview
 
 Almanac enables tracking Valence programs and the state associated with related contracts across different blockchains. For non-BFT chains it handles chain finality conditions with appropriate determinism classifications. The system employs a hybrid storage architecture using RocksDB for high-performance paths and PostgreSQL for complex queries. This makes it appropriate for use with both cross-chain strategy operations and client UI development.
 
-- **Multi-chain support**: Ethereum and Cosmos chains with plans for Solana and Move-based chains
+Almanac has been integrated with `valence-domain-clients` for robust multi-chain connectivity:
+
+- **Multi-chain support**: 
+  - **EVM chains**: Ethereum, Polygon, Base (via `EthereumClient`)
+  - **Cosmos chains**: Noble, Osmosis, Neutron (via `NobleClient`)
+  - Easy extensibility for additional chains through valence client implementations
 - **Hybrid storage architecture**:
   - RocksDB for high-performance, real-time access paths
   - PostgreSQL for complex queries, historical data, and relationships
@@ -21,11 +23,14 @@ Almanac enables tracking Valence programs and the state associated with related 
   - Processor state and cross-chain message processing
   - Authorization grants, revocations, and policy changes
   - Library deployments, upgrades, and usage
-- **Chain reorganization handling**
-- **Block finality tracking**: confirmed, safe, justified, finalized states
-- **Determinism classification** for Cosmos events
-- **Program lifecycle tracking** across domains
-- **Cross-chain debugging** with multi-chain traces
+- **Advanced blockchain features**:
+  - Chain reorganization handling
+  - Block finality tracking: confirmed, safe, justified, finalized states
+  - Determinism classification for Cosmos events
+  - Program lifecycle tracking across domains
+  - Cross-chain debugging with multi-chain traces
+- **Dependency isolation**: All blockchain-specific dependencies managed through valence-domain-clients
+- **Unified event system**: Cross-chain event normalization and processing
 
 ## Getting Started
 
@@ -44,10 +49,23 @@ Enter the development shell:
 nix develop
 ```
 
-This will set up a complete development environment with all necessary dependencies.
+This will set up a complete development environment with all necessary dependencies including:
+- Rust toolchain
+- PostgreSQL database server 
+- crate2nix for reproducible builds
+- Foundry (anvil, forge, cast) for Ethereum development
+- All required system libraries and build tools
+
+**Available commands in the dev shell:**
+- `init_databases` - Initialize and start PostgreSQL and RocksDB
+- `stop_databases` - Stop PostgreSQL server  
+- `generate_cargo_nix` - Generate Cargo.nix for Nix builds
+- `update_cargo_nix` - Update existing Cargo.nix file
+- `run_almanac_tests` - Run the Almanac test suite
 
 ### Build and Run
 
+#### Option 1: Direct Cargo Build (Development)
 Build the project:
 ```bash
 cargo build
@@ -55,8 +73,80 @@ cargo build
 
 Run the indexer:
 ```bash
-cargo run
+cargo run --bin almanac
 ```
+
+#### Option 2: Nix Build (Production/Reproducible)
+Almanac uses `crate2nix` for reproducible builds. First, generate the Nix build configuration:
+
+```bash
+generate_cargo_nix
+```
+
+Then build specific components:
+```bash
+# Build the main almanac binary
+nix build .#indexer-api
+
+# Build specific workspace crates
+nix build .#indexer-core
+nix build .#indexer-ethereum
+nix build .#indexer-cosmos
+nix build .#indexer-api
+```
+
+**Available crate2nix commands in the dev shell:**
+- `generate_cargo_nix` - Generate Cargo.nix from Cargo.toml using crate2nix
+- `update_cargo_nix` - Update existing Cargo.nix file
+
+## Development Workflows
+
+Almanac provides several Nix-based development environments for working with different blockchain backends.
+
+### Running the Workflow Menu
+
+To select which workflow to run, execute:
+
+```bash
+cd nix/environments
+nix run .
+```
+
+This will display a menu where you can select which workflow to run:
+
+1. Anvil Workflow - For Ethereum development with Anvil
+2. Reth Workflow - For Ethereum development with Reth
+3. CosmWasm Workflow - For CosmWasm chain development with wasmd
+4. All Workflows - Run all workflows in sequence
+
+### Running Specific Workflows Directly
+
+You can also run specific workflows directly:
+
+```bash
+# Anvil workflow
+nix run ./nix/environments#anvil-workflow
+
+# Reth workflow
+nix run ./nix/environments#reth-workflow
+
+# CosmWasm workflow
+nix run ./nix/environments#cosmwasm-workflow
+
+# All workflows in sequence
+nix run ./nix/environments#all-workflows
+```
+
+### Development Shell for Workflows
+
+You can enter a development shell with all workflow tools available:
+
+```bash
+cd nix/environments
+nix develop
+```
+
+For more details on using the workflow environments, see the [workflows documentation](nix/environments/README.md).
 
 ## Storage Benchmarks
 
@@ -68,24 +158,40 @@ cargo run --bin run_rocks_benchmark
 
 ## Testing
 
-Run the storage synchronization test:
+### Unit Tests
+
+Run unit tests for the client integrations:
 
 ```bash
+# Test Ethereum client integration
+cargo test --package indexer-ethereum
+
+# Test Cosmos client integration  
+cargo test --package indexer-cosmos
+
+# Test storage synchronization
 cargo test -p indexer-storage --test storage_sync
 ```
 
-Test the Ethereum adapter against Anvil:
+### Integration Tests
+
+Test the adapters against live blockchain nodes:
+
 ```bash
+# Test Ethereum adapter against Anvil
 nix run .#test-ethereum-adapter-anvil
-```
 
-Test the Cosmos adapter:
-```bash
+# Test Cosmos adapter
 nix run .#test-cosmos-adapter
+
+# Run the comprehensive test suite
+run_almanac_tests
 ```
 
-Test chain reorganization handling:
+### Chain Reorganization Tests
+
 ```bash
+# Test chain reorganization handling
 ./scripts/test-chain-reorg.sh
 ```
 
@@ -184,6 +290,16 @@ The project now includes full Ethereum contract implementations for testing cros
    - Clean up all resources after completion
 
 This implementation provides a robust framework for testing cross-chain interactions between Ethereum and Cosmos chains.
+
+
+
+## Troubleshooting
+
+If a workflow doesn't complete successfully, check the respective log files:
+- Anvil logs: `logs/anvil.log`
+- Reth logs: `logs/reth.log`
+- wasmd logs: `logs/wasmd.log`
+- PostgreSQL logs: `data/postgres/postgres.log`
 
 ## Credit
 
