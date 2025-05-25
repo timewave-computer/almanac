@@ -536,6 +536,12 @@ impl DefaultCrossChainCorrelator {
     }
 }
 
+impl Default for DefaultCrossChainCorrelator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl CrossChainCorrelator for DefaultCrossChainCorrelator {
     async fn correlate_cross_chain(

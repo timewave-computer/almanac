@@ -124,6 +124,12 @@ impl DefaultEventCorrelator {
     }
 }
 
+impl Default for DefaultEventCorrelator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl EventCorrelator for DefaultEventCorrelator {
     async fn correlate_events(
@@ -427,6 +433,12 @@ impl DefaultPatternMatcher {
         } else {
             None
         }
+    }
+}
+
+impl Default for DefaultPatternMatcher {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

@@ -91,7 +91,7 @@ impl Default for ExportConfig {
 }
 
 /// Export filters for data selection
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ExportFilter {
     /// Chain filters
     pub chains: Option<Vec<String>>,
