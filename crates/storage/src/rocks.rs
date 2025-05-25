@@ -5,6 +5,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::any::Any;
+use std::collections::HashSet;
 
 use async_trait::async_trait;
 use indexer_core::{BlockStatus, Error, Result};

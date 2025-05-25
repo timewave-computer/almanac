@@ -4,13 +4,14 @@
 //! using the valence-domain-clients EVM integration for robust chain support.
 
 use std::sync::Arc;
-use anyhow::Result;
+use anyhow::Result as AnyhowResult;
 use async_trait::async_trait;
 use std::any::Any;
 use std::time::SystemTime;
 use indexer_core::{Error, Result};
-use indexer_core::event::Event;
-use indexer_core::types::{EventFilter, ChainClient};
+use indexer_core::event::{Event, UnifiedEvent};
+use indexer_core::service::{EventService, EventSubscription};
+use indexer_core::types::{ChainId, EventFilter};
 
 // Re-export core types that may be used by other parts of the system
 pub use indexer_core::{
@@ -20,7 +21,7 @@ pub use indexer_core::{
 };
 
 // Import valence domain client types
-use valence_domain_clients::clients::EthereumClient as ValenceEthereumClient;
+use valence_domain_clients::clients::ethereum::EthereumClient as ValenceEthereumClient;
 use valence_domain_clients::common::transaction::TransactionResponse;
 
 /// EVM chain configuration

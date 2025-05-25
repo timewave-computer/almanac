@@ -4,20 +4,12 @@
 //! using the valence-domain-clients Cosmos integration for robust chain support.
 
 use std::sync::Arc;
-use anyhow::Result;
+use anyhow::Result as AnyhowResult;
 use async_trait::async_trait;
 use indexer_core::{Error, Result};
-use indexer_core::event::Event;
-use indexer_core::types::{EventFilter, ChainClient};
-
-// Re-export core types that may be used by other parts of the system
-pub use indexer_core::{
-    event::{Event, UnifiedEvent},
-    service::{EventService, EventSubscription},
-    types::{ChainId, EventFilter},
-};
-
-// Import pipeline types
+use indexer_core::event::{Event, UnifiedEvent};
+use indexer_core::service::{EventService, EventSubscription};
+use indexer_core::types::{ChainId, EventFilter};
 
 // Import valence domain client types
 use valence_domain_clients::clients::noble::NobleClient;
@@ -121,7 +113,7 @@ pub struct CosmosClientWrapper {
 impl CosmosClientWrapper {
     /// Create a new Cosmos client with the given configuration
     /// This creates a Noble client as an example - can be extended for other chains
-    pub async fn new(chain_id: String, grpc_url: String, mnemonic: String) -> Result<Self> {
+    pub async fn new(chain_id: String, grpc_url: String, mnemonic: String) -> AnyhowResult<Self> {
         // Create default configuration for backward compatibility
         let config = match chain_id.as_str() {
             "noble-1" => CosmosChainConfig::noble_mainnet(grpc_url.clone()),
@@ -142,7 +134,7 @@ impl CosmosClientWrapper {
     }
     
     /// Create a new Cosmos client with explicit configuration
-    pub async fn new_with_config(config: CosmosChainConfig, mnemonic: String) -> Result<Self> {
+    pub async fn new_with_config(config: CosmosChainConfig, mnemonic: String) -> AnyhowResult<Self> {
         // Create valence Noble client as an example
         // TODO: This should be expanded to support different chain types based on config
         // Note: NobleClient::new takes (rpc_url, rpc_port, mnemonic, chain_id, chain_denom)
