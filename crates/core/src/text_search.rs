@@ -41,14 +41,13 @@ impl DefaultTextSearcher {
     
     /// Extract searchable text from an event
     fn extract_searchable_text(&self, event: &dyn Event, fields: &Option<Vec<String>>) -> String {
-        let mut text_parts = Vec::new();
-        
-        // Always include basic event information
-        text_parts.push(event.id().to_string());
-        text_parts.push(event.chain().to_string());
-        text_parts.push(event.event_type().to_string());
-        text_parts.push(event.tx_hash().to_string());
-        text_parts.push(event.block_hash().to_string());
+        let mut text_parts = vec![
+            event.id().to_string(),
+            event.chain().to_string(),
+            event.event_type().to_string(),
+            event.tx_hash().to_string(),
+            event.block_hash().to_string(),
+        ];
         
         // Convert raw data to string if possible
         if let Ok(raw_str) = String::from_utf8(event.raw_data().to_vec()) {
@@ -120,7 +119,7 @@ impl DefaultTextSearcher {
     /// Perform regex search
     fn search_regex(&self, pattern: &str, text: &str) -> Result<Option<f32>> {
         let regex = Regex::new(pattern)
-            .map_err(|e| Error::generic(&format!("Invalid regex pattern: {}", e)))?;
+            .map_err(|e| Error::generic(format!("Invalid regex pattern: {}", e)))?;
         
         if regex.is_match(text) {
             // Count matches to calculate score
@@ -229,6 +228,12 @@ impl DefaultTextSearcher {
         }
         
         highlights
+    }
+}
+
+impl Default for DefaultTextSearcher {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

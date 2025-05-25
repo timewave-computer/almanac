@@ -239,6 +239,7 @@ impl RedisCache {
     }
     
     /// Get TTL for a cache key type
+    #[allow(dead_code)]
     fn get_ttl(&self, key_type: CacheKeyType) -> Duration {
         self.config.type_ttls.get(&key_type)
             .copied()

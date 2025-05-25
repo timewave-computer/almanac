@@ -236,6 +236,7 @@ impl DefaultMigrationRunner {
     }
     
     /// Sort migrations by version
+    #[allow(dead_code)]
     fn sort_migrations(&mut self) {
         self.migrations.sort_by(|a, b| a.info.version.cmp(&b.info.version));
     }
@@ -614,6 +615,7 @@ impl MigrationRunner for DefaultMigrationRunner {
 
 /// Migration file generator
 pub struct MigrationGenerator {
+    #[allow(dead_code)]
     config: MigrationConfig,
 }
 

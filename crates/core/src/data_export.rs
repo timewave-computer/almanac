@@ -319,6 +319,7 @@ pub struct DefaultDataExporter {
     results: std::sync::Arc<tokio::sync::RwLock<HashMap<String, ExportResult>>>,
     
     /// Export configuration
+    #[allow(dead_code)]
     default_config: ExportConfig,
 }
 

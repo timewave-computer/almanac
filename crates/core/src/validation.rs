@@ -302,6 +302,7 @@ impl DefaultChainValidator {
     }
     
     /// Validate address format
+    #[allow(dead_code)]
     fn validate_address(&mut self, address: &str, format: &AddressFormat) -> Result<bool> {
         match format {
             AddressFormat::Ethereum => {

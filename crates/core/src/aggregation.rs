@@ -145,6 +145,12 @@ impl DefaultAggregator {
     }
 }
 
+impl Default for DefaultAggregator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl Aggregator for DefaultAggregator {
     async fn aggregate(

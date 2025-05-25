@@ -162,6 +162,7 @@ pub trait ConnectionPool<T: DatabaseConnection>: Send + Sync {
 /// A connection wrapper that returns to the pool when dropped
 pub struct PooledConnection<T: DatabaseConnection> {
     connection: Option<T>,
+    #[allow(dead_code)]
     pool: Arc<dyn ConnectionPool<T>>,
     acquired_at: std::time::SystemTime,
 }
