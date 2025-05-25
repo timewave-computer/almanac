@@ -20,8 +20,6 @@ pub trait ProtoEventAdapter {
 
 /// Utility functions for working with protocol buffers
 pub mod utils {
-    use super::*;
-    
     /// Check if data looks like a valid protocol buffer message
     pub fn is_proto_message(data: &[u8]) -> bool {
         // Basic heuristic - proto messages typically start with field tags

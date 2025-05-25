@@ -154,65 +154,6 @@ impl Event for UnifiedEvent {
 
 /// Event mapping utilities
 pub mod mapping {
-    use super::*;
-    
-    // Note: The following functions are commented out because the valence-domain-clients
-    // API has changed in commit 766a1b593bcea9ed67b45c8c1ea9c548d0692a71
-    // They can be re-implemented once we understand the new API structure
-    
-    /*
-    /// Convert a valence TransactionResponse to a UnifiedEvent
-    pub fn transaction_to_unified_event(
-        tx: &valence_domain_clients::common::transaction::TransactionResponse,
-        chain: &str,
-    ) -> UnifiedEvent {
-        UnifiedEvent {
-            id: tx.hash.clone(),
-            chain: chain.to_string(),
-            block_number: tx.block_number,
-            block_hash: tx.block_hash.clone(),
-            tx_hash: tx.hash.clone(),
-            timestamp: std::time::UNIX_EPOCH + std::time::Duration::from_secs(tx.timestamp),
-            event_type: "transaction".to_string(),
-            event_data: EventData::Generic {
-                attributes: std::collections::HashMap::new(),
-            },
-            raw_data: Vec::new(),
-        }
-    }
-    
-    /// Convert valence Event to UnifiedEvent
-    pub fn valence_event_to_unified(
-        event: &valence_domain_clients::common::transaction::Event,
-        chain: &str,
-        block_number: u64,
-        block_hash: &str,
-        tx_hash: &str,
-        timestamp: SystemTime,
-    ) -> UnifiedEvent {
-        let attributes = event.attributes.iter().map(|attr| EventAttribute {
-            key: attr.key.clone(),
-            value: attr.value.clone(),
-            index: attr.index,
-        }).collect();
-        
-        UnifiedEvent {
-            id: format!("{}:{}:{}", tx_hash, block_number, event.type_),
-            chain: chain.to_string(),
-            block_number,
-            block_hash: block_hash.to_string(),
-            tx_hash: tx_hash.to_string(),
-            timestamp,
-            event_type: event.type_.clone(),
-            event_data: EventData::Cosmos {
-                attributes,
-                module: event.type_.split('.').next().unwrap_or("unknown").to_string(),
-            },
-            raw_data: Vec::new(),
-        }
-    }
-    */
-    
     /// Normalize event type across chains
     pub fn normalize_event_type(event_type: &str, chain: &str) -> String {
         match chain {

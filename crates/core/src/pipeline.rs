@@ -2,7 +2,6 @@
 ///
 /// This module contains the pipeline abstractions for processing blockchain events,
 /// including service traits and registries.
-
 use crate::{Error, Result};
 use async_trait::async_trait;
 use std::sync::Arc;
