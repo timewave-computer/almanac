@@ -374,65 +374,7 @@ impl DefaultBackupRestore {
         Ok(backup_info)
     }
     
-    /// Perform actual backup of events
-    async fn backup_events(
-        &self,
-        events: &[&dyn Event],
-        backup_path: &Path,
-        config: &BackupConfig,
-    ) -> Result<(u64, Vec<PathBuf>)> {
-        let mut total_size = 0u64;
-        let mut file_paths = Vec::new();
-        let mut current_chunk = 0;
-        let mut current_file_size = 0u64;
-        let mut current_events = Vec::new();
-        
-        for event in events {
-            // Serialize event
-            let event_data = serde_json::to_vec(&serde_json::json!({
-                "id": event.id(),
-                "chain": event.chain(),
-                "block_number": event.block_number(),
-                "block_hash": event.block_hash(),
-                "tx_hash": event.tx_hash(),
-                "timestamp": event.timestamp()
-                    .duration_since(SystemTime::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs(),
-                "event_type": event.event_type(),
-                "raw_data": event.raw_data(),
-            })).map_err(|e| Error::Generic(format!("Failed to serialize event: {}", e)))?;
-            
-            current_file_size += event_data.len() as u64;
-            current_events.push(event_data);
-            
-            // Check if we need to start a new chunk
-            if current_file_size >= config.max_chunk_size {
-                let chunk_path = backup_path.join(format!("events_chunk_{:04}.json", current_chunk));
-                let chunk_size = self.write_events_chunk(&current_events, &chunk_path, config).await?;
-                
-                total_size += chunk_size;
-                file_paths.push(chunk_path);
-                
-                current_chunk += 1;
-                current_file_size = 0;
-                current_events.clear();
-            }
-        }
-        
-        // Write remaining events
-        if !current_events.is_empty() {
-            let chunk_path = backup_path.join(format!("events_chunk_{:04}.json", current_chunk));
-            let chunk_size = self.write_events_chunk(&current_events, &chunk_path, config).await?;
-            
-            total_size += chunk_size;
-            file_paths.push(chunk_path);
-        }
-        
-        Ok((total_size, file_paths))
-    }
-    
-    /// Write a chunk of events to file
+    #[allow(dead_code)]
     async fn write_events_chunk(
         &self,
         events_data: &[Vec<u8>],
@@ -636,6 +578,7 @@ impl BackupRestore for DefaultBackupRestore {
 
 /// Backup scheduler for automated backups
 pub struct BackupScheduler {
+    #[allow(dead_code)]
     backup_restore: std::sync::Arc<dyn BackupRestore>,
     schedule: HashMap<String, (BackupConfig, String)>, // schedule_id -> (config, cron_expression)
 }

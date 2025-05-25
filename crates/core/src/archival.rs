@@ -443,7 +443,7 @@ impl DefaultDataArchival {
         Ok(())
     }
     
-    /// Check if data matches archival policy
+    #[allow(dead_code)]
     fn matches_policy(&self, _policy: &ArchivalPolicy, _event: &dyn Event) -> bool {
         // In a real implementation, this would check the event against the policy
         // For now, return true to simulate matching
@@ -451,6 +451,7 @@ impl DefaultDataArchival {
     }
     
     /// Apply compression to data
+    #[allow(dead_code)]
     async fn compress_data(&self, data: &[u8], algorithm: &CompressionAlgorithm, _level: u8) -> Result<Vec<u8>> {
         match algorithm {
             CompressionAlgorithm::None => Ok(data.to_vec()),

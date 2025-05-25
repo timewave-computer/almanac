@@ -215,6 +215,7 @@ pub struct DefaultDataCompressor {
     stats: std::sync::Arc<tokio::sync::RwLock<CompressionStats>>,
     
     /// Compression dictionaries cache
+    #[allow(dead_code)]
     dictionaries: std::sync::Arc<tokio::sync::RwLock<HashMap<String, Vec<u8>>>>,
 }
 
