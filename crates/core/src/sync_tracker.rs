@@ -325,6 +325,10 @@ pub struct DefaultSyncTracker {
     
     /// Event listeners
     event_listeners: Arc<RwLock<Vec<Box<dyn SyncEventListener>>>>,
+    
+    /// Synchronization metrics
+    #[allow(dead_code)]
+    metrics: Arc<RwLock<SyncMetrics>>,
 }
 
 /// Synchronization event listener trait
@@ -341,6 +345,7 @@ impl DefaultSyncTracker {
             states: Arc::new(RwLock::new(HashMap::new())),
             configs: Arc::new(RwLock::new(HashMap::new())),
             event_listeners: Arc::new(RwLock::new(Vec::new())),
+            metrics: Arc::new(RwLock::new(SyncMetrics::default())),
         }
     }
     
@@ -480,6 +485,12 @@ impl DefaultSyncTracker {
         } else {
             SyncStatus::NotSyncing
         }
+    }
+}
+
+impl Default for DefaultSyncTracker {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

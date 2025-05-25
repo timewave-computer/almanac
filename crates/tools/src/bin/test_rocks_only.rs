@@ -1,8 +1,8 @@
 // Purpose: A standalone script to test RocksDB functionality without PostgreSQL dependencies
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::fs;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use rocksdb::{Options, DB, ColumnFamilyDescriptor, BlockBasedOptions};
 use tempfile::tempdir;
@@ -165,10 +165,10 @@ impl RocksDBStore {
         let blocks_cf = self.db.cf_handle(CF_BLOCKS).ok_or("Blocks CF not found")?;
         
         // Iterate over blocks
-        let mut iter = self.db.iterator_cf(&blocks_cf, rocksdb::IteratorMode::End);
+        let iter = self.db.iterator_cf(&blocks_cf, rocksdb::IteratorMode::End);
         let mut latest_block = 0;
         
-        while let Some(result) = iter.next() {
+        for result in iter {
             let (key, _value) = result?;
             let key = key.to_vec();
             let key_str = String::from_utf8_lossy(&key);
@@ -195,10 +195,10 @@ impl RocksDBStore {
         };
         
         // Iterate over blocks
-        let mut iter = self.db.iterator_cf(&blocks_cf, rocksdb::IteratorMode::End);
+        let iter = self.db.iterator_cf(&blocks_cf, rocksdb::IteratorMode::End);
         let mut latest_block = 0;
         
-        while let Some(result) = iter.next() {
+        for result in iter {
             let (key, value) = result?;
             let key = key.to_vec();
             let value = value.to_vec();
@@ -231,12 +231,12 @@ impl RocksDBStore {
         
         // Delete events
         let event_prefix = format!("{}:{}:", chain, from_block);
-        let mut iter = self.db.iterator_cf(&events_cf, rocksdb::IteratorMode::From(
+        let iter = self.db.iterator_cf(&events_cf, rocksdb::IteratorMode::From(
             event_prefix.as_bytes(),
             rocksdb::Direction::Forward,
         ));
         
-        while let Some(result) = iter.next() {
+        for result in iter {
             let (key, _) = result?;
             let key_vec = key.to_vec();
             let key_str = String::from_utf8_lossy(&key_vec);
@@ -253,12 +253,12 @@ impl RocksDBStore {
         
         // Delete blocks
         let block_prefix = format!("{}:", chain);
-        let mut iter = self.db.iterator_cf(&blocks_cf, rocksdb::IteratorMode::From(
+        let iter = self.db.iterator_cf(&blocks_cf, rocksdb::IteratorMode::From(
             block_prefix.as_bytes(),
             rocksdb::Direction::Forward,
         ));
         
-        while let Some(result) = iter.next() {
+        for result in iter {
             let (key, _) = result?;
             let key_vec = key.to_vec();
             let key_str = String::from_utf8_lossy(&key_vec);

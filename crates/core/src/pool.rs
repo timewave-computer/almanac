@@ -222,7 +222,7 @@ pub struct GenericConnectionPool<T: DatabaseConnection> {
 impl<T: DatabaseConnection + 'static> GenericConnectionPool<T> {
     /// Create a new connection pool
     pub fn new(config: PoolConfig) -> Self {
-        let pool = Self {
+        Self {
             config: config.clone(),
             connections: Arc::new(RwLock::new(Vec::new())),
             stats: Arc::new(RwLock::new(PoolStats {
@@ -238,9 +238,7 @@ impl<T: DatabaseConnection + 'static> GenericConnectionPool<T> {
                 health_percentage: 100.0,
             })),
             maintenance_handle: None,
-        };
-        
-        pool
+        }
     }
     
     /// Start the maintenance task

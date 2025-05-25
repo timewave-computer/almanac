@@ -9,17 +9,13 @@ use ethers::{
     types::{Address, U256, Filter, TransactionRequest, BlockNumber},
     middleware::SignerMiddleware,
     signers::{LocalWallet, Signer},
-    abi::Abi,
 };
 use eyre::{Result, eyre};
 use futures::StreamExt;
 use hex;
-use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
-    collections::HashMap,
-    fs::{self, File, read_to_string},
-    io::BufReader,
+    fs,
     path::{Path, PathBuf},
     str::FromStr,
     sync::Arc,
@@ -212,17 +208,14 @@ impl RethClient {
             } else if path.file_name()
                 .and_then(|f| f.to_str())
                 .map(|s| s.ends_with(".json"))
-                .unwrap_or(false) 
-            {
-                if path.file_name().unwrap().to_str().unwrap() == contract_name {
-                    // Found matching file, try to parse ABI
-                    let file_contents = fs::read_to_string(&path)?;
-                    let json: Value = serde_json::from_str(&file_contents)?;
-                    
-                    if let Some(abi_value) = json.get("abi") {
-                        let abi: ethers::abi::Abi = serde_json::from_value(abi_value.clone())?;
-                        return Ok(Some(abi));
-                    }
+                .unwrap_or(false) && path.file_name().unwrap().to_str().unwrap() == contract_name {
+                // Found matching file, try to parse ABI
+                let file_contents = fs::read_to_string(&path)?;
+                let json: Value = serde_json::from_str(&file_contents)?;
+                
+                if let Some(abi_value) = json.get("abi") {
+                    let abi: ethers::abi::Abi = serde_json::from_value(abi_value.clone())?;
+                    return Ok(Some(abi));
                 }
             }
         }
@@ -356,6 +349,7 @@ impl RethClient {
     }
     
     /// Helper to convert a JSON value to an ABI token
+    #[allow(clippy::only_used_in_recursion)]
     fn json_to_token(&self, value: Value, param_type: &ethers::abi::ParamType) -> Result<ethers::abi::Token> {
         match param_type {
             ethers::abi::ParamType::Address => {
@@ -457,6 +451,7 @@ impl RethClient {
     }
     
     /// Helper to convert a single ABI token to JSON
+    #[allow(clippy::only_used_in_recursion)]
     fn token_to_json(&self, token: ethers::abi::Token) -> Value {
         match token {
             ethers::abi::Token::Address(addr) => json!(format!("{:?}", addr)),
@@ -599,7 +594,7 @@ impl RethClient {
         let to_block: BlockNumber = if blocks == 0 { 
             BlockNumber::Latest
         } else { 
-            BlockNumber::Number(ethers::types::U64::from(current_block + blocks))
+            BlockNumber::Number(current_block + blocks)
         };
         
         println!("Listening from block {} to {}", from_block, 
@@ -642,6 +637,7 @@ impl RethClient {
     }
 }
 
+#[allow(dead_code)]
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();

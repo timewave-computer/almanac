@@ -593,8 +593,8 @@ fn levenshtein_distance(s1: &str, s2: &str) -> u32 {
     let mut matrix = vec![vec![0u32; len2 + 1]; len1 + 1];
     
     // Initialize first row and column
-    for i in 0..=len1 {
-        matrix[i][0] = i as u32;
+    for (i, row) in matrix.iter_mut().enumerate().take(len1 + 1) {
+        row[0] = i as u32;
     }
     for j in 0..=len2 {
         matrix[0][j] = j as u32;

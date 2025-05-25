@@ -477,6 +477,12 @@ impl QueryOptimizer {
     }
 }
 
+impl Default for QueryOptimizer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Query cost estimation result
 #[derive(Debug, Clone)]
 pub struct QueryCostEstimate {
@@ -500,12 +506,12 @@ pub struct IndexMaintenanceScheduler {
 }
 
 impl IndexMaintenanceScheduler {
-    /// Create a new maintenance scheduler with default intervals
+    /// Create a new maintenance scheduler
     pub fn new() -> Self {
         let mut intervals = HashMap::new();
         intervals.insert(IndexType::BTree, std::time::Duration::from_secs(24 * 3600)); // Daily
         intervals.insert(IndexType::Hash, std::time::Duration::from_secs(7 * 24 * 3600)); // Weekly
-        intervals.insert(IndexType::FullText, std::time::Duration::from_secs(24 * 3600)); // Daily
+        intervals.insert(IndexType::FullText, std::time::Duration::from_secs(3 * 24 * 3600)); // Every 3 days
         
         Self {
             maintenance_intervals: intervals,
@@ -556,6 +562,12 @@ impl IndexMaintenanceScheduler {
         }
         
         Ok(maintenance_tasks)
+    }
+}
+
+impl Default for IndexMaintenanceScheduler {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

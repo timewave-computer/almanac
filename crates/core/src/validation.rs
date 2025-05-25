@@ -285,6 +285,7 @@ pub struct DefaultChainValidator {
 }
 
 impl DefaultChainValidator {
+    /// Create a new chain validator
     pub fn new() -> Self {
         Self {
             regex_cache: HashMap::new(),
@@ -604,6 +605,12 @@ impl DefaultChainValidator {
     }
 }
 
+impl Default for DefaultChainValidator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl ChainValidator for DefaultChainValidator {
     async fn validate_event(
@@ -862,6 +869,12 @@ impl ChainValidationManager {
     }
 }
 
+impl Default for ChainValidationManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Predefined validation configs for common chains
 pub struct PredefinedConfigs;
 
@@ -954,10 +967,11 @@ impl PredefinedConfigs {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{UNIX_EPOCH, Duration};
-    
+    use crate::event::Event;
+    use std::time::SystemTime;
+
     // Mock event for testing
-    #[derive(Debug, Clone)]
+    #[derive(Debug)]
     struct TestEvent {
         id: String,
         chain: String,

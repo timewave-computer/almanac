@@ -271,7 +271,7 @@ pub struct DefaultReorgHandler {
 }
 
 impl DefaultReorgHandler {
-    /// Create a new reorganization handler
+    /// Create a new reorg handler
     pub fn new() -> Self {
         Self {
             configs: Arc::new(RwLock::new(HashMap::new())),
@@ -341,7 +341,7 @@ impl DefaultReorgHandler {
                     depth: fork_depth,
                     confidence,
                     detected_at: SystemTime::now(),
-                    affected_events: self.count_affected_events(&blocks, fork_depth).await,
+                    affected_events: self.count_affected_events(blocks, fork_depth).await,
                     rollback_performed: false,
                     metadata: HashMap::new(),
                 };
@@ -473,6 +473,12 @@ impl DefaultReorgHandler {
         chain_stats.avg_rollback_duration = std::time::Duration::from_millis(new_avg as u64);
         
         chain_stats.last_reorg_timestamp = Some(reorg.detected_at);
+    }
+}
+
+impl Default for DefaultReorgHandler {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

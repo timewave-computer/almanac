@@ -9,9 +9,10 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 /// Environment types for configuration
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum Environment {
+    #[default]
     Development,
     Staging,
     Production,
@@ -26,12 +27,6 @@ impl fmt::Display for Environment {
             Environment::Production => write!(f, "production"),
             Environment::Test => write!(f, "test"),
         }
-    }
-}
-
-impl Default for Environment {
-    fn default() -> Self {
-        Environment::Development
     }
 }
 
@@ -467,13 +462,11 @@ impl ConfigValidator for ApiConfig {
         }
         
         // Validate authentication settings
-        if self.auth_enabled {
-            if self.jwt_secret.is_none() && self.api_key.is_none() {
-                errors.push(ValidationError {
-                    field: "api".to_string(),
-                    message: "Either jwt_secret or api_key must be provided when auth_enabled is true".to_string(),
-                });
-            }
+        if self.auth_enabled && self.jwt_secret.is_none() && self.api_key.is_none() {
+            errors.push(ValidationError {
+                field: "api".to_string(),
+                message: "Either jwt_secret or api_key must be provided when auth_enabled is true".to_string(),
+            });
         }
         
         if errors.is_empty() {
@@ -666,6 +659,7 @@ impl ConfigValidator for MonitoringConfig {
 /// Configuration manager for loading, validating, and managing configurations
 pub struct ConfigManager {
     config: AlmanacConfig,
+    #[allow(dead_code)]
     config_path: PathBuf,
 }
 
@@ -719,8 +713,16 @@ impl ConfigManager {
         }
         
         // Fall back to base configuration and set environment
-        let mut manager = Self::load_from_file(base_path)?;
-        manager.config.environment = environment;
+        let config = AlmanacConfig { 
+            environment: environment.clone(), 
+            ..Default::default() 
+        };
+        
+        let mut manager = Self {
+            config,
+            config_path: base_path.to_path_buf(),
+        };
+        
         manager.apply_environment_overrides()?;
         
         Ok(manager)
@@ -810,8 +812,10 @@ impl ConfigManager {
     
     /// Generate a default configuration file
     pub fn generate_default_config<P: AsRef<Path>>(path: P, environment: Environment) -> Result<()> {
-        let mut config = AlmanacConfig::default();
-        config.environment = environment.clone();
+        let mut config = AlmanacConfig { 
+            environment: environment.clone(), 
+            ..Default::default() 
+        };
         
         // Adjust defaults based on environment
         match environment {
@@ -872,64 +876,88 @@ mod tests {
     #[test]
     fn test_database_config_validation() {
         // Test invalid database type
-        let mut config = DatabaseConfig::default();
-        config.db_type = "invalid".to_string();
+        let config = DatabaseConfig { 
+            db_type: "invalid".to_string(), 
+            ..Default::default() 
+        };
         let result = config.validate();
         assert!(result.is_err());
         
         // Test missing postgres URL
-        config.db_type = "postgres".to_string();
-        config.postgres_url = None;
+        let config = DatabaseConfig { 
+            db_type: "postgres".to_string(), 
+            postgres_url: None, 
+            ..Default::default() 
+        };
         let result = config.validate();
         assert!(result.is_err());
         
         // Test valid postgres config
-        config.postgres_url = Some("postgresql://localhost/test".to_string());
+        let config = DatabaseConfig { 
+            db_type: "postgres".to_string(), 
+            postgres_url: Some("postgresql://localhost/test".to_string()), 
+            ..Default::default() 
+        };
         let result = config.validate();
         assert!(result.is_ok());
     }
     
     #[test]
     fn test_api_config_validation() {
-        let mut config = ApiConfig::default();
-        
         // Test invalid port
-        config.port = 0;
+        let config = ApiConfig { 
+            port: 0, 
+            ..Default::default() 
+        };
         let result = config.validate();
         assert!(result.is_err());
         
         // Test empty host
-        config.port = 8080;
-        config.host = "".to_string();
+        let config = ApiConfig { 
+            port: 8080, 
+            host: "".to_string(), 
+            ..Default::default() 
+        };
         let result = config.validate();
         assert!(result.is_err());
         
         // Test auth enabled without credentials
-        config.host = "localhost".to_string();
-        config.auth_enabled = true;
-        config.jwt_secret = None;
-        config.api_key = None;
+        let config = ApiConfig { 
+            host: "localhost".to_string(), 
+            auth_enabled: true, 
+            jwt_secret: None, 
+            api_key: None, 
+            ..Default::default() 
+        };
         let result = config.validate();
         assert!(result.is_err());
     }
     
     #[test]
     fn test_chain_config_validation() {
-        let mut config = ChainConfig::default();
-        
         // Test empty chain ID
-        config.chain_id = "".to_string();
+        let config = ChainConfig { 
+            chain_id: "".to_string(), 
+            ..Default::default() 
+        };
         let result = config.validate();
         assert!(result.is_err());
         
         // Test invalid RPC URL
-        config.chain_id = "1".to_string();
-        config.rpc_url = "invalid-url".to_string();
+        let config = ChainConfig { 
+            chain_id: "1".to_string(), 
+            rpc_url: "invalid-url".to_string(), 
+            ..Default::default() 
+        };
         let result = config.validate();
         assert!(result.is_err());
         
         // Test valid config
-        config.rpc_url = "https://mainnet.infura.io/v3/test".to_string();
+        let config = ChainConfig { 
+            chain_id: "1".to_string(), 
+            rpc_url: "https://mainnet.infura.io/v3/test".to_string(), 
+            ..Default::default() 
+        };
         let result = config.validate();
         assert!(result.is_ok());
     }

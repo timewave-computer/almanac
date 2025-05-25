@@ -267,7 +267,7 @@ async fn handle_config_command(action: ConfigAction) -> Result<()> {
                             println!("  Database Type: {}", config.database.db_type);
                             println!("  API Host: {}:{}", config.api.host, config.api.port);
                             println!("  Chains Configured: {}", config.chains.len());
-                            for (name, _) in &config.chains {
+                            for name in config.chains.keys() {
                                 println!("    - {}", name);
                             }
                             println!("  Logging Level: {}", config.logging.level);
@@ -297,7 +297,7 @@ async fn handle_config_command(action: ConfigAction) -> Result<()> {
                 "test" => Environment::Test,
                 _ => {
                     println!("❌ Invalid environment '{}'. Valid options: development, staging, production, test", environment);
-                    std::process::exit(1);
+                    return Err(anyhow::anyhow!("Invalid environment: {}", environment));
                 }
             };
             

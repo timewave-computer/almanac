@@ -1,26 +1,16 @@
-//! Ethereum client implementation using valence-domain-clients
-//! 
-//! This module provides Ethereum blockchain connectivity and event processing
-//! using the valence-domain-clients EVM integration for robust chain support.
-
+/// Ethereum blockchain indexer implementation
+/// 
+/// This module provides indexing capabilities for Ethereum-compatible blockchains
+/// using the valence-domain-clients EVM integration for robust chain support.
 use std::sync::Arc;
-use anyhow::Result as AnyhowResult;
 use async_trait::async_trait;
 use std::any::Any;
 use std::time::SystemTime;
-use indexer_core::{Error, Result};
+use indexer_core::{Result, Error};
 use indexer_core::event::{Event, UnifiedEvent};
 use indexer_core::service::{EventService, EventSubscription};
 use indexer_core::types::{ChainId, EventFilter};
-
-// Re-export core types that may be used by other parts of the system
-pub use indexer_core::{
-    event::{Event, UnifiedEvent},
-    service::{EventService, EventSubscription},
-    types::{ChainId, EventFilter},
-};
-
-// Import valence domain client types
+use valence_domain_clients::evm::base_client::EvmBaseClient;
 use valence_domain_clients::clients::ethereum::EthereumClient as ValenceEthereumClient;
 use valence_domain_clients::common::transaction::TransactionResponse;
 
@@ -116,7 +106,7 @@ impl EthereumClient {
         // In production, this should use proper key management
         let dummy_mnemonic = "test test test test test test test test test test test junk";
         let valence_client = ValenceEthereumClient::new(&config.rpc_url, dummy_mnemonic, None)
-            .map_err(|e| anyhow::anyhow!("Failed to create Ethereum client: {}", e))?;
+            .map_err(|e| Error::generic(format!("Failed to create Ethereum client: {}", e)))?;
         
         Ok(Self {
             valence_client: Arc::new(valence_client),
@@ -133,7 +123,7 @@ impl EthereumClient {
         // TODO: Update when valence supports private key initialization
         let dummy_mnemonic = "test test test test test test test test test test test junk";
         let valence_client = ValenceEthereumClient::new(&rpc_url, dummy_mnemonic, None)
-            .map_err(|e| anyhow::anyhow!("Failed to create Ethereum client: {}", e))?;
+            .map_err(|e| Error::generic(format!("Failed to create Ethereum client: {}", e)))?;
             
         let chain_id_u64 = chain_id.parse::<u64>().unwrap_or(1);
         
@@ -170,12 +160,14 @@ impl EthereumClient {
 }
 
 /// Event adapter to convert valence TransactionResponse to almanac Event
+#[allow(dead_code)]
 struct ValenceEventAdapter {
     response: TransactionResponse,
     chain_id: String,
 }
 
 impl ValenceEventAdapter {
+    #[allow(dead_code)]
     fn new(response: TransactionResponse, chain_id: String) -> Self {
         Self { response, chain_id }
     }
@@ -254,7 +246,7 @@ impl EventService for EthereumClient {
         // Use the valence client to get the latest block number
         // Try using latest_block_height() method similar to cosmos client
         let block_number = self.valence_client.latest_block_height().await
-            .map_err(|e| indexer_core::Error::generic(format!("Failed to get latest block: {}", e)))?;
+            .map_err(|e| Error::generic(format!("Failed to get latest block: {}", e)))?;
             
         Ok(block_number)
     }

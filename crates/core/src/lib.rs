@@ -248,12 +248,12 @@ mod tests {
         assert_eq!(BlockStatus::Finalized.as_str(), "finalized");
         assert_eq!(BlockStatus::Latest.as_str(), "latest");
 
-        assert_eq!(BlockStatus::from_str("confirmed"), Ok(BlockStatus::Confirmed));
-        assert_eq!(BlockStatus::from_str("safe"), Ok(BlockStatus::Safe));
-        assert_eq!(BlockStatus::from_str("justified"), Ok(BlockStatus::Justified));
-        assert_eq!(BlockStatus::from_str("finalized"), Ok(BlockStatus::Finalized));
-        assert_eq!(BlockStatus::from_str("latest"), Ok(BlockStatus::Latest));
-        assert_eq!(BlockStatus::from_str("unknown"), Err(()));
+        assert_eq!("confirmed".parse::<BlockStatus>(), Ok(BlockStatus::Confirmed));
+        assert_eq!("safe".parse::<BlockStatus>(), Ok(BlockStatus::Safe));
+        assert_eq!("justified".parse::<BlockStatus>(), Ok(BlockStatus::Justified));
+        assert_eq!("finalized".parse::<BlockStatus>(), Ok(BlockStatus::Finalized));
+        assert_eq!("latest".parse::<BlockStatus>(), Ok(BlockStatus::Latest));
+        assert_eq!("unknown".parse::<BlockStatus>(), Err(()));
     }
 
     #[test]

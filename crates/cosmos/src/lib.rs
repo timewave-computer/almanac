@@ -3,17 +3,15 @@
 //! This module provides Cosmos blockchain connectivity and event processing
 //! using the valence-domain-clients Cosmos integration for robust chain support.
 
-use std::sync::Arc;
 use anyhow::Result as AnyhowResult;
 use async_trait::async_trait;
-use indexer_core::{Error, Result};
+use std::sync::Arc;
+use valence_domain_clients::clients::noble::NobleClient;
+use valence_domain_clients::cosmos::base_client::BaseClient;
+
 use indexer_core::event::{Event, UnifiedEvent};
 use indexer_core::service::{EventService, EventSubscription};
 use indexer_core::types::{ChainId, EventFilter};
-
-// Import valence domain client types
-use valence_domain_clients::clients::noble::NobleClient;
-use valence_domain_clients::cosmos::base_client::BaseClient;
 
 /// Cosmos chain configuration
 #[derive(Debug, Clone)]

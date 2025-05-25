@@ -4,7 +4,7 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Child, Stdio};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -50,27 +50,21 @@ impl fmt::Display for ServiceStatus {
     }
 }
 
-/// Service restart policy
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+/// Restart policy for services
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum RestartPolicy {
     /// Never restart automatically
     Never,
     
-    /// Always restart on failure
+    /// Always restart on exit
     Always,
     
     /// Restart only on failure (not on clean exit)
+    #[default]
     OnFailure,
     
     /// Restart unless manually stopped
     UnlessStopped,
-}
-
-impl Default for RestartPolicy {
-    fn default() -> Self {
-        RestartPolicy::OnFailure
-    }
 }
 
 /// Service health check configuration
@@ -389,8 +383,6 @@ impl ServiceManager {
         // Try graceful shutdown first (SIGTERM)
         #[cfg(unix)]
         {
-            use std::os::unix::process::ExitStatusExt;
-            
             // Send SIGTERM
             if let Err(e) = Command::new("kill")
                 .arg("-TERM")
@@ -922,8 +914,10 @@ mod tests {
     
     #[test]
     fn test_restart_limit_exceeded() {
-        let mut config = ServiceConfig::default();
-        config.max_restarts = Some(3);
+        let config = ServiceConfig { 
+            max_restarts: Some(3), 
+            ..Default::default() 
+        };
         
         let mut info = ServiceInfo::new(config);
         assert!(!info.restart_limit_exceeded());

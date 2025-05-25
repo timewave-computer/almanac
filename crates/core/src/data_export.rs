@@ -535,6 +535,12 @@ impl DefaultDataExporter {
     }
 }
 
+impl Default for DefaultDataExporter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl DataExporter for DefaultDataExporter {
     async fn start_export(
@@ -607,7 +613,7 @@ impl DataExporter for DefaultDataExporter {
         
         // Clean up old results
         results.retain(|_, result| {
-            result.config.output_path.len() > 0 // Keep all results for now
+            !result.config.output_path.is_empty() // Keep all results for now
         });
         
         Ok(cleaned_count)

@@ -415,6 +415,12 @@ impl DefaultDataCompressor {
     }
 }
 
+impl Default for DefaultDataCompressor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl DataCompressor for DefaultDataCompressor {
     async fn compress(&self, data: &[u8], config: &CompressionConfig) -> Result<(Vec<u8>, CompressionResult)> {
@@ -562,6 +568,12 @@ impl DefaultEventCompressor {
     }
 }
 
+impl Default for DefaultEventCompressor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[async_trait]
 impl EventCompressor for DefaultEventCompressor {
     async fn compress_event(&self, event: &dyn Event, config: &CompressionConfig) -> Result<(Vec<u8>, CompressionResult)> {
@@ -694,10 +706,17 @@ impl CompressionManager {
     }
 }
 
+impl Default for CompressionManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{UNIX_EPOCH, Duration};
+    use crate::event::Event;
+    use std::time::{SystemTime, UNIX_EPOCH, Duration};
     
     // Mock event for testing
     #[derive(Debug, Clone)]
@@ -790,7 +809,7 @@ mod tests {
             let result = compressor.compress(&data, &config).await;
             assert!(result.is_ok(), "Failed to compress with {:?}", algorithm);
             
-            let (compressed, compression_result) = result.unwrap();
+            let (_compressed, compression_result) = result.unwrap();
             assert_eq!(compression_result.algorithm_used, algorithm);
         }
     }
@@ -812,7 +831,7 @@ mod tests {
         let config = CompressionConfig::default();
         let (compressed, result) = compressor.compress_event(&event, &config).await.unwrap();
         
-        assert!(compressed.len() > 0);
+        assert!(!compressed.is_empty());
         assert!(result.original_size > 0);
         assert!(result.integrity_verified);
     }
@@ -830,7 +849,7 @@ mod tests {
         let config = CompressionConfig::default();
         let (compressed, result) = compressor.compress_events(&event_refs, &config).await.unwrap();
         
-        assert!(compressed.len() > 0);
+        assert!(!compressed.is_empty());
         assert!(result.original_size > 0);
         
         // Test decompression
@@ -846,7 +865,7 @@ mod tests {
         
         let (compressed, result) = compressor.adaptive_compress(&data, target_ratio).await.unwrap();
         
-        assert!(compressed.len() > 0);
+        assert!(!compressed.is_empty());
         assert!(result.compression_ratio <= target_ratio || result.compression_ratio < 1.0);
     }
     

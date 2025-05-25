@@ -308,7 +308,7 @@ impl DefaultMigrationRunner {
                     }),
                 duration: row.get("duration_ms")
                     .and_then(|v| v.as_u64())
-                    .map(|ms| Duration::from_millis(ms)),
+                    .map(Duration::from_millis),
                 checksum: row.get("checksum")
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string()),
@@ -565,6 +565,8 @@ impl MigrationRunner for DefaultMigrationRunner {
             }
         }
         
+        assert!(!errors.is_empty());
+        
         Ok(errors)
     }
     
@@ -670,6 +672,7 @@ mod tests {
     // Mock database executor for testing
     struct MockDatabaseExecutor {
         tables: Arc<RwLock<std::collections::HashSet<String>>>,
+        #[allow(dead_code)]
         data: Arc<RwLock<HashMap<String, Vec<serde_json::Value>>>>,
     }
     
@@ -686,13 +689,11 @@ mod tests {
     impl DatabaseExecutor for MockDatabaseExecutor {
         async fn execute(&self, sql: &str) -> Result<u64> {
             if sql.contains("CREATE TABLE") {
-                let table_name = "schema_migrations"; // Simplified
+                let table_name = sql.split_whitespace().nth(2).unwrap_or("unknown");
                 let mut tables = self.tables.write().await;
                 tables.insert(table_name.to_string());
                 Ok(1)
-            } else if sql.contains("INSERT INTO") {
-                Ok(1)
-            } else if sql.contains("DELETE FROM") {
+            } else if sql.contains("INSERT INTO") || sql.contains("DELETE FROM") {
                 Ok(1)
             } else {
                 Ok(0)
@@ -778,7 +779,7 @@ mod tests {
         runner.add_migration(migration);
         
         let errors = runner.validate().await.unwrap();
-        assert!(errors.len() > 0);
+        assert!(!errors.is_empty());
         assert!(errors[0].contains("depends on 001 which doesn't exist"));
     }
     
