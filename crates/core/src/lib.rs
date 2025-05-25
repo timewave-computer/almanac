@@ -198,10 +198,11 @@ impl BlockStatus {
 impl std::str::FromStr for BlockStatus {
     type Err = ();
     
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s {
             "confirmed" => Ok(BlockStatus::Confirmed),
             "safe" => Ok(BlockStatus::Safe),
+            "justified" => Ok(BlockStatus::Justified),
             "finalized" => Ok(BlockStatus::Finalized),
             "latest" => Ok(BlockStatus::Latest),
             _ => Err(()),
