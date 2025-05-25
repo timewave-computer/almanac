@@ -152,7 +152,7 @@ impl EventCorrelator for DefaultEventCorrelator {
             }
             
             if !skip_event && !correlation_key.is_empty() {
-                correlation_groups.entry(correlation_key).or_insert_with(Vec::new).push(idx);
+                correlation_groups.entry(correlation_key).or_default().push(idx);
             }
         }
         

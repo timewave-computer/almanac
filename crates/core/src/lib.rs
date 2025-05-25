@@ -178,6 +178,8 @@ pub enum BlockStatus {
     Justified,
     /// Block is finalized (irreversible)
     Finalized,
+    /// Block is latest (not yet finalized)
+    Latest,
 }
 
 impl BlockStatus {
@@ -188,17 +190,21 @@ impl BlockStatus {
             BlockStatus::Safe => "safe",
             BlockStatus::Justified => "justified",
             BlockStatus::Finalized => "finalized",
+            BlockStatus::Latest => "latest",
         }
     }
+}
+
+impl std::str::FromStr for BlockStatus {
+    type Err = ();
     
-    /// Parse from string
-    pub fn from_str(s: &str) -> Option<Self> {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "confirmed" => Some(BlockStatus::Confirmed),
-            "safe" => Some(BlockStatus::Safe),
-            "justified" => Some(BlockStatus::Justified),
-            "finalized" => Some(BlockStatus::Finalized),
-            _ => None,
+            "confirmed" => Ok(BlockStatus::Confirmed),
+            "safe" => Ok(BlockStatus::Safe),
+            "finalized" => Ok(BlockStatus::Finalized),
+            "latest" => Ok(BlockStatus::Latest),
+            _ => Err(()),
         }
     }
 }
@@ -239,12 +245,14 @@ mod tests {
         assert_eq!(BlockStatus::Safe.as_str(), "safe");
         assert_eq!(BlockStatus::Justified.as_str(), "justified");
         assert_eq!(BlockStatus::Finalized.as_str(), "finalized");
+        assert_eq!(BlockStatus::Latest.as_str(), "latest");
 
-        assert_eq!(BlockStatus::from_str("confirmed"), Some(BlockStatus::Confirmed));
-        assert_eq!(BlockStatus::from_str("safe"), Some(BlockStatus::Safe));
-        assert_eq!(BlockStatus::from_str("justified"), Some(BlockStatus::Justified));
-        assert_eq!(BlockStatus::from_str("finalized"), Some(BlockStatus::Finalized));
-        assert_eq!(BlockStatus::from_str("unknown"), None);
+        assert_eq!(BlockStatus::from_str("confirmed"), Ok(BlockStatus::Confirmed));
+        assert_eq!(BlockStatus::from_str("safe"), Ok(BlockStatus::Safe));
+        assert_eq!(BlockStatus::from_str("justified"), Ok(BlockStatus::Justified));
+        assert_eq!(BlockStatus::from_str("finalized"), Ok(BlockStatus::Finalized));
+        assert_eq!(BlockStatus::from_str("latest"), Ok(BlockStatus::Latest));
+        assert_eq!(BlockStatus::from_str("unknown"), Err(()));
     }
 
     #[test]

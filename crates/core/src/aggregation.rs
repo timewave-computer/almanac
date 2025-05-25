@@ -173,7 +173,7 @@ impl Aggregator for DefaultAggregator {
             let group_by_fields = config.group_by.as_deref().unwrap_or(&[]);
             let group_key = self.create_group_key(event.as_ref(), time_bucket, group_by_fields);
             
-            buckets.entry(group_key.clone()).or_insert_with(Vec::new).push(event.as_ref());
+            buckets.entry(group_key.clone()).or_default().push(event.as_ref());
             
             // Store bucket metadata
             if !bucket_metadata.contains_key(&group_key) {

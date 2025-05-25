@@ -565,7 +565,7 @@ impl CrossChainCorrelator for DefaultCrossChainCorrelator {
             for field in &config.correlation_fields {
                 if let Some(value) = event.correlation_data.get(field) {
                     let key = format!("{}:{}", field, value);
-                    correlation_groups.entry(key).or_insert_with(Vec::new).push(idx);
+                    correlation_groups.entry(key).or_default().push(idx);
                 }
             }
         }

@@ -251,16 +251,16 @@ impl RedisCache {
         T: Serialize,
     {
         let json_bytes = serde_json::to_vec(data)
-            .map_err(|e| Error::Serialization(e))?;
+            .map_err(Error::Serialization)?;
         
         if self.config.compression && json_bytes.len() > 256 {
             // Use gzip compression for larger items
             use std::io::Write;
             let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
             encoder.write_all(&json_bytes)
-                .map_err(|e| Error::IO(e))?;
+                .map_err(Error::IO)?;
             encoder.finish()
-                .map_err(|e| Error::IO(e))
+                .map_err(Error::IO)
         } else {
             Ok(json_bytes)
         }
@@ -278,14 +278,14 @@ impl RedisCache {
             let mut decoder = flate2::read::GzDecoder::new(data);
             let mut decompressed = Vec::new();
             decoder.read_to_end(&mut decompressed)
-                .map_err(|e| Error::IO(e))?;
+                .map_err(Error::IO)?;
             decompressed
         } else {
             data.to_vec()
         };
         
         serde_json::from_slice(&json_bytes)
-            .map_err(|e| Error::Serialization(e))
+            .map_err(Error::Serialization)
     }
     
     /// Update cache statistics

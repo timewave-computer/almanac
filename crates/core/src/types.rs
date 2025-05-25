@@ -572,6 +572,12 @@ impl EventFilter {
     }
 }
 
+impl Default for EventFilter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Calculate Levenshtein distance between two strings
 fn levenshtein_distance(s1: &str, s2: &str) -> u32 {
     let len1 = s1.len();
