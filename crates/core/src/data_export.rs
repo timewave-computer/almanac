@@ -131,23 +131,6 @@ pub enum SortDirection {
     Descending,
 }
 
-impl Default for ExportFilter {
-    fn default() -> Self {
-        Self {
-            chains: None,
-            event_types: None,
-            block_range: None,
-            time_range: None,
-            tx_hashes: None,
-            addresses: None,
-            custom_filters: HashMap::new(),
-            limit: None,
-            offset: None,
-            sort_by: None,
-        }
-    }
-}
-
 /// Export progress information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExportProgress {
