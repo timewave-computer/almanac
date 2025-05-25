@@ -15,7 +15,6 @@ contracts = []
 [dependencies]
 # Core indexer dependencies (keep these for interface compatibility)
 indexer-core = { path = "../core" }
-indexer-pipeline = { path = "../pipeline" }
 
 # Minimal async support
 async-trait.workspace = true

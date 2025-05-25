@@ -3,10 +3,9 @@ use std::sync::Arc;
 
 use crate::event::Event;
 use crate::types::{ChainId, EventFilter};
-use indexer_pipeline::{BlockStatus, Result};
+use crate::{BlockStatus, Result};
 
 /// Define common interfaces for chain services
-
 /// Trait for event subscription
 #[async_trait]
 pub trait EventSubscription: Send + Sync {

@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::time::SystemTime;
 
 use async_trait::async_trait;
-use indexer_common::{Error, Result, BlockStatus};
+use indexer_core::{Error, Result, BlockStatus};
 use indexer_core::event::Event;
 use serde::{Serialize, Deserialize};
 use tracing::debug;

@@ -8,6 +8,9 @@ use anyhow::Result;
 use async_trait::async_trait;
 use std::any::Any;
 use std::time::SystemTime;
+use indexer_core::{Error, Result};
+use indexer_core::event::Event;
+use indexer_core::types::{EventFilter, ChainClient};
 
 // Re-export core types that may be used by other parts of the system
 pub use indexer_core::{
@@ -17,8 +20,7 @@ pub use indexer_core::{
 };
 
 // Import valence domain client types
-use valence_domain_clients::clients::ethereum::EthereumClient as ValenceEthereumClient;
-use valence_domain_clients::evm::base_client::EvmBaseClient;
+use valence_domain_clients::clients::EthereumClient as ValenceEthereumClient;
 use valence_domain_clients::common::transaction::TransactionResponse;
 
 /// EVM chain configuration
@@ -237,33 +239,34 @@ impl EventService for EthereumClient {
         &self.chain_id
     }
     
-    async fn get_events(&self, _filters: Vec<EventFilter>) -> indexer_pipeline::Result<Vec<Box<dyn Event>>> {
+    async fn get_events(&self, _filters: Vec<EventFilter>) -> indexer_core::Result<Vec<Box<dyn Event>>> {
         // TODO: Convert EventFilter to valence domain client filters
-        // TODO: Use valence_client to fetch events 
+        // TODO: Use valence_client to fetch events
         // TODO: Convert valence events to almanac Event trait objects
         
         // For now, return empty vector as this requires event subscription implementation
-        // This will be implemented in Phase 2.3 - Implement EVM event parsing and subscription
+        // This will be implemented in Phase 2.3 - Implement Ethereum event parsing and subscription
         Ok(Vec::new())
     }
     
-    async fn get_latest_block(&self) -> indexer_pipeline::Result<u64> {
+    async fn get_latest_block(&self) -> indexer_core::Result<u64> {
         // Use the valence client to get the latest block number
+        // Try using latest_block_height() method similar to cosmos client
         let block_number = self.valence_client.latest_block_height().await
             .map_err(|e| indexer_core::Error::generic(format!("Failed to get latest block: {}", e)))?;
             
         Ok(block_number)
     }
     
-    async fn get_latest_block_with_status(&self, _chain: &str, _status: indexer_pipeline::BlockStatus) -> indexer_pipeline::Result<u64> {
+    async fn get_latest_block_with_status(&self, _chain: &str, _status: indexer_core::BlockStatus) -> indexer_core::Result<u64> {
         // For EVM chains, we'll just return the latest block for now
         // More sophisticated block status handling can be added later
         self.get_latest_block().await
     }
     
-    async fn subscribe(&self) -> indexer_pipeline::Result<Box<dyn EventSubscription>> {
+    async fn subscribe(&self) -> indexer_core::Result<Box<dyn EventSubscription>> {
         // TODO: Implement event subscription using valence domain client
-        // This will be implemented in Phase 2.3 - Implement EVM event parsing and subscription
+        // This will be implemented in Phase 2.3 - Implement Ethereum event parsing and subscription
         
         // For now, return a dummy subscription
         Ok(Box::new(DummySubscription))
@@ -279,7 +282,7 @@ impl EventSubscription for DummySubscription {
         None
     }
     
-    async fn close(&mut self) -> indexer_pipeline::Result<()> {
+    async fn close(&mut self) -> indexer_core::Result<()> {
         Ok(())
     }
 }

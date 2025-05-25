@@ -1,6 +1,9 @@
 /// Indexing pipeline and common types for processing blockchain events
-pub use indexer_common::{Error, Result, BlockStatus};
+///
+/// This module contains the pipeline abstractions for processing blockchain events,
+/// including service traits and registries.
 
+use crate::{Error, Result};
 use async_trait::async_trait;
 use std::sync::Arc;
 
@@ -61,7 +64,7 @@ impl EventServiceRegistry {
             }
         }
         
-        Err(Error::MissingService(chain_id.to_string()))
+        Err(Error::missing_service(chain_id))
     }
     
     /// Get all supported chains

@@ -1,13 +1,13 @@
 // postgres_opt.rs - PostgreSQL optimization utilities
 //
-// Purpose: Provides tools for optimizing PostgreSQL performance through schema design,
-// index optimization, query planning, and connection pool configuration
+// Purpose: Provides tools for optimizing PostgreSQL performance through query analysis,
+// index recommendations, and connection pool tuning
 
 use std::collections::HashMap;
 use std::time::Duration;
+use sqlx::{Pool, Postgres, postgres::PgPoolOptions};
+use super::{Measurement};
 use indexer_core::Error;
-use sqlx::{Pool, Postgres, postgres::PgPoolOptions, query, query_as};
-use super::{Measurement, BenchmarkReport};
 
 /// Index type for PostgreSQL
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -114,12 +114,12 @@ impl IndexDefinition {
         
         sql.push_str(&self.columns.join(", "));
         
-        sql.push_str(")");
+        sql.push(')');
         
         if !self.options.is_empty() {
             sql.push_str(" WITH (");
             sql.push_str(&self.options.join(", "));
-            sql.push_str(")");
+            sql.push(')');
         }
         
         sql
@@ -164,17 +164,20 @@ impl Default for ConnectionPoolConfig {
 impl ConnectionPoolConfig {
     /// Create a new connection pool with this configuration
     pub async fn create_pool(&self, database_url: &str) -> Result<Pool<Postgres>, Error> {
+        let statement_timeout = self.statement_timeout;
+        
         let pool = PgPoolOptions::new()
             .min_connections(self.min_connections)
             .max_connections(self.max_connections)
             .max_lifetime(self.max_lifetime)
             .idle_timeout(self.idle_timeout)
             .acquire_timeout(self.connect_timeout)
-            .after_connect(|conn, _| {
+            .after_connect(move |conn, _meta| {
+                let timeout_ms = statement_timeout.as_millis() as i64;
                 Box::pin(async move {
                     // Set statement timeout
-                    let timeout_ms = self.statement_timeout.as_millis() as i64;
-                    conn.execute(&format!("SET statement_timeout = {}", timeout_ms))
+                    sqlx::query(&format!("SET statement_timeout = {}", timeout_ms))
+                        .execute(conn)
                         .await?;
                     
                     // Set other session parameters if needed
@@ -183,7 +186,7 @@ impl ConnectionPoolConfig {
             })
             .connect(database_url)
             .await
-            .map_err(|e| Error::Other(format!("Failed to create connection pool: {}", e)))?;
+            .map_err(|e| Error::generic(format!("Failed to create connection pool: {}", e)))?;
         
         Ok(pool)
     }
@@ -272,7 +275,7 @@ pub async fn get_table_info(pool: &Pool<Postgres>) -> Result<Vec<TableInfo>, Err
     )
     .fetch_all(pool)
     .await
-    .map_err(|e| Error::Other(format!("Failed to get table info: {}", e)))?;
+    .map_err(|e| Error::generic(format!("Failed to get table info: {}", e)))?;
     
     // For each table, get its indexes
     let mut table_infos = Vec::with_capacity(tables.len());
@@ -294,7 +297,7 @@ pub async fn get_table_info(pool: &Pool<Postgres>) -> Result<Vec<TableInfo>, Err
         .bind(&table_row.table_name)
         .fetch_all(pool)
         .await
-        .map_err(|e| Error::Other(format!("Failed to get index info: {}", e)))?;
+        .map_err(|e| Error::generic(format!("Failed to get index info: {}", e)))?;
         
         table_infos.push(TableInfo {
             name: table_row.table_name,
@@ -311,23 +314,23 @@ pub async fn get_table_info(pool: &Pool<Postgres>) -> Result<Vec<TableInfo>, Err
 pub async fn analyze_query(pool: &Pool<Postgres>, sql: &str) -> Result<QueryInfo, Error> {
     // Extract query plan
     let plan: String = sqlx::query_scalar::<_, String>(
-        "EXPLAIN (FORMAT JSON, ANALYZE, TIMING, BUFFERS) ".to_string() + sql
+        &format!("EXPLAIN (FORMAT JSON, ANALYZE, TIMING, BUFFERS) {}", sql)
     )
     .fetch_one(pool)
     .await
-    .map_err(|e| Error::Other(format!("Failed to analyze query: {}", e)))?;
+    .map_err(|e| Error::generic(format!("Failed to analyze query: {}", e)))?;
     
     // Execute query to get execution time
     let start = std::time::Instant::now();
     let _ = sqlx::query(sql)
         .execute(pool)
         .await
-        .map_err(|e| Error::Other(format!("Failed to execute query: {}", e)))?;
+        .map_err(|e| Error::generic(format!("Failed to execute query: {}", e)))?;
     let execution_time_ms = start.elapsed().as_secs_f64() * 1000.0;
     
     // Parse plan to extract tables and indexes
     let plan_json: serde_json::Value = serde_json::from_str(&plan)
-        .map_err(|e| Error::Other(format!("Failed to parse query plan: {}", e)))?;
+        .map_err(|e| Error::generic(format!("Failed to parse query plan: {}", e)))?;
     
     let mut tables = Vec::new();
     let mut indexes = Vec::new();
@@ -393,7 +396,7 @@ pub async fn benchmark_query(pool: &Pool<Postgres>, sql: &str, iterations: usize
         let result = sqlx::query(sql)
             .execute(pool)
             .await
-            .map_err(|e| Error::Other(format!("Failed to execute query: {}", e)))?;
+            .map_err(|e| Error::generic(format!("Failed to execute query: {}", e)))?;
         
         let duration = start.elapsed();
         total_duration += duration;
@@ -442,7 +445,7 @@ pub fn suggest_indexes(query_infos: &[QueryInfo], table_infos: &[TableInfo]) -> 
                         // Suggest an index based on the query
                         if let Some(index) = suggest_index_for_query(&table, query) {
                             // Check if this index is already suggested
-                            if !suggested_indexes.iter().any(|idx| 
+                            if !suggested_indexes.iter().any(|idx: &IndexDefinition| 
                                 idx.table == index.table && idx.columns == index.columns
                             ) {
                                 suggested_indexes.push(index);
@@ -492,20 +495,18 @@ fn extract_columns_from_query(table: &str, sql: &str) -> Vec<String> {
         for part in where_clause.split_whitespace() {
             if part.starts_with(&table_prefix) {
                 // Extract column name from table.column
-                let column = part[table_prefix.len()..].trim_end_matches(&[',', ')', '(', ';']);
+                let column = part[table_prefix.len()..].trim_end_matches([',', ')', '(', ';']);
                 if !column.is_empty() && !columns.contains(&column.to_string()) {
                     columns.push(column.to_string());
                 }
             } else if let Some(pos) = part.find('=') {
                 // Simple column = value pattern
-                let column = part[0..pos].trim_end_matches(&[' ', '\t']);
+                let column = part[0..pos].trim_end_matches([' ', '\t']);
                 
                 // Check if this column belongs to the table by looking for references
                 // This is a simplified approach and might not always work
-                if !column.contains('.') && sql.contains(&format!("{}.{}", table, column)) {
-                    if !columns.contains(&column.to_string()) {
-                        columns.push(column.to_string());
-                    }
+                if !column.contains('.') && sql.contains(&format!("{}.{}", table, column)) && !columns.contains(&column.to_string()) {
+                    columns.push(column.to_string());
                 }
             }
         }
@@ -524,7 +525,7 @@ fn extract_columns_from_query(table: &str, sql: &str) -> Vec<String> {
             
             for part in on_clause.split_whitespace() {
                 if part.starts_with(&table_prefix) {
-                    let column = part[table_prefix.len()..].trim_end_matches(&[',', ')', '(', ';', '=']);
+                    let column = part[table_prefix.len()..].trim_end_matches([',', ')', '(', ';', '=']);
                     if !column.is_empty() && !columns.contains(&column.to_string()) {
                         columns.push(column.to_string());
                     }

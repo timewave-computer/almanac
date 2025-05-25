@@ -1,0 +1,44 @@
+name = "almanac"
+description = "Almanac Indexer Service"
+command = [
+    "almanac",
+    "run",
+]
+dependencies = []
+restart_policy = "onfailure"
+max_restarts = 5
+auto_recovery = true
+
+[environment]
+
+[health_check]
+command = [
+    "curl",
+    "-f",
+    "http://localhost:8080/health",
+]
+retries = 3
+
+[health_check.interval]
+secs = 30
+nanos = 0
+
+[health_check.timeout]
+secs = 5
+nanos = 0
+
+[health_check.start_period]
+secs = 10
+nanos = 0
+
+[restart_delay]
+secs = 5
+nanos = 0
+
+[startup_timeout]
+secs = 30
+nanos = 0
+
+[shutdown_timeout]
+secs = 10
+nanos = 0

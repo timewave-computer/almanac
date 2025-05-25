@@ -6,8 +6,6 @@ use async_trait::async_trait;
 
 use crate::event::Event;
 use crate::Result;
-use crate::types::CorrelationResult;
-use crate::{Error};
 
 /// Configuration for cross-chain correlation
 #[derive(Debug, Clone, Serialize, Deserialize)]

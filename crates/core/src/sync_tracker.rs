@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use async_trait::async_trait;
 use tokio::sync::RwLock;
 
-use crate::{Result, Error};
+use crate::Result;
 
 /// Synchronization status for a blockchain
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

@@ -4,20 +4,16 @@ use std::path::Path;
 #[cfg(feature = "rocks")]
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-
 use std::any::Any;
-#[cfg(feature = "rocks")]
-use std::collections::HashSet;
 
 use async_trait::async_trait;
-use indexer_pipeline::{BlockStatus, Error, Result};
+use indexer_core::{BlockStatus, Error, Result};
 use indexer_core::event::Event;
 #[cfg(feature = "rocks")]
 use rocksdb::{Options, DB, WriteBatch, BlockBasedOptions, ColumnFamily};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
 use serde_json;
-use num_cpus;
 use bincode;
 
 use crate::EventFilter;

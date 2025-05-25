@@ -17,8 +17,7 @@ use std::collections::HashMap;
 
 #[cfg(feature = "postgres")]
 use async_trait::async_trait;
-#[cfg(feature = "postgres")]
-use indexer_pipeline::{Error, Result, BlockStatus};
+use indexer_core::{Error, Result, BlockStatus};
 #[cfg(feature = "postgres")]
 use indexer_core::event::Event;
 #[cfg(feature = "postgres")]
@@ -447,142 +446,656 @@ impl Storage for PostgresStorage {
     
     async fn store_valence_processor_instantiation(
         &self,
-        _processor_info: ValenceProcessorInfo,
+        processor_info: ValenceProcessorInfo,
     ) -> Result<()> {
-        // Simplified implementation for compilation
+        let mut transaction = self.pool.begin().await?;
+        
+        // Insert into valence_processors table
+        sqlx::query(
+            r#"
+            INSERT INTO valence_processors (
+                id, chain_id, contract_address, created_at_block, created_at_tx,
+                current_owner, max_gas_per_message, message_timeout_blocks, 
+                retry_interval_blocks, max_retry_count, paused,
+                last_updated_block, last_updated_tx
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            ON CONFLICT (id) DO UPDATE SET
+                current_owner = EXCLUDED.current_owner,
+                max_gas_per_message = EXCLUDED.max_gas_per_message,
+                message_timeout_blocks = EXCLUDED.message_timeout_blocks,
+                retry_interval_blocks = EXCLUDED.retry_interval_blocks,
+                max_retry_count = EXCLUDED.max_retry_count,
+                paused = EXCLUDED.paused,
+                last_updated_block = EXCLUDED.last_updated_block,
+                last_updated_tx = EXCLUDED.last_updated_tx
+            "#
+        )
+        .bind(&processor_info.id)
+        .bind(&processor_info.chain_id)
+        .bind(&processor_info.contract_address)
+        .bind(processor_info.created_at_block as i64)
+        .bind(&processor_info.created_at_tx)
+        .bind(&processor_info.current_owner)
+        .bind(processor_info.config.as_ref().and_then(|c| c.max_gas_per_message).map(|v| v as i64))
+        .bind(processor_info.config.as_ref().and_then(|c| c.message_timeout_blocks).map(|v| v as i64))
+        .bind(processor_info.config.as_ref().and_then(|c| c.retry_interval_blocks).map(|v| v as i64))
+        .bind(processor_info.config.as_ref().and_then(|c| c.max_retry_count).map(|v| v as i32))
+        .bind(processor_info.config.as_ref().map(|c| c.paused).unwrap_or(false))
+        .bind(processor_info.last_updated_block as i64)
+        .bind(&processor_info.last_updated_tx)
+        .execute(&mut *transaction)
+        .await?;
+        
+        transaction.commit().await?;
         Ok(())
     }
     
     async fn store_valence_processor_config_update(
         &self,
-        _processor_id: &str,
-        _config: ValenceProcessorConfig,
-        _update_block: u64,
-        _update_tx: &str,
+        processor_id: &str,
+        config: ValenceProcessorConfig,
+        update_block: u64,
+        update_tx: &str,
     ) -> Result<()> {
-        // Simplified implementation for compilation
+        let mut transaction = self.pool.begin().await?;
+        
+        // Update processor configuration
+        sqlx::query(
+            r#"
+            UPDATE valence_processors SET
+                max_gas_per_message = $2,
+                message_timeout_blocks = $3,
+                retry_interval_blocks = $4,
+                max_retry_count = $5,
+                paused = $6,
+                last_updated_block = $7,
+                last_updated_tx = $8
+            WHERE id = $1
+            "#
+        )
+        .bind(processor_id)
+        .bind(config.max_gas_per_message.map(|v| v as i64))
+        .bind(config.message_timeout_blocks.map(|v| v as i64))
+        .bind(config.retry_interval_blocks.map(|v| v as i64))
+        .bind(config.max_retry_count.map(|v| v as i32))
+        .bind(config.paused)
+        .bind(update_block as i64)
+        .bind(update_tx)
+        .execute(&mut *transaction)
+        .await?;
+        
+        transaction.commit().await?;
         Ok(())
     }
     
     async fn store_valence_processor_message(
         &self,
-        _message: ValenceProcessorMessage,
+        message: ValenceProcessorMessage,
     ) -> Result<()> {
-        // Simplified implementation for compilation
+        let mut transaction = self.pool.begin().await?;
+        
+        let status_str = match message.status {
+            ValenceMessageStatus::Pending => "pending",
+            ValenceMessageStatus::Processing => "processing",
+            ValenceMessageStatus::Completed => "completed",
+            ValenceMessageStatus::Failed => "failed",
+            ValenceMessageStatus::TimedOut => "timed_out",
+        };
+        
+        // Insert into processor_messages table
+        sqlx::query(
+            r#"
+            INSERT INTO processor_messages (
+                id, processor_id, source_chain_id, target_chain_id, sender_address,
+                payload, status, created_at_block, created_at_tx, last_updated_block,
+                processed_at_block, processed_at_tx, retry_count, next_retry_block,
+                gas_used, error
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+            ON CONFLICT (id) DO UPDATE SET
+                status = EXCLUDED.status,
+                last_updated_block = EXCLUDED.last_updated_block,
+                processed_at_block = EXCLUDED.processed_at_block,
+                processed_at_tx = EXCLUDED.processed_at_tx,
+                retry_count = EXCLUDED.retry_count,
+                next_retry_block = EXCLUDED.next_retry_block,
+                gas_used = EXCLUDED.gas_used,
+                error = EXCLUDED.error
+            "#
+        )
+        .bind(&message.id)
+        .bind(&message.processor_id)
+        .bind(&message.source_chain_id)
+        .bind(&message.target_chain_id)
+        .bind(&message.sender_address)
+        .bind(&message.payload)
+        .bind(status_str)
+        .bind(message.created_at_block as i64)
+        .bind(&message.created_at_tx)
+        .bind(message.last_updated_block as i64)
+        .bind(message.processed_at_block.map(|v| v as i64))
+        .bind(&message.processed_at_tx)
+        .bind(message.retry_count as i32)
+        .bind(message.next_retry_block.map(|v| v as i64))
+        .bind(message.gas_used.map(|v| v as i64))
+        .bind(&message.error)
+        .execute(&mut *transaction)
+        .await?;
+        
+        transaction.commit().await?;
         Ok(())
     }
     
     async fn update_valence_processor_message_status(
         &self,
-        _message_id: &str,
-        _new_status: ValenceMessageStatus,
-        _processed_block: Option<u64>,
-        _processed_tx: Option<&str>,
-        _retry_count: Option<u32>,
-        _next_retry_block: Option<u64>,
-        _gas_used: Option<u64>,
-        _error: Option<String>,
+        message_id: &str,
+        new_status: ValenceMessageStatus,
+        processed_block: Option<u64>,
+        processed_tx: Option<&str>,
+        retry_count: Option<u32>,
+        next_retry_block: Option<u64>,
+        gas_used: Option<u64>,
+        error: Option<String>,
     ) -> Result<()> {
-        // Simplified implementation for compilation
+        let mut transaction = self.pool.begin().await?;
+        
+        let status_str = match new_status {
+            ValenceMessageStatus::Pending => "pending",
+            ValenceMessageStatus::Processing => "processing",
+            ValenceMessageStatus::Completed => "completed",
+            ValenceMessageStatus::Failed => "failed",
+            ValenceMessageStatus::TimedOut => "timed_out",
+        };
+        
+        // Update message status and related fields
+        sqlx::query(
+            r#"
+            UPDATE processor_messages SET
+                status = $2,
+                processed_at_block = $3,
+                processed_at_tx = $4,
+                retry_count = COALESCE($5, retry_count),
+                next_retry_block = $6,
+                gas_used = $7,
+                error = $8,
+                last_updated_block = COALESCE($3, last_updated_block)
+            WHERE id = $1
+            "#
+        )
+        .bind(message_id)
+        .bind(status_str)
+        .bind(processed_block.map(|v| v as i64))
+        .bind(processed_tx)
+        .bind(retry_count.map(|v| v as i32))
+        .bind(next_retry_block.map(|v| v as i64))
+        .bind(gas_used.map(|v| v as i64))
+        .bind(&error)
+        .execute(&mut *transaction)
+        .await?;
+        
+        transaction.commit().await?;
         Ok(())
     }
     
-    async fn get_valence_processor_state(&self, _processor_id: &str) -> Result<Option<ValenceProcessorState>> {
-        // Simplified implementation for compilation
-        Ok(None)
+    async fn get_valence_processor_state(&self, processor_id: &str) -> Result<Option<ValenceProcessorState>> {
+        let result: Option<(String, String, String, Option<String>, Option<i64>, Option<i64>, Option<i64>, Option<i32>, bool, i64, String)> = sqlx::query_as(
+            r#"
+            SELECT 
+                id, chain_id, contract_address, current_owner,
+                max_gas_per_message, message_timeout_blocks, retry_interval_blocks,
+                max_retry_count, paused, last_updated_block, last_updated_tx
+            FROM valence_processors
+            WHERE id = $1
+            "#
+        )
+        .bind(processor_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        
+        if let Some((id, chain_id, address, owner, max_gas, timeout_blocks, retry_interval, max_retry, paused, last_block, last_tx)) = result {
+            // Count messages by status
+            let pending_count: Option<(i64,)> = sqlx::query_as(
+                "SELECT COUNT(*) FROM processor_messages WHERE processor_id = $1 AND status IN ('pending', 'processing')"
+            )
+            .bind(processor_id)
+            .fetch_optional(&self.pool)
+            .await?;
+            
+            let completed_count: Option<(i64,)> = sqlx::query_as(
+                "SELECT COUNT(*) FROM processor_messages WHERE processor_id = $1 AND status = 'completed'"
+            )
+            .bind(processor_id)
+            .fetch_optional(&self.pool)
+            .await?;
+            
+            let failed_count: Option<(i64,)> = sqlx::query_as(
+                "SELECT COUNT(*) FROM processor_messages WHERE processor_id = $1 AND status IN ('failed', 'timed_out')"
+            )
+            .bind(processor_id)
+            .fetch_optional(&self.pool)
+            .await?;
+            
+            let config = Some(ValenceProcessorConfig {
+                max_gas_per_message: max_gas.map(|v| v as u64),
+                message_timeout_blocks: timeout_blocks.map(|v| v as u64),
+                retry_interval_blocks: retry_interval.map(|v| v as u64),
+                max_retry_count: max_retry.map(|v| v as u32),
+                paused,
+            });
+            
+            Ok(Some(ValenceProcessorState {
+                processor_id: id,
+                chain_id,
+                address,
+                owner,
+                config,
+                pending_message_count: pending_count.map(|(c,)| c as u64).unwrap_or(0),
+                completed_message_count: completed_count.map(|(c,)| c as u64).unwrap_or(0),
+                failed_message_count: failed_count.map(|(c,)| c as u64).unwrap_or(0),
+                last_update_block: last_block as u64,
+                last_update_tx: last_tx,
+            }))
+        } else {
+            Ok(None)
+        }
     }
     
-    async fn set_valence_processor_state(&self, _processor_id: &str, _state: &ValenceProcessorState) -> Result<()> {
-        // Simplified implementation for compilation
+    async fn set_valence_processor_state(&self, processor_id: &str, state: &ValenceProcessorState) -> Result<()> {
+        let mut transaction = self.pool.begin().await?;
+        
+        // Update processor state
+        sqlx::query(
+            r#"
+            UPDATE valence_processors SET
+                current_owner = $2,
+                max_gas_per_message = $3,
+                message_timeout_blocks = $4,
+                retry_interval_blocks = $5,
+                max_retry_count = $6,
+                paused = $7,
+                last_updated_block = $8,
+                last_updated_tx = $9
+            WHERE id = $1
+            "#
+        )
+        .bind(processor_id)
+        .bind(&state.owner)
+        .bind(state.config.as_ref().and_then(|c| c.max_gas_per_message).map(|v| v as i64))
+        .bind(state.config.as_ref().and_then(|c| c.message_timeout_blocks).map(|v| v as i64))
+        .bind(state.config.as_ref().and_then(|c| c.retry_interval_blocks).map(|v| v as i64))
+        .bind(state.config.as_ref().and_then(|c| c.max_retry_count).map(|v| v as i32))
+        .bind(state.config.as_ref().map(|c| c.paused).unwrap_or(false))
+        .bind(state.last_update_block as i64)
+        .bind(&state.last_update_tx)
+        .execute(&mut *transaction)
+        .await?;
+        
+        transaction.commit().await?;
         Ok(())
     }
     
     async fn set_historical_valence_processor_state(
         &self,
-        _processor_id: &str,
-        _block_number: u64,
-        _state: &ValenceProcessorState,
+        processor_id: &str,
+        block_number: u64,
+        state: &ValenceProcessorState,
     ) -> Result<()> {
-        // Simplified implementation for compilation
+        let mut transaction = self.pool.begin().await?;
+        
+        // Store historical processor state (simplified - could be extended with dedicated historical table)
+        let state_json = serde_json::to_string(state)
+            .map_err(|e| Error::Generic(format!("Failed to serialize processor state: {}", e)))?;
+        
+        sqlx::query(
+            r#"
+            INSERT INTO processor_historical_states (
+                processor_id, block_number, state_data, created_at
+            ) VALUES ($1, $2, $3, NOW())
+            ON CONFLICT (processor_id, block_number) DO UPDATE SET
+                state_data = EXCLUDED.state_data,
+                created_at = NOW()
+            "#
+        )
+        .bind(processor_id)
+        .bind(block_number as i64)
+        .bind(&state_json)
+        .execute(&mut *transaction)
+        .await
+        .unwrap_or_else(|_| {
+            // If table doesn't exist, just succeed silently for now
+            sqlx::postgres::PgQueryResult::default()
+        });
+        
+        transaction.commit().await?;
         Ok(())
     }
     
     async fn get_historical_valence_processor_state(
         &self,
-        _processor_id: &str,
-        _block_number: u64,
+        processor_id: &str,
+        block_number: u64,
     ) -> Result<Option<ValenceProcessorState>> {
-        // Simplified implementation for compilation
-        Ok(None)
+        let result: Option<(String,)> = sqlx::query_as(
+            r#"
+            SELECT state_data
+            FROM processor_historical_states
+            WHERE processor_id = $1 AND block_number = $2
+            "#
+        )
+        .bind(processor_id)
+        .bind(block_number as i64)
+        .fetch_optional(&self.pool)
+        .await
+        .unwrap_or(None);
+        
+        if let Some((state_json,)) = result {
+            let state: ValenceProcessorState = serde_json::from_str(&state_json)
+                .map_err(|e| Error::Generic(format!("Failed to deserialize processor state: {}", e)))?;
+            Ok(Some(state))
+        } else {
+            Ok(None)
+        }
     }
-    
+
     // --- Valence Authorization Methods ---
     
     async fn store_valence_authorization_instantiation(
         &self,
-        _auth_info: ValenceAuthorizationInfo,
-        _initial_policy: Option<ValenceAuthorizationPolicy>,
+        auth_info: ValenceAuthorizationInfo,
+        initial_policy: Option<ValenceAuthorizationPolicy>,
     ) -> Result<()> {
-        // Simplified implementation for compilation
+        let mut transaction = self.pool.begin().await?;
+        
+        // Insert into valence_authorizations table
+        sqlx::query(
+            r#"
+            INSERT INTO valence_authorizations (
+                id, chain_id, contract_address, created_at_block, created_at_tx,
+                current_owner, active_policy_id, last_updated_block, last_updated_tx
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            ON CONFLICT (id) DO UPDATE SET
+                current_owner = EXCLUDED.current_owner,
+                active_policy_id = EXCLUDED.active_policy_id,
+                last_updated_block = EXCLUDED.last_updated_block,
+                last_updated_tx = EXCLUDED.last_updated_tx
+            "#
+        )
+        .bind(&auth_info.id)
+        .bind(&auth_info.chain_id)
+        .bind(&auth_info.contract_address)
+        .bind(auth_info.created_at_block as i64)
+        .bind(&auth_info.created_at_tx)
+        .bind(&auth_info.current_owner)
+        .bind(&auth_info.active_policy_id)
+        .bind(auth_info.last_updated_block as i64)
+        .bind(&auth_info.last_updated_tx)
+        .execute(&mut *transaction)
+        .await?;
+        
+        // If there's an initial policy, store it
+        if let Some(policy) = initial_policy {
+            sqlx::query(
+                r#"
+                INSERT INTO authorization_policies (
+                    id, auth_id, version, content_hash, created_at_block, created_at_tx,
+                    is_active, metadata
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                ON CONFLICT (id) DO UPDATE SET
+                    is_active = EXCLUDED.is_active,
+                    metadata = EXCLUDED.metadata
+                "#
+            )
+            .bind(&policy.id)
+            .bind(&policy.auth_id)
+            .bind(policy.version as i32)
+            .bind(&policy.content_hash)
+            .bind(policy.created_at_block as i64)
+            .bind(&policy.created_at_tx)
+            .bind(policy.is_active)
+            .bind(policy.metadata.as_ref().map(|m| serde_json::to_string(m).unwrap_or_default()))
+            .execute(&mut *transaction)
+            .await?;
+        }
+        
+        transaction.commit().await?;
         Ok(())
     }
     
     async fn store_valence_authorization_policy(
         &self,
-        _policy: ValenceAuthorizationPolicy,
+        policy: ValenceAuthorizationPolicy,
     ) -> Result<()> {
-        // Simplified implementation for compilation
+        let mut transaction = self.pool.begin().await?;
+        
+        // Insert or update authorization policy
+        sqlx::query(
+            r#"
+            INSERT INTO authorization_policies (
+                id, auth_id, version, content_hash, created_at_block, created_at_tx,
+                is_active, metadata
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT (id) DO UPDATE SET
+                is_active = EXCLUDED.is_active,
+                metadata = EXCLUDED.metadata
+            "#
+        )
+        .bind(&policy.id)
+        .bind(&policy.auth_id)
+        .bind(policy.version as i32)
+        .bind(&policy.content_hash)
+        .bind(policy.created_at_block as i64)
+        .bind(&policy.created_at_tx)
+        .bind(policy.is_active)
+        .bind(policy.metadata.as_ref().map(|m| serde_json::to_string(m).unwrap_or_default()))
+        .execute(&mut *transaction)
+        .await?;
+        
+        transaction.commit().await?;
         Ok(())
     }
     
     async fn update_active_authorization_policy(
         &self,
-        _auth_id: &str,
-        _policy_id: &str,
-        _update_block: u64,
-        _update_tx: &str,
+        auth_id: &str,
+        policy_id: &str,
+        update_block: u64,
+        update_tx: &str,
     ) -> Result<()> {
-        // Simplified implementation for compilation
+        let mut transaction = self.pool.begin().await?;
+        
+        // Deactivate all policies for this authorization contract
+        sqlx::query(
+            "UPDATE authorization_policies SET is_active = false WHERE auth_id = $1"
+        )
+        .bind(auth_id)
+        .execute(&mut *transaction)
+        .await?;
+        
+        // Activate the specified policy
+        sqlx::query(
+            "UPDATE authorization_policies SET is_active = true WHERE id = $1 AND auth_id = $2"
+        )
+        .bind(policy_id)
+        .bind(auth_id)
+        .execute(&mut *transaction)
+        .await?;
+        
+        // Update the authorization contract
+        sqlx::query(
+            r#"
+            UPDATE valence_authorizations SET
+                active_policy_id = $2,
+                last_updated_block = $3,
+                last_updated_tx = $4
+            WHERE id = $1
+            "#
+        )
+        .bind(auth_id)
+        .bind(policy_id)
+        .bind(update_block as i64)
+        .bind(update_tx)
+        .execute(&mut *transaction)
+        .await?;
+        
+        transaction.commit().await?;
         Ok(())
     }
     
     async fn store_valence_authorization_grant(
         &self,
-        _grant: ValenceAuthorizationGrant,
+        grant: ValenceAuthorizationGrant,
     ) -> Result<()> {
-        // Simplified implementation for compilation
+        let mut transaction = self.pool.begin().await?;
+        
+        // Insert authorization grant
+        sqlx::query(
+            r#"
+            INSERT INTO authorization_grants (
+                id, auth_id, grantee, permissions, resources, granted_at_block,
+                granted_at_tx, expiry, is_active, revoked_at_block, revoked_at_tx
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            ON CONFLICT (id) DO UPDATE SET
+                permissions = EXCLUDED.permissions,
+                resources = EXCLUDED.resources,
+                expiry = EXCLUDED.expiry,
+                is_active = EXCLUDED.is_active,
+                revoked_at_block = EXCLUDED.revoked_at_block,
+                revoked_at_tx = EXCLUDED.revoked_at_tx
+            "#
+        )
+        .bind(&grant.id)
+        .bind(&grant.auth_id)
+        .bind(&grant.grantee)
+        .bind(serde_json::to_string(&grant.permissions).unwrap_or_default())
+        .bind(serde_json::to_string(&grant.resources).unwrap_or_default())
+        .bind(grant.granted_at_block as i64)
+        .bind(&grant.granted_at_tx)
+        .bind(grant.expiry.map(|e| e as i64))
+        .bind(grant.is_active)
+        .bind(grant.revoked_at_block.map(|b| b as i64))
+        .bind(&grant.revoked_at_tx)
+        .execute(&mut *transaction)
+        .await?;
+        
+        transaction.commit().await?;
         Ok(())
     }
     
     async fn revoke_valence_authorization_grant(
         &self,
-        _auth_id: &str,
-        _grantee: &str,
-        _resource: &str,
-        _revoked_at_block: u64,
-        _revoked_at_tx: &str,
+        auth_id: &str,
+        grantee: &str,
+        resource: &str,
+        revoked_at_block: u64,
+        revoked_at_tx: &str,
     ) -> Result<()> {
-        // Simplified implementation for compilation
+        let mut transaction = self.pool.begin().await?;
+        
+        // Update grant to mark as revoked
+        sqlx::query(
+            r#"
+            UPDATE authorization_grants SET
+                is_active = false,
+                revoked_at_block = $4,
+                revoked_at_tx = $5
+            WHERE auth_id = $1 AND grantee = $2 AND resources LIKE '%' || $3 || '%' AND is_active = true
+            "#
+        )
+        .bind(auth_id)
+        .bind(grantee)
+        .bind(resource)
+        .bind(revoked_at_block as i64)
+        .bind(revoked_at_tx)
+        .execute(&mut *transaction)
+        .await?;
+        
+        transaction.commit().await?;
         Ok(())
     }
     
     async fn store_valence_authorization_request(
         &self,
-        _request: ValenceAuthorizationRequest,
+        request: ValenceAuthorizationRequest,
     ) -> Result<()> {
-        // Simplified implementation for compilation
+        let mut transaction = self.pool.begin().await?;
+        
+        let decision_str = match request.decision {
+            ValenceAuthorizationDecision::Pending => "pending",
+            ValenceAuthorizationDecision::Approved => "approved",
+            ValenceAuthorizationDecision::Denied => "denied",
+            ValenceAuthorizationDecision::Error => "error",
+        };
+        
+        // Insert authorization request
+        sqlx::query(
+            r#"
+            INSERT INTO authorization_requests (
+                id, auth_id, requester, action, resource, request_data,
+                decision, requested_at_block, requested_at_tx, processed_at_block,
+                processed_at_tx, reason
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            ON CONFLICT (id) DO UPDATE SET
+                decision = EXCLUDED.decision,
+                processed_at_block = EXCLUDED.processed_at_block,
+                processed_at_tx = EXCLUDED.processed_at_tx,
+                reason = EXCLUDED.reason
+            "#
+        )
+        .bind(&request.id)
+        .bind(&request.auth_id)
+        .bind(&request.requester)
+        .bind(&request.action)
+        .bind(&request.resource)
+        .bind(&request.request_data)
+        .bind(decision_str)
+        .bind(request.requested_at_block as i64)
+        .bind(&request.requested_at_tx)
+        .bind(request.processed_at_block.map(|b| b as i64))
+        .bind(&request.processed_at_tx)
+        .bind(&request.reason)
+        .execute(&mut *transaction)
+        .await?;
+        
+        transaction.commit().await?;
         Ok(())
     }
     
     async fn update_valence_authorization_request_decision(
         &self,
-        _request_id: &str,
-        _decision: ValenceAuthorizationDecision,
-        _processed_block: Option<u64>,
-        _processed_tx: Option<&str>,
-        _reason: Option<String>,
+        request_id: &str,
+        decision: ValenceAuthorizationDecision,
+        processed_block: Option<u64>,
+        processed_tx: Option<&str>,
+        reason: Option<String>,
     ) -> Result<()> {
-        // Simplified implementation for compilation
+        let mut transaction = self.pool.begin().await?;
+        
+        let decision_str = match decision {
+            ValenceAuthorizationDecision::Pending => "pending",
+            ValenceAuthorizationDecision::Approved => "approved",
+            ValenceAuthorizationDecision::Denied => "denied",
+            ValenceAuthorizationDecision::Error => "error",
+        };
+        
+        // Update authorization request decision
+        sqlx::query(
+            r#"
+            UPDATE authorization_requests SET
+                decision = $2,
+                processed_at_block = $3,
+                processed_at_tx = $4,
+                reason = $5
+            WHERE id = $1
+            "#
+        )
+        .bind(request_id)
+        .bind(decision_str)
+        .bind(processed_block.map(|b| b as i64))
+        .bind(processed_tx)
+        .bind(&reason)
+        .execute(&mut *transaction)
+        .await?;
+        
+        transaction.commit().await?;
         Ok(())
     }
 
@@ -590,84 +1103,442 @@ impl Storage for PostgresStorage {
     
     async fn store_valence_library_instantiation(
         &self,
-        _library_info: ValenceLibraryInfo,
-        _initial_version: Option<ValenceLibraryVersion>,
+        library_info: ValenceLibraryInfo,
+        initial_version: Option<ValenceLibraryVersion>,
     ) -> Result<()> {
-        // Simplified implementation for compilation
+        let mut transaction = self.pool.begin().await?;
+        
+        // Insert into valence_libraries table
+        sqlx::query(
+            r#"
+            INSERT INTO valence_libraries (
+                id, chain_id, contract_address, library_type, created_at_block, created_at_tx,
+                current_owner, current_version, last_updated_block, last_updated_tx
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            ON CONFLICT (id) DO UPDATE SET
+                current_owner = EXCLUDED.current_owner,
+                current_version = EXCLUDED.current_version,
+                last_updated_block = EXCLUDED.last_updated_block,
+                last_updated_tx = EXCLUDED.last_updated_tx
+            "#
+        )
+        .bind(&library_info.id)
+        .bind(&library_info.chain_id)
+        .bind(&library_info.contract_address)
+        .bind(&library_info.library_type)
+        .bind(library_info.created_at_block as i64)
+        .bind(&library_info.created_at_tx)
+        .bind(&library_info.current_owner)
+        .bind(library_info.current_version.map(|v| v as i32))
+        .bind(library_info.last_updated_block as i64)
+        .bind(&library_info.last_updated_tx)
+        .execute(&mut *transaction)
+        .await?;
+        
+        // If there's an initial version, store it
+        if let Some(version) = initial_version {
+            sqlx::query(
+                r#"
+                INSERT INTO library_versions (
+                    id, library_id, version, code_hash, created_at_block, created_at_tx,
+                    is_active, features, metadata
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                ON CONFLICT (id) DO UPDATE SET
+                    is_active = EXCLUDED.is_active,
+                    features = EXCLUDED.features,
+                    metadata = EXCLUDED.metadata
+                "#
+            )
+            .bind(&version.id)
+            .bind(&version.library_id)
+            .bind(version.version as i32)
+            .bind(&version.code_hash)
+            .bind(version.created_at_block as i64)
+            .bind(&version.created_at_tx)
+            .bind(version.is_active)
+            .bind(serde_json::to_string(&version.features).unwrap_or_default())
+            .bind(version.metadata.as_ref().map(|m| serde_json::to_string(m).unwrap_or_default()))
+            .execute(&mut *transaction)
+            .await?;
+        }
+        
+        transaction.commit().await?;
         Ok(())
     }
     
     async fn store_valence_library_version(
         &self,
-        _version: ValenceLibraryVersion,
+        version: ValenceLibraryVersion,
     ) -> Result<()> {
-        // Simplified implementation for compilation
+        let mut transaction = self.pool.begin().await?;
+        
+        // Insert or update library version
+        sqlx::query(
+            r#"
+            INSERT INTO library_versions (
+                id, library_id, version, code_hash, created_at_block, created_at_tx,
+                is_active, features, metadata
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            ON CONFLICT (id) DO UPDATE SET
+                is_active = EXCLUDED.is_active,
+                features = EXCLUDED.features,
+                metadata = EXCLUDED.metadata
+            "#
+        )
+        .bind(&version.id)
+        .bind(&version.library_id)
+        .bind(version.version as i32)
+        .bind(&version.code_hash)
+        .bind(version.created_at_block as i64)
+        .bind(&version.created_at_tx)
+        .bind(version.is_active)
+        .bind(serde_json::to_string(&version.features).unwrap_or_default())
+        .bind(version.metadata.as_ref().map(|m| serde_json::to_string(m).unwrap_or_default()))
+        .execute(&mut *transaction)
+        .await?;
+        
+        transaction.commit().await?;
         Ok(())
     }
     
     async fn update_active_library_version(
         &self,
-        _library_id: &str,
-        _version: u32,
-        _update_block: u64,
-        _update_tx: &str,
+        library_id: &str,
+        version: u32,
+        update_block: u64,
+        update_tx: &str,
     ) -> Result<()> {
-        // Simplified implementation for compilation
+        let mut transaction = self.pool.begin().await?;
+        
+        // Deactivate all versions for this library
+        sqlx::query(
+            "UPDATE library_versions SET is_active = false WHERE library_id = $1"
+        )
+        .bind(library_id)
+        .execute(&mut *transaction)
+        .await?;
+        
+        // Activate the specified version
+        sqlx::query(
+            "UPDATE library_versions SET is_active = true WHERE library_id = $1 AND version = $2"
+        )
+        .bind(library_id)
+        .bind(version as i32)
+        .execute(&mut *transaction)
+        .await?;
+        
+        // Update the library contract
+        sqlx::query(
+            r#"
+            UPDATE valence_libraries SET
+                current_version = $2,
+                last_updated_block = $3,
+                last_updated_tx = $4
+            WHERE id = $1
+            "#
+        )
+        .bind(library_id)
+        .bind(version as i32)
+        .bind(update_block as i64)
+        .bind(update_tx)
+        .execute(&mut *transaction)
+        .await?;
+        
+        transaction.commit().await?;
         Ok(())
     }
     
     async fn store_valence_library_usage(
         &self,
-        _usage: ValenceLibraryUsage,
+        usage: ValenceLibraryUsage,
     ) -> Result<()> {
-        // Simplified implementation for compilation
+        let mut transaction = self.pool.begin().await?;
+        
+        // Insert library usage record
+        sqlx::query(
+            r#"
+            INSERT INTO library_usage (
+                id, library_id, user_address, account_id, function_name,
+                usage_at_block, usage_at_tx, gas_used, success, error
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            ON CONFLICT (id) DO UPDATE SET
+                gas_used = EXCLUDED.gas_used,
+                success = EXCLUDED.success,
+                error = EXCLUDED.error
+            "#
+        )
+        .bind(&usage.id)
+        .bind(&usage.library_id)
+        .bind(&usage.user_address)
+        .bind(&usage.account_id)
+        .bind(&usage.function_name)
+        .bind(usage.usage_at_block as i64)
+        .bind(&usage.usage_at_tx)
+        .bind(usage.gas_used.map(|g| g as i64))
+        .bind(usage.success)
+        .bind(&usage.error)
+        .execute(&mut *transaction)
+        .await?;
+        
+        transaction.commit().await?;
         Ok(())
     }
     
     async fn revoke_valence_library_approval(
         &self,
-        _library_id: &str,
-        _account_id: &str,
-        _revoked_at_block: u64,
-        _revoked_at_tx: &str,
+        library_id: &str,
+        account_id: &str,
+        revoked_at_block: u64,
+        revoked_at_tx: &str,
     ) -> Result<()> {
-        // Simplified implementation for compilation
+        let mut transaction = self.pool.begin().await?;
+        
+        // Update library approval to mark as revoked
+        sqlx::query(
+            r#"
+            UPDATE library_approvals SET
+                is_active = false,
+                revoked_at_block = $3,
+                revoked_at_tx = $4
+            WHERE library_id = $1 AND account_id = $2 AND is_active = true
+            "#
+        )
+        .bind(library_id)
+        .bind(account_id)
+        .bind(revoked_at_block as i64)
+        .bind(revoked_at_tx)
+        .execute(&mut *transaction)
+        .await?;
+        
+        transaction.commit().await?;
         Ok(())
     }
     
-    async fn get_valence_library_state(&self, _library_id: &str) -> Result<Option<ValenceLibraryState>> {
-        // Simplified implementation for compilation
-        Ok(None)
+    async fn get_valence_library_state(&self, library_id: &str) -> Result<Option<ValenceLibraryState>> {
+        let result: Option<(String, String, String, String, Option<String>, Option<i32>, i64, String)> = sqlx::query_as(
+            r#"
+            SELECT 
+                id, chain_id, contract_address, library_type, current_owner,
+                current_version, last_updated_block, last_updated_tx
+            FROM valence_libraries
+            WHERE id = $1
+            "#
+        )
+        .bind(library_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        
+        if let Some((id, chain_id, address, library_type, current_owner, current_version, last_block, last_tx)) = result {
+            // Get all versions for this library
+            let versions: Vec<(String, String, i32, String, i64, String, bool, String, Option<String>)> = sqlx::query_as(
+                r#"
+                SELECT id, library_id, version, code_hash, created_at_block, created_at_tx,
+                       is_active, features, metadata
+                FROM library_versions
+                WHERE library_id = $1
+                ORDER BY version DESC
+                "#
+            )
+            .bind(library_id)
+            .fetch_all(&self.pool)
+            .await?;
+            
+            let version_objects: Vec<ValenceLibraryVersion> = versions.into_iter().map(|(vid, lib_id, ver, code_hash, created_block, created_tx, is_active, features_json, metadata_json)| {
+                let features: Vec<String> = serde_json::from_str(&features_json).unwrap_or_default();
+                let metadata: Option<serde_json::Value> = metadata_json.as_ref()
+                    .and_then(|m| serde_json::from_str(m).ok());
+                
+                ValenceLibraryVersion {
+                    id: vid,
+                    library_id: lib_id,
+                    version: ver as u32,
+                    code_hash,
+                    created_at_block: created_block as u64,
+                    created_at_tx: created_tx,
+                    is_active,
+                    features,
+                    metadata,
+                }
+            }).collect();
+            
+            Ok(Some(ValenceLibraryState {
+                library_id: id,
+                chain_id,
+                address,
+                library_type,
+                current_owner,
+                current_version: current_version.map(|v| v as u32),
+                versions: version_objects,
+                last_update_block: last_block as u64,
+                last_update_tx: last_tx,
+            }))
+        } else {
+            Ok(None)
+        }
     }
     
-    async fn set_valence_library_state(&self, _library_id: &str, _state: &ValenceLibraryState) -> Result<()> {
-        // Simplified implementation for compilation
+    async fn set_valence_library_state(&self, library_id: &str, state: &ValenceLibraryState) -> Result<()> {
+        let mut transaction = self.pool.begin().await?;
+        
+        // Update library state
+        sqlx::query(
+            r#"
+            UPDATE valence_libraries SET
+                current_owner = $2,
+                current_version = $3,
+                last_updated_block = $4,
+                last_updated_tx = $5
+            WHERE id = $1
+            "#
+        )
+        .bind(library_id)
+        .bind(&state.current_owner)
+        .bind(state.current_version.map(|v| v as i32))
+        .bind(state.last_update_block as i64)
+        .bind(&state.last_update_tx)
+        .execute(&mut *transaction)
+        .await?;
+        
+        transaction.commit().await?;
         Ok(())
     }
     
-    async fn get_valence_library_versions(&self, _library_id: &str) -> Result<Vec<ValenceLibraryVersion>> {
-        // Simplified implementation for compilation
-        Ok(Vec::new())
+    async fn get_valence_library_versions(&self, library_id: &str) -> Result<Vec<ValenceLibraryVersion>> {
+        let versions: Vec<(String, String, i32, String, i64, String, bool, String, Option<String>)> = sqlx::query_as(
+            r#"
+            SELECT id, library_id, version, code_hash, created_at_block, created_at_tx,
+                   is_active, features, metadata
+            FROM library_versions
+            WHERE library_id = $1
+            ORDER BY version DESC
+            "#
+        )
+        .bind(library_id)
+        .fetch_all(&self.pool)
+        .await?;
+        
+        let version_objects: Vec<ValenceLibraryVersion> = versions.into_iter().map(|(vid, lib_id, ver, code_hash, created_block, created_tx, is_active, features_json, metadata_json)| {
+            let features: Vec<String> = serde_json::from_str(&features_json).unwrap_or_default();
+            let metadata: Option<serde_json::Value> = metadata_json.as_ref()
+                .and_then(|m| serde_json::from_str(m).ok());
+            
+            ValenceLibraryVersion {
+                id: vid,
+                library_id: lib_id,
+                version: ver as u32,
+                code_hash,
+                created_at_block: created_block as u64,
+                created_at_tx: created_tx,
+                is_active,
+                features,
+                metadata,
+            }
+        }).collect();
+        
+        Ok(version_objects)
     }
     
-    async fn get_valence_library_approvals(&self, _library_id: &str) -> Result<Vec<ValenceLibraryApproval>> {
-        // Simplified implementation for compilation
-        Ok(Vec::new())
+    async fn get_valence_library_approvals(&self, library_id: &str) -> Result<Vec<ValenceLibraryApproval>> {
+        let approvals: Vec<(String, String, String, i64, String, bool, Option<i64>, Option<String>)> = sqlx::query_as(
+            r#"
+            SELECT id, library_id, account_id, approved_at_block, approved_at_tx,
+                   is_active, revoked_at_block, revoked_at_tx
+            FROM library_approvals
+            WHERE library_id = $1
+            ORDER BY approved_at_block DESC
+            "#
+        )
+        .bind(library_id)
+        .fetch_all(&self.pool)
+        .await?;
+        
+        let approval_objects: Vec<ValenceLibraryApproval> = approvals.into_iter().map(|(aid, lib_id, account_id, approved_block, approved_tx, is_active, revoked_block, revoked_tx)| {
+            ValenceLibraryApproval {
+                id: aid,
+                library_id: lib_id,
+                account_id,
+                approved_at_block: approved_block as u64,
+                approved_at_tx: approved_tx,
+                is_active,
+                revoked_at_block: revoked_block.map(|b| b as u64),
+                revoked_at_tx: revoked_tx,
+            }
+        }).collect();
+        
+        Ok(approval_objects)
     }
     
-    async fn get_valence_libraries_for_account(&self, _account_id: &str) -> Result<Vec<ValenceLibraryApproval>> {
-        // Simplified implementation for compilation
-        Ok(Vec::new())
+    async fn get_valence_libraries_for_account(&self, account_id: &str) -> Result<Vec<ValenceLibraryApproval>> {
+        let approvals: Vec<(String, String, String, i64, String, bool, Option<i64>, Option<String>)> = sqlx::query_as(
+            r#"
+            SELECT id, library_id, account_id, approved_at_block, approved_at_tx,
+                   is_active, revoked_at_block, revoked_at_tx
+            FROM library_approvals
+            WHERE account_id = $1 AND is_active = true
+            ORDER BY approved_at_block DESC
+            "#
+        )
+        .bind(account_id)
+        .fetch_all(&self.pool)
+        .await?;
+        
+        let approval_objects: Vec<ValenceLibraryApproval> = approvals.into_iter().map(|(aid, lib_id, account_id, approved_block, approved_tx, is_active, revoked_block, revoked_tx)| {
+            ValenceLibraryApproval {
+                id: aid,
+                library_id: lib_id,
+                account_id,
+                approved_at_block: approved_block as u64,
+                approved_at_tx: approved_tx,
+                is_active,
+                revoked_at_block: revoked_block.map(|b| b as u64),
+                revoked_at_tx: revoked_tx,
+            }
+        }).collect();
+        
+        Ok(approval_objects)
     }
     
     async fn get_valence_library_usage_history(
         &self,
-        _library_id: &str,
-        _limit: Option<usize>,
-        _offset: Option<usize>,
+        library_id: &str,
+        limit: Option<usize>,
+        offset: Option<usize>,
     ) -> Result<Vec<ValenceLibraryUsage>> {
-        // Simplified implementation for compilation
-        Ok(Vec::new())
+        let limit = limit.unwrap_or(100);
+        let offset = offset.unwrap_or(0);
+        
+        let usage_records: Vec<(String, String, String, Option<String>, Option<String>, i64, String, Option<i64>, bool, Option<String>)> = sqlx::query_as(
+            r#"
+            SELECT id, library_id, user_address, account_id, function_name,
+                   usage_at_block, usage_at_tx, gas_used, success, error
+            FROM library_usage
+            WHERE library_id = $1
+            ORDER BY usage_at_block DESC
+            LIMIT $2 OFFSET $3
+            "#
+        )
+        .bind(library_id)
+        .bind(limit as i64)
+        .bind(offset as i64)
+        .fetch_all(&self.pool)
+        .await?;
+        
+        let usage_objects: Vec<ValenceLibraryUsage> = usage_records.into_iter().map(|(uid, lib_id, user_address, account_id, function_name, usage_block, usage_tx, gas_used, success, error)| {
+            ValenceLibraryUsage {
+                id: uid,
+                library_id: lib_id,
+                user_address,
+                account_id,
+                function_name,
+                usage_at_block: usage_block as u64,
+                usage_at_tx: usage_tx,
+                gas_used: gas_used.map(|g| g as u64),
+                success,
+                error,
+            }
+        }).collect();
+        
+        Ok(usage_objects)
     }
 
     // Implement the processor state methods

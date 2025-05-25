@@ -612,7 +612,7 @@ impl ChainValidator for DefaultChainValidator {
     ) -> Result<ValidationResult> {
         let mut validator = self.clone();
         let mut errors = Vec::new();
-        let mut warnings = Vec::new();
+        let warnings = Vec::new();
         let mut metadata = HashMap::new();
         
         // Validate basic event properties
@@ -768,7 +768,7 @@ impl ChainValidator for DefaultChainValidator {
         config: &ChainValidationConfig,
     ) -> Result<ValidationResult> {
         let mut errors = Vec::new();
-        let mut warnings = Vec::new();
+        let warnings = Vec::new();
         let mut metadata = HashMap::new();
         
         // Validate chain-specific data structure

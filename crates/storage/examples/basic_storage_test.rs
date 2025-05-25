@@ -2,7 +2,7 @@
 
 use indexer_storage::postgres::{PostgresConfig, PostgresStorage};
 use indexer_storage::Storage;
-use indexer_pipeline::{BlockStatus, Result};
+use indexer_core::{BlockStatus, Result};
 use indexer_core::event::Event;
 use std::any::Any;
 use std::sync::Arc;

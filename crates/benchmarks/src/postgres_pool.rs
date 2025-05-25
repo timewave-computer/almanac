@@ -5,10 +5,8 @@
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use futures::{stream, StreamExt};
 use tokio::sync::Semaphore;
 use indexer_core::Error;
-use sqlx::{Executor, PgPool, Pool, Postgres};
 use super::{Measurement, BenchmarkReport};
 use super::postgres_opt::ConnectionPoolConfig;
 
@@ -95,6 +93,10 @@ pub async fn benchmark_connection_pool(
     // Create client tasks
     let mut tasks = Vec::new();
     
+    // Clone values needed in the async tasks
+    let test_duration = config.test_duration;
+    
+    // Create concurrent tasks
     for i in 0..config.concurrent_clients {
         let pool = pool.clone();
         let semaphore = semaphore.clone();
@@ -122,7 +124,7 @@ pub async fn benchmark_connection_pool(
                 // Execute query with or without transaction
                 if use_transactions {
                     let mut conn = pool.acquire().await.map_err(|e| {
-                        Error::Other(format!("Failed to acquire connection: {}", e))
+                        Error::generic(format!("Failed to acquire connection: {}", e))
                     })?;
                     
                     let isolation = match isolation_level.as_deref() {
@@ -134,24 +136,28 @@ pub async fn benchmark_connection_pool(
                     };
                     
                     // Start transaction with specified isolation level
-                    conn.execute(&format!("BEGIN ISOLATION LEVEL {}", isolation))
+                    sqlx::query(&format!("BEGIN ISOLATION LEVEL {}", isolation))
+                        .execute(&mut *conn)
                         .await
-                        .map_err(|e| Error::Other(format!("Failed to begin transaction: {}", e)))?;
+                        .map_err(|e| Error::generic(format!("Failed to begin transaction: {}", e)))?;
                     
                     // Execute query
-                    conn.execute(&query)
+                    sqlx::query(&query)
+                        .execute(&mut *conn)
                         .await
-                        .map_err(|e| Error::Other(format!("Failed to execute query: {}", e)))?;
+                        .map_err(|e| Error::generic(format!("Failed to execute query: {}", e)))?;
                     
                     // Commit transaction
-                    conn.execute("COMMIT")
+                    sqlx::query("COMMIT")
+                        .execute(&mut *conn)
                         .await
-                        .map_err(|e| Error::Other(format!("Failed to commit transaction: {}", e)))?;
+                        .map_err(|e| Error::generic(format!("Failed to commit transaction: {}", e)))?;
                 } else {
                     // Simple query execution
-                    pool.execute(&query)
+                    sqlx::query(&query)
+                        .execute(&pool)
                         .await
-                        .map_err(|e| Error::Other(format!("Failed to execute query: {}", e)))?;
+                        .map_err(|e| Error::generic(format!("Failed to execute query: {}", e)))?;
                 }
                 
                 // Record connection acquisition time
@@ -162,7 +168,7 @@ pub async fn benchmark_connection_pool(
                 operations_counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 
                 // Check if the test duration has elapsed
-                if start_time.elapsed() > config.test_duration {
+                if start_time.elapsed() > test_duration {
                     break;
                 }
             }
@@ -174,7 +180,7 @@ pub async fn benchmark_connection_pool(
     }
     
     // Wait for the test duration
-    tokio::time::sleep(config.test_duration).await;
+    tokio::time::sleep(test_duration).await;
     
     // Wait for all tasks to complete or timeout after additional 5 seconds
     let _ = tokio::time::timeout(
@@ -204,13 +210,13 @@ pub async fn benchmark_connection_pool(
     // Get pool statistics (this is a best effort as sqlx doesn't expose all pool stats)
     // We'd normally use pool.status() but it's not accessible, so we estimate
     let idle_connections = config.pool_config.min_connections;
-    let active_connections = (config.concurrent_clients as u32).min(config.pool_config.max_connections);
+    let max_connections = config.concurrent_clients.min(config.pool_config.max_connections);
     let pending_requests = config.concurrent_clients.saturating_sub(config.pool_config.max_connections);
     
     let pool_stats = PoolStats {
         connections: config.pool_config.max_connections,
         idle_connections,
-        active_connections,
+        active_connections: max_connections,
         pending_requests,
         max_wait_ms,
         avg_wait_ms,
@@ -264,7 +270,7 @@ pub async fn find_optimal_pool_size(
         };
         
         let test_config = PoolTestConfig {
-            pool_config,
+            pool_config: pool_config.clone(),
             concurrent_clients: max_concurrency,
             test_duration: Duration::from_secs(10), // Shorter test for optimization
             test_query: test_query.to_string(),
@@ -417,7 +423,6 @@ pub async fn create_pool_configuration_plan(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     
     #[tokio::test]
     #[ignore] // This test requires a real database

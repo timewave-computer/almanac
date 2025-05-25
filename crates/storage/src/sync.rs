@@ -9,7 +9,7 @@ use tokio::time;
 use futures::future::join_all;
 use tracing::{debug, info, error, warn};
 
-use indexer_pipeline::{BlockStatus, Result};
+use indexer_core::{BlockStatus, Result};
 use indexer_core::event::Event;
 use indexer_core::types::ChainId;
 

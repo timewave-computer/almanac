@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::collections::HashMap;
 
-use indexer_core::{Error, Result, BlockStatus};
+use indexer_core::{Error, Result};
 use indexer_core::service::BoxedEventService;
 use indexer_core::types::ApiConfig;
 use tracing::{info, error};

@@ -5,7 +5,6 @@
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use futures::stream::{self, StreamExt};
 use tokio::sync::{mpsc, Semaphore};
 use tokio::task::JoinSet;
 use super::{Measurement, BenchmarkReport};
@@ -74,6 +73,12 @@ pub struct ResourceUsage {
     
     /// Time of measurement
     pub timestamp: chrono::DateTime<chrono::Utc>,
+}
+
+impl Default for ResourceUsage {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ResourceUsage {
@@ -374,32 +379,25 @@ where
         let (work_tx, work_rx) = mpsc::channel(self.config.queue_size);
         let (result_tx, mut result_rx) = mpsc::channel(self.config.queue_size);
         
-        // Create workers
+        // Create workers (simplified to one worker since Receiver can't be cloned)
         let mut worker_tasks = JoinSet::new();
         
-        for id in 0..self.config.worker_count {
-            let worker = Worker::new(
-                id,
-                work_rx.clone(),
-                result_tx.clone(),
-                self.processor.clone(),
-                self.continue_on_error,
-                self.resource_monitor.clone(),
-            );
-            
-            worker_tasks.spawn(worker.run());
-            
-            // Only the first worker gets the receiver
-            if id == 0 {
-                drop(work_rx);
-            }
-        }
+        let worker = Worker::new(
+            0,
+            work_rx,
+            result_tx.clone(),
+            self.processor.clone(),
+            self.continue_on_error,
+            self.resource_monitor.clone(),
+        );
+        
+        worker_tasks.spawn(worker.run());
         
         // Drop original sender to avoid deadlock
         drop(result_tx);
         
         // Distribute work
-        let start_time = Instant::now();
+        let _start_time = Instant::now();
         
         // Split items into batches
         let mut batches = Vec::new();
@@ -545,7 +543,7 @@ where
     let best_config = report.measurements.iter()
         .max_by(|a, b| a.ops_per_second().partial_cmp(&b.ops_per_second()).unwrap())
         .map(|m| {
-            let worker_count = m.metrics.get("worker_count").unwrap_or(&1.0) as usize;
+            let worker_count = *m.metrics.get("worker_count").unwrap_or(&1.0) as usize;
             
             ParallelConfig {
                 worker_count,
@@ -581,36 +579,31 @@ pub fn create_concurrency_tuning_plan(
 ) -> ParallelConfig {
     let cpu_count = num_cpus::get();
     
-    // Determine batch size based on data size
-    let batch_size = if data_size_mb > 1000 {
-        // Large data, use larger batches
-        1000
-    } else if data_size_mb > 100 {
-        // Medium data
-        100
+    // Calculate optimal worker count based on workload and CPU count
+    let worker_count = if expected_workload < 100 {
+        1
+    } else if expected_workload < 1000 {
+        (cpu_count / 2).max(1)
     } else {
-        // Small data
-        10
-    };
-    
-    // Determine worker count based on CPU count and memory constraints
-    let worker_count = if memory_constraint_mb > 0 {
-        // If memory is constrained, limit workers
-        let mem_based_workers = memory_constraint_mb / (data_size_mb / 10).max(1);
-        mem_based_workers.min(cpu_count * 2).max(1)
-    } else {
-        // No memory constraint, scale with CPU
         cpu_count
     };
     
-    // Determine queue size based on expected workload
-    let queue_size = (expected_workload / 10).min(10000).max(100);
+    // Calculate queue size based on expected workload
+    let queue_size = (expected_workload / 10).clamp(100, 10000);
+    
+    // Calculate batch size based on data size and memory constraints
+    let batch_size = if data_size_mb > 0 && memory_constraint_mb > 0 {
+        let max_batches = memory_constraint_mb / data_size_mb.max(1);
+        (expected_workload / worker_count / max_batches.max(1)).max(1).min(1000)
+    } else {
+        100
+    };
     
     ParallelConfig {
         worker_count,
         queue_size,
         batch_size,
-        work_stealing: true,
+        work_stealing: expected_workload > 1000,
         memory_limit_mb: memory_constraint_mb,
         cpu_affinity: None,
     }

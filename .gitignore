@@ -34,7 +34,6 @@ typechain-types/
 
 # Rust build artifacts
 target/
-# Cargo.lock # Uncomment to ignore Cargo.lock (only for libraries, not applications)
 
 # Runtime data
 data/

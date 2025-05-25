@@ -7,9 +7,14 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, Semaphore};
 use tokio::task::JoinSet;
+use governor;
+use indexer_storage::{
+    postgres::PostgresStorage,
+    rocks::RocksStorage,
+};
 use indexer_core::Error;
-use indexer_storage::{PostgresRepository, RocksDBStore};
-use super::{Measurement, Benchmark, BenchmarkReport};
+use super::{Measurement};
+use rand::{Rng, distributions::Alphanumeric};
 
 /// Load test configuration
 #[derive(Debug, Clone)]
@@ -82,8 +87,14 @@ pub struct LoadTestStats {
     pub error_rate: f64,
 }
 
+impl Default for LoadTestStats {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LoadTestStats {
-    /// Create a new empty stats object
+    /// Create a new load test stats instance
     pub fn new() -> Self {
         Self {
             total_requests: 0,
@@ -224,7 +235,7 @@ impl From<LoadTestStats> for Measurement {
 /// A trait for operations that can be load tested
 pub trait LoadTestable {
     /// Execute a single operation and return success/failure and bytes processed
-    async fn execute(&self) -> Result<u64, Error>;
+    fn execute(&self) -> impl std::future::Future<Output = Result<u64, Error>> + Send;
 }
 
 /// Load test a function with the given configuration
@@ -279,6 +290,8 @@ where
             Duration::from_millis(0)
         };
         
+        let wait_time_clone = config.wait_time;
+        
         tasks.spawn(async move {
             // Wait for ramp-up delay
             if ramp_up_delay.as_millis() > 0 {
@@ -296,7 +309,7 @@ where
                 
                 // Wait for rate limit if needed
                 if let Some(limiter) = &rate_limiter {
-                    let mut limiter = limiter.lock().await;
+                    let limiter = limiter.lock().await;
                     limiter.until_ready().await;
                 }
                 
@@ -314,7 +327,7 @@ where
                 });
                 
                 // Wait between requests if configured
-                if let Some(wait_time) = config.wait_time {
+                if let Some(wait_time) = wait_time_clone {
                     tokio::time::sleep(wait_time).await;
                 }
             }
@@ -341,29 +354,31 @@ where
     Ok(stats)
 }
 
-/// Run a load test on a RocksDB operation
+/// Run a RocksDB load test
 pub async fn run_rocksdb_load_test(
-    rocks_db: Arc<RocksDBStore>,
+    rocks_db: Arc<RocksStorage>,
     config: &LoadTestConfig,
-    operation: impl Fn(Arc<RocksDBStore>) -> Result<u64, Error> + Clone + Send + Sync + 'static,
+    operation: impl Fn(Arc<RocksStorage>) -> Result<u64, Error> + Clone + Send + Sync + 'static,
 ) -> Result<LoadTestStats, Error> {
+    let rocks_db = rocks_db.clone();
     run_load_test(config, move || {
-        let rocks_db = rocks_db.clone();
-        let operation = operation.clone();
-        async move { operation(rocks_db) }
+        let op = operation.clone();
+        let db = rocks_db.clone();
+        async move { op(db) }
     }).await
 }
 
-/// Run a load test on a PostgreSQL operation
+/// Run a PostgreSQL load test
 pub async fn run_postgres_load_test(
-    postgres: Arc<PostgresRepository>,
+    postgres: Arc<PostgresStorage>,
     config: &LoadTestConfig,
-    operation: impl Fn(Arc<PostgresRepository>) -> Result<u64, Error> + Clone + Send + Sync + 'static,
+    operation: impl Fn(Arc<PostgresStorage>) -> Result<u64, Error> + Clone + Send + Sync + 'static,
 ) -> Result<LoadTestStats, Error> {
+    let postgres = postgres.clone();
     run_load_test(config, move || {
-        let postgres = postgres.clone();
-        let operation = operation.clone();
-        async move { operation(postgres) }
+        let op = operation.clone();
+        let db = postgres.clone();
+        async move { op(db) }
     }).await
 }
 
@@ -395,16 +410,17 @@ pub mod rocksdb_benchmarks {
     
     /// Benchmark RocksDB writes
     pub fn write_benchmark(
-        rocks_db: Arc<RocksDBStore>,
+        _rocks_db: Arc<RocksStorage>,
         key_prefix: &'static str,
         key_len: usize,
         value_size: usize,
-    ) -> impl Fn(Arc<RocksDBStore>) -> Result<u64, Error> + Clone {
-        move |db: Arc<RocksDBStore>| {
+    ) -> impl Fn(Arc<RocksStorage>) -> Result<u64, Error> + Clone {
+        move |db: Arc<RocksStorage>| {
             let key = random_key(key_prefix, key_len);
             let value = random_data(value_size);
             
-            db.put(&key, &value)?;
+            let key_obj = indexer_storage::rocks::Key::new("benchmark", &key);
+            db.put(&key_obj, &value)?;
             
             Ok(key.len() as u64 + value.len() as u64)
         }
@@ -412,17 +428,18 @@ pub mod rocksdb_benchmarks {
     
     /// Benchmark RocksDB reads
     pub fn read_benchmark(
-        rocks_db: Arc<RocksDBStore>,
+        _rocks_db: Arc<RocksStorage>,
         keys: Arc<Vec<String>>,
-    ) -> impl Fn(Arc<RocksDBStore>) -> Result<u64, Error> + Clone {
-        move |db: Arc<RocksDBStore>| {
+    ) -> impl Fn(Arc<RocksStorage>) -> Result<u64, Error> + Clone {
+        move |db: Arc<RocksStorage>| {
             // Select a random key
             let mut rng = rand::thread_rng();
             let key_index = rng.gen_range(0..keys.len());
             let key = &keys[key_index];
             
             // Read the value
-            let result = db.get_bytes(key)?;
+            let key_obj = indexer_storage::rocks::Key::new("benchmark", key);
+            let result = db.get(&key_obj)?;
             let bytes = match &result {
                 Some(value) => key.len() as u64 + value.len() as u64,
                 None => key.len() as u64,
@@ -434,20 +451,21 @@ pub mod rocksdb_benchmarks {
     
     /// Benchmark RocksDB scans
     pub fn scan_benchmark(
-        rocks_db: Arc<RocksDBStore>,
+        _rocks_db: Arc<RocksStorage>,
         prefix: &'static str,
         limit: usize,
-    ) -> impl Fn(Arc<RocksDBStore>) -> Result<u64, Error> + Clone {
-        move |db: Arc<RocksDBStore>| {
+    ) -> impl Fn(Arc<RocksStorage>) -> Result<u64, Error> + Clone {
+        move |db: Arc<RocksStorage>| {
             let mut total_bytes = 0u64;
             
-            let iter = db.prefix_iterator(prefix)?;
-            for (i, pair) in iter.enumerate() {
+            let prefix_bytes = indexer_storage::rocks::Key::prefix(prefix);
+            let results = db.scan_prefix(&prefix_bytes)?;
+            
+            for (i, (key, value)) in results.iter().enumerate() {
                 if i >= limit {
                     break;
                 }
                 
-                let (key, value) = pair?;
                 total_bytes += key.len() as u64 + value.len() as u64;
             }
             
@@ -459,14 +477,12 @@ pub mod rocksdb_benchmarks {
 /// Standard PostgreSQL benchmark operations
 pub mod postgres_benchmarks {
     use super::*;
-    use indexer_core::ChainId;
-    use serde::{Serialize, Deserialize};
     
-    /// Sample entity for benchmarking
-    #[derive(Debug, Clone, Serialize, Deserialize)]
+    /// Benchmark entity for testing
+    #[derive(Debug, Clone)]
     pub struct BenchmarkEntity {
         pub id: String,
-        pub chain_id: ChainId,
+        pub chain_id: String,
         pub block_height: u64,
         pub timestamp: chrono::DateTime<chrono::Utc>,
         pub data: String,
@@ -482,7 +498,7 @@ pub mod postgres_benchmarks {
         
         BenchmarkEntity {
             id: random_id,
-            chain_id: ChainId::from("ethereum"),
+            chain_id: "ethereum".to_string(),
             block_height: rand::thread_rng().gen_range(1..10_000_000),
             timestamp: chrono::Utc::now(),
             data: rand::thread_rng()
@@ -495,13 +511,13 @@ pub mod postgres_benchmarks {
     
     /// Simulate a PostgreSQL insert operation
     pub fn insert_benchmark(
-        postgres: Arc<PostgresRepository>,
-    ) -> impl Fn(Arc<PostgresRepository>) -> Result<u64, Error> + Clone {
-        move |db: Arc<PostgresRepository>| {
+        _postgres: Arc<PostgresStorage>,
+    ) -> impl Fn(Arc<PostgresStorage>) -> Result<u64, Error> + Clone {
+        move |_db: Arc<PostgresStorage>| {
             // For now, this is a placeholder. In the actual implementation,
             // we would use PostgresRepository::insert_entity or similar
             let entity = random_entity();
-            let entity_size = entity.id.len() + entity.chain_id.to_string().len() + 8 + 8 + entity.data.len();
+            let entity_size = entity.id.len() + entity.chain_id.len() + 8 + 8 + entity.data.len();
             
             // Simulate insert
             Ok(entity_size as u64)
@@ -510,9 +526,9 @@ pub mod postgres_benchmarks {
     
     /// Simulate a PostgreSQL query operation
     pub fn query_benchmark(
-        postgres: Arc<PostgresRepository>,
-    ) -> impl Fn(Arc<PostgresRepository>) -> Result<u64, Error> + Clone {
-        move |db: Arc<PostgresRepository>| {
+        _postgres: Arc<PostgresStorage>,
+    ) -> impl Fn(Arc<PostgresStorage>) -> Result<u64, Error> + Clone {
+        move |_db: Arc<PostgresStorage>| {
             // For now, this is a placeholder. In the actual implementation,
             // we would use PostgresRepository::query_entities or similar
             

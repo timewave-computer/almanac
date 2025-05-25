@@ -6,7 +6,7 @@ use std::any::Any;
 use indexer_core::event::Event;
 use async_trait::async_trait;
 use rand::{thread_rng, Rng};
-use indexer_pipeline::BlockStatus;
+use indexer_core::BlockStatus;
 
 /// Assert that a duration is less than an expected maximum
 pub fn assert_duration_less_than(actual: Duration, expected_max: Duration, message: &str) {

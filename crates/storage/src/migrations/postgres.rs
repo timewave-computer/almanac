@@ -4,7 +4,7 @@ use sqlx::{Pool, Postgres, Transaction};
 use tracing::{debug, info, error};
 
 use indexer_core::Result;
-use indexer_pipeline::Error;
+use indexer_core::Error;
 
 
 /// PostgreSQL migration executor

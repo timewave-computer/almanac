@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Postgres};
 use tracing::info;
 
-use indexer_pipeline::Result;
+use indexer_core::Result;
 
 /// Contract schema version
 #[derive(Debug, Clone, Serialize, Deserialize)]

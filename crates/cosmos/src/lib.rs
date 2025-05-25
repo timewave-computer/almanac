@@ -6,6 +6,9 @@
 use std::sync::Arc;
 use anyhow::Result;
 use async_trait::async_trait;
+use indexer_core::{Error, Result};
+use indexer_core::event::Event;
+use indexer_core::types::{EventFilter, ChainClient};
 
 // Re-export core types that may be used by other parts of the system
 pub use indexer_core::{
@@ -179,7 +182,7 @@ impl EventService for CosmosClientWrapper {
         &self.chain_id
     }
     
-    async fn get_events(&self, _filters: Vec<EventFilter>) -> indexer_pipeline::Result<Vec<Box<dyn Event>>> {
+    async fn get_events(&self, _filters: Vec<EventFilter>) -> indexer_core::Result<Vec<Box<dyn Event>>> {
         // TODO: Convert EventFilter to valence domain client filters
         // TODO: Use valence_client to fetch events
         // TODO: Convert valence events to almanac Event trait objects
@@ -189,7 +192,7 @@ impl EventService for CosmosClientWrapper {
         Ok(Vec::new())
     }
     
-    async fn get_latest_block(&self) -> indexer_pipeline::Result<u64> {
+    async fn get_latest_block(&self) -> indexer_core::Result<u64> {
         // Use the valence client to get the latest block header
         let header = self.valence_client.latest_block_header().await
             .map_err(|e| indexer_core::Error::generic(format!("Failed to get latest block: {}", e)))?;
@@ -197,13 +200,13 @@ impl EventService for CosmosClientWrapper {
         Ok(header.height as u64)
     }
     
-    async fn get_latest_block_with_status(&self, _chain: &str, _status: indexer_pipeline::BlockStatus) -> indexer_pipeline::Result<u64> {
+    async fn get_latest_block_with_status(&self, _chain: &str, _status: indexer_core::BlockStatus) -> indexer_core::Result<u64> {
         // For Cosmos chains, we'll just return the latest block for now
         // More sophisticated block status handling can be added later
         self.get_latest_block().await
     }
     
-    async fn subscribe(&self) -> indexer_pipeline::Result<Box<dyn EventSubscription>> {
+    async fn subscribe(&self) -> indexer_core::Result<Box<dyn EventSubscription>> {
         // TODO: Implement event subscription using valence domain client
         // This will be implemented in Phase 2.4 - Implement Cosmos event parsing and subscription
         
@@ -221,7 +224,7 @@ impl EventSubscription for DummySubscription {
         None
     }
     
-    async fn close(&mut self) -> indexer_pipeline::Result<()> {
+    async fn close(&mut self) -> indexer_core::Result<()> {
         Ok(())
     }
 }

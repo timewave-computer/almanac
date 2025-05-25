@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use sqlx::{Pool, Postgres};
 use tracing::{instrument, debug};
 
-use indexer_pipeline::Result;
+use indexer_core::Result;
 
 /// Repository for managing contract schemas
 #[async_trait]

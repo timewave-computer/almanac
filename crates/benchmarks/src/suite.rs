@@ -5,14 +5,13 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
+use std::path::Path;
 use tokio::sync::Mutex;
 use serde::{Serialize, Deserialize};
 use indexer_core::Error;
-use super::{Benchmark, Measurement, BenchmarkReport};
+use super::{Measurement, BenchmarkReport};
 
 /// A benchmark test case
-#[derive(Debug)]
 pub struct BenchmarkTestCase<T, R> {
     /// Name of the test case
     name: String,
@@ -76,6 +75,7 @@ pub struct BenchmarkSuite {
     name: String,
     
     /// Description of what the suite measures
+    #[allow(dead_code)]
     description: String,
     
     /// Test cases in the suite
@@ -226,8 +226,14 @@ pub struct BenchmarkRunner {
     suites: Vec<Arc<BenchmarkSuite>>,
 }
 
+impl Default for BenchmarkRunner {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BenchmarkRunner {
-    /// Create a new benchmark runner with default configuration
+    /// Create a new benchmark runner
     pub fn new() -> Self {
         Self {
             config: BenchmarkConfig::default(),
@@ -268,7 +274,7 @@ impl BenchmarkRunner {
                 if let Some(path) = &self.config.report_path {
                     let iteration_path = format!("{}/{}_{}.json", path, suite.name, i);
                     let iteration_report = BenchmarkReport::new(&format!("{}_{}", suite.name, i), report.measurements);
-                    iteration_report.save_to_file(&iteration_path)?;
+                    iteration_report.save(Path::new(&iteration_path))?;
                 }
             }
             
@@ -277,9 +283,9 @@ impl BenchmarkRunner {
             
             // Save report if configured
             if let Some(path) = &self.config.report_path {
-                std::fs::create_dir_all(path).map_err(|e| Error::Io(e))?;
+                std::fs::create_dir_all(path)?;
                 let report_path = format!("{}/{}.json", path, suite.name);
-                report.save_to_file(&report_path)?;
+                report.save(Path::new(&report_path))?;
             }
             
             reports.push(report);
@@ -292,6 +298,7 @@ impl BenchmarkRunner {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
     
     #[tokio::test]
     async fn test_benchmark_suite() -> Result<(), Error> {

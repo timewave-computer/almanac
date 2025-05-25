@@ -1,6 +1,6 @@
 use std::time::Duration;
 use tokio::time::sleep;
-use indexer_common::Result;
+use indexer_core::Result;
 
 // Import the Ethereum adapter when it's available
 // use indexer_adapters::ethereum::EthereumAdapter;

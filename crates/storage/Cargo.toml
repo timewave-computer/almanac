@@ -48,12 +48,12 @@ base64.workspace = true
 
 # Internal crates
 indexer-core = { path = "../core" }
-indexer-pipeline = { path = "../pipeline" }
-indexer-common = { path = "../common" }
 
 # Explicit versioned dependencies (Only those NOT in workspace)
 rand = "0.8.5"
 tempfile = "3.9.0"
+redis = { version = "0.24", features = ["tokio-comp"] }
+valence-domain-clients = { git = "https://github.com/timewave-computer/valence-domain-clients", rev = "766a1b593bcea9ed67b45c8c1ea9c548d0692a71" }
 
 [dev-dependencies]
 # Keep these explicit as they are dev-only
@@ -66,6 +66,6 @@ dockertest = "0.5.0"
 
 [features]
 default = ["postgres", "rocks"]
-rocks = ["indexer-common/rocks", "rocksdb"]
-postgres = ["indexer-common/postgres", "sqlx"]
-offline = [] # Feature for enabling SQLx offline mode
+rocks = ["indexer-core/rocks", "rocksdb"]
+postgres = ["indexer-core/postgres", "sqlx"]
+offline = [] # Feature for enabling SQLx offline mode 

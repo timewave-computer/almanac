@@ -297,10 +297,8 @@ impl<T: DatabaseConnection + 'static> GenericConnectionPool<T> {
             }
             
             // Validate connection if test query is configured
-            if config.test_query.is_some() {
-                if !conn.is_valid().await {
-                    to_remove.push(i);
-                }
+            if config.test_query.is_some() && !conn.is_valid().await {
+                to_remove.push(i);
             }
         }
         

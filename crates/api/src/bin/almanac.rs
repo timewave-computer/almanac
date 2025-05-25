@@ -1,110 +1,29 @@
-/// Almanac Indexer - Main Entry Point
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::time::Duration;
+// Main CLI binary for Almanac cross-chain indexer
+//
+// This binary provides the primary command-line interface for running
+// the Almanac indexer with various blockchain clients and storage backends
 
-use anyhow::Result;
-use async_trait::async_trait;
 use clap::{Parser, Subcommand};
-use tokio::signal;
+use std::sync::Arc;
+use tokio;
+use tracing::{info, error};
+use tracing_subscriber;
 
-use indexer_api::ApiServer;
-use indexer_core::event::Event;
-use indexer_core::service::{BoxedEventService, EventService, EventServiceRegistry, EventSubscription};
-use indexer_core::types::{ApiConfig, ChainId, EventFilter};
-use indexer_ethereum::EthereumEventService;
-use indexer_cosmos::CosmosEventService;
-use indexer_storage::{rocks::RocksStorage, rocks::RocksConfig};
-use indexer_storage::migrations::schema::{InMemorySchemaRegistry, ContractSchemaRegistry};
-use indexer_storage::migrations::MigrationRegistry;
+// Import core types
+use indexer_core::{Error, Result};
+use indexer_storage::{create_postgres_storage, postgres::migrations::PostgresMigrationManager};
 
-/// A wrapper around any event service that makes EventType = Box<dyn Event>
-struct BoxedEventServiceWrapper<T: EventService + Send + Sync + 'static> {
-    inner: Arc<T>,
-}
+// Import blockchain clients with correct names
+use indexer_ethereum::EthereumClient;
 
-impl<T: EventService + Send + Sync + 'static> BoxedEventServiceWrapper<T> {
-    fn new(inner: Arc<T>) -> Self {
-        Self { inner }
-    }
-}
-
-/// Simple event subscription wrapper
-struct BoxedEventSubscriptionWrapper {
-    inner: Box<dyn EventSubscription>,
-}
-
-#[async_trait]
-impl EventSubscription for BoxedEventSubscriptionWrapper {
-    async fn next(&mut self) -> Option<Box<dyn Event>> {
-        self.inner.next().await
-    }
-
-    async fn close(&mut self) -> indexer_pipeline::Result<()> {
-        self.inner.close().await
-    }
-}
-
-#[async_trait]
-impl<T: EventService + Send + Sync + 'static> EventService for BoxedEventServiceWrapper<T> {
-    type EventType = Box<dyn Event>;
-
-    fn chain_id(&self) -> &ChainId {
-        self.inner.chain_id()
-    }
-
-    async fn get_events(&self, filters: Vec<indexer_core::types::EventFilter>) -> indexer_pipeline::Result<Vec<Box<dyn Event>>> {
-        self.inner.get_events(filters).await
-    }
-
-    async fn subscribe(&self) -> indexer_pipeline::Result<Box<dyn EventSubscription>> {
-        let sub = self.inner.subscribe().await?;
-        Ok(Box::new(BoxedEventSubscriptionWrapper { inner: sub }))
-    }
-
-    async fn get_latest_block(&self) -> indexer_pipeline::Result<u64> {
-        self.inner.get_latest_block().await
-    }
-    
-    async fn get_latest_block_with_status(&self, chain: &str, status: indexer_pipeline::BlockStatus) -> indexer_pipeline::Result<u64> {
-        self.inner.get_latest_block_with_status(chain, status).await
-    }
-}
-
-/// Simple in-memory registry for event services
-struct SimpleRegistry {
-    services: HashMap<String, BoxedEventService>,
-}
-
-impl SimpleRegistry {
-    fn new() -> Self {
-        Self {
-            services: HashMap::new(),
-        }
-    }
-}
-
-impl EventServiceRegistry for SimpleRegistry {
-    fn register_service(&mut self, chain_id: ChainId, service: BoxedEventService) {
-        self.services.insert(chain_id.0, service);
-    }
-
-    fn get_service(&self, chain_id: &str) -> Option<BoxedEventService> {
-        self.services.get(chain_id).cloned()
-    }
-
-    fn get_services(&self) -> Vec<BoxedEventService> {
-        self.services.values().cloned().collect()
-    }
-
-    fn remove_service(&mut self, chain_id: &str) -> Option<BoxedEventService> {
-        self.services.remove(chain_id)
-    }
-}
+// Import service management from tools
+use indexer_tools::service::ServiceManager;
+use indexer_tools::config::{ConfigManager, Environment};
 
 #[derive(Parser)]
 #[command(name = "almanac")]
-#[command(author, version, about, long_about = None)]
+#[command(about = "Almanac cross-chain indexer")]
+#[command(version = "0.1.0")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -112,42 +31,31 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Run the indexer service
-    Run {
-        /// Config file path
+    /// Start the indexer
+    Start {
+        /// Configuration file path
         #[arg(short, long, default_value = "config.toml")]
         config: String,
         
-        /// API host
-        #[arg(long, default_value = "127.0.0.1")]
-        api_host: String,
-        
-        /// API port
-        #[arg(long, default_value_t = 8080)]
-        api_port: u16,
-        
-        /// Ethereum RPC URL
-        #[arg(long)]
-        eth_rpc: Option<String>,
-        
-        /// Cosmos RPC URL
-        #[arg(long)]
-        cosmos_rpc: Option<String>,
+        /// Environment to run in
+        #[arg(short, long, default_value = "development")]
+        env: String,
     },
-    
-    /// Manage database migrations
-    Migrate {
-        /// Run database migrations
-        #[arg(long)]
-        run: bool,
-        
-        /// List pending migrations
-        #[arg(long)]
-        list: bool,
-        
-        /// Rollback a specific migration
-        #[arg(long)]
-        rollback: Option<String>,
+    /// Stop the indexer
+    Stop,
+    /// Check indexer status
+    Status,
+    /// Validate configuration
+    ValidateConfig {
+        /// Configuration file path
+        #[arg(short, long, default_value = "config.toml")]
+        config: String,
+    },
+    /// Initialize database
+    InitDb {
+        /// Database connection string
+        #[arg(short, long)]
+        database_url: String,
     },
 }
 
@@ -160,155 +68,203 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Run { config: _, api_host, api_port, eth_rpc, cosmos_rpc } => {
-            // Initialize storage
-            let storage_config = RocksConfig {
-                path: "./data/rocks".to_string(),
-                create_if_missing: true,
-                cache_size_mb: 128,
-            };
-            
-            let storage = Arc::new(RocksStorage::new(storage_config)?);
-            
-            // Run migrations
-            run_migrations().await?;
-            
-            // Initialize service registry
-            let mut registry = SimpleRegistry::new();
-            
-            // Add Ethereum service if RPC URL is provided
-            if let Some(eth_rpc) = eth_rpc {
-                let eth_service = EthereumEventService::new("ethereum".into(), &eth_rpc).await?;
-                let eth_chain_id = eth_service.chain_id().clone();
-                let eth_service_arc = Arc::new(eth_service);
-                
-                // Clone for background task
-                let eth_service_for_task = eth_service_arc.clone();
-                let storage_clone = storage.clone();
-                
-                // Set up a background task to track block finality status
-                tokio::spawn(async move {
-                    let interval = Duration::from_secs(30);
-                    loop {
-                        tokio::time::sleep(interval).await;
-                        
-                        if let Err(e) = update_ethereum_finality_status(&eth_service_for_task, storage_clone.clone()).await {
-                            tracing::error!("Failed to update Ethereum finality status: {}", e);
-                        }
-                    }
-                });
-                
-                let boxed_service = Arc::new(BoxedEventServiceWrapper::new(eth_service_arc));
-                registry.register_service(eth_chain_id, boxed_service);
-            }
-            
-            // Add Cosmos service if RPC URL is provided
-            if let Some(cosmos_rpc) = cosmos_rpc {
-                let cosmos_service = CosmosEventService::new("cosmos".into(), &cosmos_rpc).await?;
-                let cosmos_chain_id = cosmos_service.chain_id().clone();
-                let cosmos_service_arc = Arc::new(cosmos_service);
-                
-                let boxed_service = Arc::new(BoxedEventServiceWrapper::new(cosmos_service_arc));
-                registry.register_service(cosmos_chain_id, boxed_service);
-            }
-            
-            // Initialize API config
-            let api_config = ApiConfig {
-                host: api_host,
-                port: api_port,
-                enable_graphql: true,
-                enable_rest: true,
-                enable_websocket: true,
-                params: HashMap::new(),
-            };
-            
-            // Initialize schema registry
-            let schema_registry = Arc::new(InMemorySchemaRegistry::new());
-            
-            // Get the first available service (for simplicity in this demo)
-            let services = registry.get_services();
-            let event_service = services.into_iter().next()
-                .ok_or_else(|| Error::generic("No event services available. Please provide --eth-rpc or --cosmos-rpc"))?;
-            
-            // Create and start the API server
-            let api_server = ApiServer::from_config(&api_config, event_service, schema_registry)?;
-            
-            // Handle graceful shutdown
-            let shutdown_signal = async {
-                signal::ctrl_c()
-                    .await
-                    .expect("Failed to install CTRL+C signal handler");
-                tracing::info!("Received shutdown signal");
-            };
-            
-            // Start server
-            tracing::info!("Starting Almanac indexer...");
-            tracing::info!("REST API will be available at http://{}:{}/api/v1/", api_host, api_port);
-            tracing::info!("GraphQL API will be available at http://{}:{}/", api_host, api_port + 1);
-            tracing::info!("GraphQL Playground will be available at http://{}:{}/graphiql", api_host, api_port + 1);
-            
-            // Start the API server
-            api_server.start().await?;
-            
-            // Wait for shutdown signal
-            shutdown_signal.await;
+        Commands::Start { config, env } => {
+            start_indexer(config, env).await?;
         }
-        
-        Commands::Migrate { run, list, rollback } => {
-            if run {
-                run_migrations().await?;
-                println!("Migrations completed successfully");
-            } else if list {
-                list_pending_migrations().await?;
-            } else if let Some(migration_id) = rollback {
-                rollback_migration(&migration_id).await?;
-                println!("Migration {} rolled back successfully", migration_id);
-            } else {
-                println!("Please specify --run, --list, or --rollback <migration_id>");
-            }
+        Commands::Stop => {
+            stop_indexer().await?;
+        }
+        Commands::Status => {
+            check_status().await?;
+        }
+        Commands::ValidateConfig { config } => {
+            validate_config(config).await?;
+        }
+        Commands::InitDb { database_url } => {
+            init_database(database_url).await?;
         }
     }
 
     Ok(())
 }
 
-async fn create_migration_registry() -> Result<MigrationRegistry> {
-    let mut registry = MigrationRegistry::new();
+async fn start_indexer(config_path: String, env_str: String) -> Result<()> {
+    info!("Starting Almanac indexer with config: {}", config_path);
     
-    // Register database migrations here
-    // registry.register_migration(migration);
+    // Parse environment
+    let environment = match env_str.as_str() {
+        "development" => Environment::Development,
+        "staging" => Environment::Staging,
+        "production" => Environment::Production,
+        "test" => Environment::Test,
+        _ => {
+            error!("Invalid environment: {}. Use development, staging, production, or test", env_str);
+            return Err(Error::generic("Invalid environment"));
+        }
+    };
     
-    Ok(registry)
-}
-
-async fn run_migrations() -> Result<()> {
-    let _registry = create_migration_registry().await?;
-    // TODO: Actually run migrations when we have a proper storage backend
-    tracing::info!("Migrations would run here");
+    // Load configuration
+    let config_manager = ConfigManager::load_for_environment(&config_path, environment)
+        .map_err(|e| Error::generic(format!("Failed to load config: {}", e)))?;
+    
+    // Validate configuration
+    config_manager.validate()
+        .map_err(|e| Error::generic(format!("Invalid config: {:?}", e)))?;
+    
+    info!("Configuration loaded and validated successfully");
+    
+    let config = config_manager.config();
+    
+    // Initialize storage
+    let storage = if let Some(postgres_url) = &config.database.postgres_url {
+        create_postgres_storage(postgres_url).await?
+    } else {
+        return Err(Error::generic("PostgreSQL URL not configured"));
+    };
+    info!("Storage initialized");
+    
+    // Initialize blockchain clients based on configuration
+    let mut ethereum_clients = Vec::new();
+    
+    // Initialize Ethereum clients
+    for (chain_name, chain_config) in &config.chains {
+        // For now, assume all chains are Ethereum-compatible
+        // In a real implementation, we'd need to determine chain type
+        match EthereumClient::new(chain_config.chain_id.clone(), chain_config.rpc_url.clone()).await {
+            Ok(client) => {
+                info!("Initialized Ethereum client for chain: {} ({})", chain_name, chain_config.chain_id);
+                ethereum_clients.push(Arc::new(client));
+            }
+            Err(e) => {
+                error!("Failed to initialize Ethereum client for chain {}: {}", chain_name, e);
+                return Err(Error::generic(format!("Failed to initialize Ethereum client: {}", e)));
+            }
+        }
+    }
+    
+    info!("All blockchain clients initialized successfully");
+    info!("Indexer started successfully");
+    
+    // Keep the process running
+    tokio::signal::ctrl_c().await.map_err(|e| Error::generic(format!("Signal error: {}", e)))?;
+    info!("Received shutdown signal, stopping indexer...");
+    
     Ok(())
 }
 
-async fn list_pending_migrations() -> Result<()> {
-    let _registry = create_migration_registry().await?;
-    // TODO: List pending migrations
-    println!("No pending migrations");
+async fn stop_indexer() -> Result<()> {
+    info!("Stopping Almanac indexer");
+    
+    // Create service manager
+    let service_manager = ServiceManager::new();
+    
+    // Try to stop the almanac service
+    match service_manager.stop_service("almanac").await {
+        Ok(_) => info!("Indexer stopped successfully"),
+        Err(e) => {
+            error!("Failed to stop indexer: {}", e);
+            return Err(Error::generic(format!("Failed to stop indexer: {}", e)));
+        }
+    }
+    
     Ok(())
 }
 
-async fn rollback_migration(_migration_id: &str) -> Result<()> {
-    // TODO: Implement rollback
+async fn check_status() -> Result<()> {
+    info!("Checking Almanac indexer status");
+    
+    // Create service manager
+    let service_manager = ServiceManager::new();
+    
+    // Check service status
+    match service_manager.get_service_status("almanac") {
+        Ok(status) => {
+            println!("Indexer status: {:?}", status.status);
+            if let Some(pid) = status.pid {
+                println!("Process ID: {}", pid);
+            }
+            if let Some(uptime) = status.uptime() {
+                println!("Uptime: {:?}", uptime);
+            }
+            println!("Healthy: {}", status.healthy);
+            println!("Restart count: {}", status.restart_count);
+        }
+        Err(e) => {
+            error!("Failed to check status: {}", e);
+            return Err(Error::generic(format!("Failed to check status: {}", e)));
+        }
+    }
+    
     Ok(())
 }
 
-async fn update_ethereum_finality_status(
-    service: &Arc<EthereumEventService>,
-    _storage: Arc<RocksStorage>
-) -> Result<()> {
-    // Get the latest finalized block
-    let _latest_block = service.get_latest_block().await?;
+async fn validate_config(config_path: String) -> Result<()> {
+    info!("Validating configuration file: {}", config_path);
     
-    // TODO: Update finality status in storage
-    tracing::debug!("Updated Ethereum finality status");
+    // Try to load and validate config for all environments
+    for env in [Environment::Development, Environment::Staging, Environment::Production, Environment::Test] {
+        match ConfigManager::load_for_environment(&config_path, env.clone()) {
+            Ok(config_manager) => {
+                match config_manager.validate() {
+                    Ok(_) => info!("Configuration valid for environment: {:?}", env),
+                    Err(e) => {
+                        error!("Configuration invalid for environment {:?}: {:?}", env, e);
+                        return Err(Error::generic(format!("Invalid config for {:?}: {:?}", env, e)));
+                    }
+                }
+            }
+            Err(e) => {
+                error!("Failed to load config for environment {:?}: {}", env, e);
+                return Err(Error::generic(format!("Failed to load config for {:?}: {}", env, e)));
+            }
+        }
+    }
+    
+    info!("Configuration validation completed successfully");
+    Ok(())
+}
+
+async fn init_database(database_url: String) -> Result<()> {
+    info!("Initializing database with URL: {}", mask_password(&database_url));
+    
+    // Try to create storage connection to test database
+    match create_postgres_storage(&database_url).await {
+        Ok(_) => {
+            info!("Database connection successful");
+            
+            // Run migrations
+            let migrations_path = "./crates/storage/migrations";
+            let migration_manager = PostgresMigrationManager::new(&database_url, migrations_path);
+            
+            match migration_manager.migrate().await {
+                Ok(_) => {
+                    info!("✅ Database migrations completed successfully");
+                }
+                Err(e) => {
+                    error!("❌ Migration failed: {}", e);
+                    return Err(Error::generic(format!("Migration failed: {}", e)));
+                }
+            }
+            
+            info!("Database initialization completed");
+        }
+        Err(e) => {
+            error!("Failed to connect to database: {}", e);
+            return Err(Error::generic(format!("Database initialization failed: {}", e)));
+        }
+    }
     
     Ok(())
+}
+
+fn mask_password(url: &str) -> String {
+    // Simple password masking for display
+    if let Some(at_pos) = url.find('@') {
+        if let Some(colon_pos) = url[..at_pos].rfind(':') {
+            let mut masked = url.to_string();
+            masked.replace_range(colon_pos + 1..at_pos, "****");
+            return masked;
+        }
+    }
+    url.to_string()
 } 

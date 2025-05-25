@@ -30,6 +30,8 @@ uuid = { version = "1.0", features = ["v4"] }
 tracing = "0.1"
 thiserror = "1.0"
 anyhow = "1.0"
+log = "0.4"
+metrics = "0.21"
 
 # Database
 sqlx = { version = "0.7", features = [
@@ -41,12 +43,6 @@ sqlx = { version = "0.7", features = [
     "json"
 ], optional = true }
 rocksdb = { version = "0.21", optional = true }
-
-# Internal crates
-indexer-pipeline = { path = "../pipeline" }
-
-# Internal dependencies
-indexer-common = { path = "../common" }
 
 # Valence domain clients for proto integration
 valence-domain-clients = { git = "https://github.com/timewave-computer/valence-domain-clients", rev = "766a1b593bcea9ed67b45c8c1ea9c548d0692a71" }
@@ -63,4 +59,9 @@ default = []
 # Enable support for PostgreSQL storage
 postgres = ["sqlx"]
 # Enable support for RocksDB storage
-rocks = ["rocksdb"] 
+rocks = ["rocksdb"]
+
+[dev-dependencies]
+tokio-test = "0.4"
+mockall = "0.11"
+tempfile = "3.5" 

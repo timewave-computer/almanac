@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use tempfile::TempDir;
 use rand::{thread_rng, Rng, seq::SliceRandom};
-use indexer_pipeline::Result;
+use indexer_core::Result;
 
 use crate::rocks::{RocksStorage, RocksConfig, Key};
 use crate::tests::common::{create_mock_event, create_mock_events, assert_duration_less_than};
@@ -174,7 +174,7 @@ async fn test_transaction_isolation() -> Result<()> {
     if let Some(bytes) = read_result {
         // Verify that we can deserialize the data, which means it's complete
         let event_data: Result<crate::rocks::EventData> = bincode::deserialize(&bytes)
-            .map_err(|e| indexer_pipeline::Error::generic(format!("Failed to deserialize event data: {}", e)));
+            .map_err(|e| indexer_core::Error::generic(format!("Failed to deserialize event data: {}", e)));
         
         let event_data = event_data?;
         

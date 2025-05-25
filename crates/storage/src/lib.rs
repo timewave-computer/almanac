@@ -7,9 +7,10 @@
 pub use indexer_core::{Error, Result, BlockStatus};
 
 // Common module imports
-use std::sync::Arc;
 use indexer_core::event::Event;
 use serde::{Serialize, Deserialize};
+use std::collections::HashMap;
+use std::sync::Arc;
 
 // Conditional modules based on features
 #[cfg(feature = "rocks")]

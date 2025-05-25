@@ -9,7 +9,7 @@ use std::path::Path;
 use chrono::{DateTime, Utc};
 use serde::{Serialize, Deserialize};
 use indexer_core::Error;
-use super::{Measurement, BenchmarkReport};
+use super::BenchmarkReport;
 
 /// A comparison between benchmark runs
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -73,9 +73,6 @@ pub enum ReportFormat {
     
     /// Markdown format
     Markdown,
-    
-    /// CSV format
-    Csv,
 }
 
 /// Generate a report in the specified format
@@ -87,31 +84,22 @@ pub fn generate_report(
     match format {
         ReportFormat::Json => {
             let json = serde_json::to_string_pretty(report)
-                .map_err(|e| Error::Other(format!("Failed to serialize report: {}", e)))?;
+                .map_err(|e| Error::generic(format!("Failed to serialize report: {}", e)))?;
             
             let mut file = File::create(path)
-                .map_err(|e| Error::Io(e))?;
+                .map_err(Error::IO)?;
             
             file.write_all(json.as_bytes())
-                .map_err(|e| Error::Io(e))?;
+                .map_err(Error::IO)?;
         }
         ReportFormat::Markdown => {
             let markdown = generate_markdown_report(report)?;
             
             let mut file = File::create(path)
-                .map_err(|e| Error::Io(e))?;
+                .map_err(Error::IO)?;
             
             file.write_all(markdown.as_bytes())
-                .map_err(|e| Error::Io(e))?;
-        }
-        ReportFormat::Csv => {
-            let csv = generate_csv_report(report)?;
-            
-            let mut file = File::create(path)
-                .map_err(|e| Error::Io(e))?;
-            
-            file.write_all(csv.as_bytes())
-                .map_err(|e| Error::Io(e))?;
+                .map_err(Error::IO)?;
         }
     }
     
@@ -206,44 +194,6 @@ fn generate_markdown_report(report: &BenchmarkReport) -> Result<String, Error> {
     Ok(markdown)
 }
 
-/// Generate a CSV report
-fn generate_csv_report(report: &BenchmarkReport) -> Result<String, Error> {
-    let mut csv = String::new();
-    
-    // Header row for summary
-    csv.push_str("SUMMARY\n");
-    csv.push_str("Metric,Value\n");
-    
-    // Summary data
-    for (key, value) in &report.summary {
-        csv.push_str(&format!("{},{}\n", key, value));
-    }
-    
-    csv.push_str("\n");
-    
-    // Header row for measurements
-    csv.push_str("MEASUREMENTS\n");
-    csv.push_str("Name,Duration (ms),Operations,Data Size (bytes),Ops/s,Throughput (bytes/s)\n");
-    
-    // Measurement data
-    for measurement in &report.measurements {
-        let ops_per_second = measurement.ops_per_second();
-        let throughput = measurement.throughput();
-        
-        csv.push_str(&format!(
-            "{},{:.2},{},{},{:.2},{:.2}\n",
-            measurement.name,
-            measurement.duration.as_secs_f64() * 1000.0,
-            measurement.operations,
-            measurement.data_size,
-            ops_per_second,
-            throughput,
-        ));
-    }
-    
-    Ok(csv)
-}
-
 /// Format a metric value based on its key
 fn format_metric_value(key: &str, value: f64) -> String {
     if key.contains("time") && !key.contains("total") {
@@ -262,6 +212,7 @@ fn format_metric_value(key: &str, value: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Measurement;
     use std::time::Duration;
     
     #[test]
