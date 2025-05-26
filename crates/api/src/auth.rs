@@ -5,7 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::{
     async_trait,
-    extract::{FromRequestParts, State},
+    extract::FromRequestParts,
     http::{header::AUTHORIZATION, HeaderMap, StatusCode},
     response::{IntoResponse, Json},
 };
@@ -51,13 +51,7 @@ pub enum UserRole {
 impl UserRole {
     /// Check if this role has permission for another role's actions
     pub fn has_permission(&self, required: &UserRole) -> bool {
-        match (self, required) {
-            (UserRole::Admin, _) => true,
-            (UserRole::Write, UserRole::Read) => true,
-            (UserRole::Write, UserRole::Write) => true,
-            (UserRole::Read, UserRole::Read) => true,
-            _ => false,
-        }
+        matches!((self, required), (UserRole::Admin, _) | (UserRole::Write, UserRole::Read) | (UserRole::Write, UserRole::Write) | (UserRole::Read, UserRole::Read))
     }
 }
 
@@ -96,7 +90,7 @@ pub struct UserStore {
 impl UserStore {
     /// Create a new user store
     pub fn new() -> Self {
-        let mut store = Self {
+        let store = Self {
             users: Arc::new(RwLock::new(HashMap::new())),
             api_keys: Arc::new(RwLock::new(HashMap::new())),
             revoked_tokens: Arc::new(RwLock::new(std::collections::HashSet::new())),
@@ -166,7 +160,7 @@ impl UserStore {
         
         let raw_key = Uuid::new_v4().to_string();
         let key_hash = bcrypt::hash(&raw_key, bcrypt::DEFAULT_COST)
-            .map_err(|e| Error::generic(&format!("Failed to hash API key: {}", e)))?;
+            .map_err(|e| Error::generic(format!("Failed to hash API key: {}", e)))?;
         
         let api_key = ApiKey {
             id: Uuid::new_v4().to_string(),
@@ -268,7 +262,7 @@ impl TokenManager {
     pub fn generate_token(&self, user: &User) -> Result<String> {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map_err(|e| Error::generic(&format!("System time error: {}", e)))?
+            .map_err(|e| Error::generic(format!("System time error: {}", e)))?
             .as_secs();
         
         let claims = Claims {
@@ -281,13 +275,13 @@ impl TokenManager {
         };
         
         encode(&Header::default(), &claims, &self.encoding_key)
-            .map_err(|e| Error::generic(&format!("Failed to encode JWT: {}", e)))
+            .map_err(|e| Error::generic(format!("Failed to encode JWT: {}", e)))
     }
     
     /// Validate and decode a JWT token
     pub fn validate_token(&self, token: &str) -> Result<TokenData<Claims>> {
         decode::<Claims>(token, &self.decoding_key, &self.validation)
-            .map_err(|e| Error::generic(&format!("Invalid JWT token: {}", e)))
+            .map_err(|e| Error::generic(format!("Invalid JWT token: {}", e)))
     }
 }
 
@@ -311,8 +305,7 @@ impl AuthState {
     pub async fn authenticate(&self, headers: &HeaderMap) -> Option<User> {
         if let Some(auth_header) = headers.get(AUTHORIZATION) {
             if let Ok(auth_str) = auth_header.to_str() {
-                if auth_str.starts_with("Bearer ") {
-                    let token = &auth_str[7..];
+                if let Some(token) = auth_str.strip_prefix("Bearer ") {
                     
                     // Try JWT token first
                     if let Ok(token_data) = self.token_manager.validate_token(token) {
@@ -511,5 +504,250 @@ pub mod endpoints {
         AuthenticatedUser(user): AuthenticatedUser,
     ) -> Json<User> {
         Json(user)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+    
+    #[test]
+    fn test_user_role_permissions() {
+        // Admin has all permissions
+        assert!(UserRole::Admin.has_permission(&UserRole::Read));
+        assert!(UserRole::Admin.has_permission(&UserRole::Write));
+        assert!(UserRole::Admin.has_permission(&UserRole::Admin));
+        
+        // Write has read and write permissions
+        assert!(UserRole::Write.has_permission(&UserRole::Read));
+        assert!(UserRole::Write.has_permission(&UserRole::Write));
+        assert!(!UserRole::Write.has_permission(&UserRole::Admin));
+        
+        // Read only has read permission
+        assert!(UserRole::Read.has_permission(&UserRole::Read));
+        assert!(!UserRole::Read.has_permission(&UserRole::Write));
+        assert!(!UserRole::Read.has_permission(&UserRole::Admin));
+    }
+    
+    #[tokio::test]
+    async fn test_user_store_creation() {
+        let store = UserStore::new();
+        
+        // Wait a bit for the admin user to be inserted
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        
+        // Check that admin user exists
+        let admin = store.get_user("admin").await;
+        assert!(admin.is_some());
+        
+        let admin_user = admin.unwrap();
+        assert_eq!(admin_user.username, "admin");
+        assert_eq!(admin_user.role, UserRole::Admin);
+        assert!(admin_user.active);
+    }
+    
+    #[tokio::test]
+    async fn test_user_creation() {
+        let store = UserStore::new();
+        
+        // Create a new user
+        let user = store.create_user("testuser".to_string(), UserRole::Write).await;
+        assert!(user.is_ok());
+        
+        let created_user = user.unwrap();
+        assert_eq!(created_user.username, "testuser");
+        assert_eq!(created_user.role, UserRole::Write);
+        assert!(created_user.active);
+        
+        // Try to create duplicate user
+        let duplicate = store.create_user("testuser".to_string(), UserRole::Read).await;
+        assert!(duplicate.is_err());
+        
+        // Retrieve user by username
+        let retrieved = store.get_user_by_username("testuser").await;
+        assert!(retrieved.is_some());
+        assert_eq!(retrieved.unwrap().id, created_user.id);
+    }
+    
+    #[tokio::test]
+    async fn test_api_key_creation() {
+        let store = UserStore::new();
+        
+        // Create a user first
+        let user = store.create_user("keyuser".to_string(), UserRole::Read).await.unwrap();
+        
+        // Create API key
+        let result = store.create_api_key(user.id.clone(), "test-key".to_string()).await;
+        assert!(result.is_ok());
+        
+        let (api_key, raw_key) = result.unwrap();
+        assert_eq!(api_key.user_id, user.id);
+        assert_eq!(api_key.name, "test-key");
+        assert!(api_key.active);
+        assert!(!raw_key.is_empty());
+        
+        // Validate the API key
+        let validated_user = store.validate_api_key(&raw_key).await;
+        assert!(validated_user.is_some());
+        assert_eq!(validated_user.unwrap().id, user.id);
+        
+        // Try with invalid key
+        let invalid = store.validate_api_key("invalid-key").await;
+        assert!(invalid.is_none());
+    }
+    
+    #[test]
+    fn test_token_manager() {
+        let secret = b"test-secret-key-for-jwt-tokens-32-bytes";
+        let token_manager = TokenManager::new(secret);
+        
+        let user = User {
+            id: "test-user".to_string(),
+            username: "testuser".to_string(),
+            role: UserRole::Write,
+            created_at: SystemTime::now(),
+            last_login: None,
+            active: true,
+        };
+        
+        // Generate token
+        let token = token_manager.generate_token(&user);
+        assert!(token.is_ok());
+        
+        let token_str = token.unwrap();
+        assert!(!token_str.is_empty());
+        
+        // Validate token
+        let validation = token_manager.validate_token(&token_str);
+        assert!(validation.is_ok());
+        
+        let token_data = validation.unwrap();
+        assert_eq!(token_data.claims.sub, user.id);
+        assert_eq!(token_data.claims.username, user.username);
+        assert_eq!(token_data.claims.role, user.role);
+        
+        // Try with invalid token
+        let invalid = token_manager.validate_token("invalid.token.here");
+        assert!(invalid.is_err());
+    }
+    
+    #[tokio::test]
+    async fn test_auth_state() {
+        let secret = b"test-secret-key-for-jwt-tokens-32-bytes";
+        let auth_state = AuthState::new(secret);
+        
+        // Create a user
+        let user = auth_state.user_store.create_user("authuser".to_string(), UserRole::Admin).await.unwrap();
+        
+        // Create API key
+        let (_, raw_key) = auth_state.user_store.create_api_key(user.id.clone(), "auth-test".to_string()).await.unwrap();
+        
+        // Test authentication with API key
+        let mut headers = HeaderMap::new();
+        headers.insert(AUTHORIZATION, format!("Bearer {}", raw_key).parse().unwrap());
+        
+        let authenticated = auth_state.authenticate(&headers).await;
+        assert!(authenticated.is_some());
+        assert_eq!(authenticated.unwrap().id, user.id);
+        
+        // Test with invalid header
+        let mut invalid_headers = HeaderMap::new();
+        invalid_headers.insert(AUTHORIZATION, "Bearer invalid-key".parse().unwrap());
+        
+        let not_authenticated = auth_state.authenticate(&invalid_headers).await;
+        assert!(not_authenticated.is_none());
+    }
+    
+    #[tokio::test]
+    async fn test_token_revocation() {
+        let store = UserStore::new();
+        let jti = "test-token-id";
+        
+        // Initially not revoked
+        assert!(!store.is_token_revoked(jti).await);
+        
+        // Revoke token
+        store.revoke_token(jti).await;
+        
+        // Now should be revoked
+        assert!(store.is_token_revoked(jti).await);
+    }
+    
+    #[tokio::test]
+    async fn test_user_listing() {
+        let store = UserStore::new();
+        
+        // Wait for admin user
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        
+        // Create additional users
+        let _user1 = store.create_user("user1".to_string(), UserRole::Read).await.unwrap();
+        let _user2 = store.create_user("user2".to_string(), UserRole::Write).await.unwrap();
+        
+        // List all users
+        let users = store.list_users().await;
+        assert_eq!(users.len(), 3); // admin + 2 created users
+        
+        // Check usernames
+        let usernames: Vec<&str> = users.iter().map(|u| u.username.as_str()).collect();
+        assert!(usernames.contains(&"admin"));
+        assert!(usernames.contains(&"user1"));
+        assert!(usernames.contains(&"user2"));
+    }
+    
+    #[tokio::test]
+    async fn test_api_key_listing() {
+        let store = UserStore::new();
+        
+        // Create a user
+        let user = store.create_user("keylistuser".to_string(), UserRole::Write).await.unwrap();
+        
+        // Create multiple API keys
+        let _key1 = store.create_api_key(user.id.clone(), "key1".to_string()).await.unwrap();
+        let _key2 = store.create_api_key(user.id.clone(), "key2".to_string()).await.unwrap();
+        
+        // List API keys for user
+        let keys = store.list_api_keys(&user.id).await;
+        assert_eq!(keys.len(), 2);
+        
+        // Check key names
+        let key_names: Vec<&str> = keys.iter().map(|k| k.name.as_str()).collect();
+        assert!(key_names.contains(&"key1"));
+        assert!(key_names.contains(&"key2"));
+        
+        // List keys for non-existent user
+        let empty_keys = store.list_api_keys("non-existent").await;
+        assert!(empty_keys.is_empty());
+    }
+    
+    #[test]
+    fn test_user_serialization() {
+        let user = User {
+            id: "test-id".to_string(),
+            username: "testuser".to_string(),
+            role: UserRole::Admin,
+            created_at: SystemTime::now(),
+            last_login: Some(SystemTime::now()),
+            active: true,
+        };
+        
+        // Test JSON serialization
+        let json = serde_json::to_string(&user);
+        assert!(json.is_ok());
+        
+        let json_str = json.unwrap();
+        assert!(json_str.contains("test-id"));
+        assert!(json_str.contains("testuser"));
+        assert!(json_str.contains("admin"));
+        
+        // Test deserialization
+        let deserialized = serde_json::from_str::<User>(&json_str);
+        assert!(deserialized.is_ok());
+        
+        let user2 = deserialized.unwrap();
+        assert_eq!(user.id, user2.id);
+        assert_eq!(user.username, user2.username);
+        assert_eq!(user.role, user2.role);
     }
 } 

@@ -11,6 +11,9 @@ use serde::{Serialize, Deserialize};
 use indexer_core::Error;
 use super::{Measurement, BenchmarkReport};
 
+/// Type alias for benchmark test function
+type BenchmarkTestFn<T, R> = Box<dyn Fn(T) -> Result<(R, u64, u64), Error> + Send + Sync>;
+
 /// A benchmark test case
 pub struct BenchmarkTestCase<T, R> {
     /// Name of the test case
@@ -20,7 +23,7 @@ pub struct BenchmarkTestCase<T, R> {
     description: String,
     
     /// The test function to execute
-    test_fn: Box<dyn Fn(T) -> Result<(R, u64, u64), Error> + Send + Sync>,
+    test_fn: BenchmarkTestFn<T, R>,
     
     /// Parameters for the test
     params: T,

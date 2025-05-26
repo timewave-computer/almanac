@@ -105,7 +105,7 @@ pub struct RocksStorage {
 impl Storage for RocksStorage {
     /// Store an event
     async fn store_event(&self, chain: &str, event: Box<dyn Event>) -> Result<()> {
-        let cf = self.cf_events()?;
+        let _events_cf = self.cf_events()?;
         let key = Key::new("events", event.id());
         
         // Serialize the event data for storage
@@ -126,7 +126,7 @@ impl Storage for RocksStorage {
             .map_err(|e| Error::generic(format!("Failed to serialize event data: {}", e)))?;
         
         // Store the event in the events column family
-        self.db.put_cf(cf, key.to_bytes(), serialized)?;
+        self.db.put_cf(_events_cf, key.to_bytes(), serialized)?;
         
         // Update latest block for chain in the latest_block column family
         let latest_block_cf = self.cf_handle_ref("latest_block")?;
@@ -183,22 +183,21 @@ impl Storage for RocksStorage {
     }
 
     async fn get_latest_block_with_status(&self, chain: &str, status: BlockStatus) -> Result<u64> {
-        let prefix = Key::prefix(format!("block_status:{}:", chain));
-        let cf = self.cf_block_status()?;
+        let prefix = Key::prefix(format!("block_status:{}", chain));
+        let cf = self.cf_handle_ref("block_status")?;
         let iter = self.db.prefix_iterator_cf(cf, prefix);
         
         let mut latest_block = 0;
         for item in iter {
             let (key_bytes, value_bytes) = item.map_err(|e| Error::database(format!("RocksDB iterator error: {}", e)))?;
             let key_str = string_from_utf8(key_bytes.to_vec())?;
+            
             let parts: Vec<&str> = key_str.split(':').collect();
             if parts.len() >= 3 {
                  if let Ok(block_num) = parts[2].parse::<u64>() {
                      let current_status_str = string_from_utf8(value_bytes.to_vec())?;
-                     if current_status_str == status.as_str() {
-                         if block_num > latest_block {
-                             latest_block = block_num;
-                         }
+                     if current_status_str == status.as_str() && block_num > latest_block {
+                         latest_block = block_num;
                      }
                  }
             }
@@ -685,7 +684,7 @@ impl Storage for RocksStorage {
         let mut batch = self.create_write_batch();
         
         // 2. Get the column families
-        let events_cf = self.cf_events()?;
+        let _events_cf = self.cf_events()?;
         let blocks_cf = self.cf_block_status()?;
         
         // 3. Delete events from blocks >= from_block
@@ -861,6 +860,7 @@ impl RocksStorage {
         self.cf_handle_ref("events")
     }
 
+    #[allow(dead_code)]
     fn cf_latest_block(&self) -> Result<&ColumnFamily> {
         self.cf_handle_ref("latest_block")
     }
@@ -925,10 +925,10 @@ impl RocksStorage {
         let cf_name = Key::from_bytes(prefix)?.namespace;
         let cf = self.cf_handle_ref(&cf_name)?;
         
-        let mut iter = self.db.prefix_iterator_cf(cf, prefix);
+        let iter = self.db.prefix_iterator_cf(cf, prefix);
         let mut results = Vec::new();
         
-        while let Some(item) = iter.next() {
+        for item in iter {
             match item {
                 Ok((key, value)) => {
                     results.push((key.to_vec(), value.to_vec()));
@@ -943,6 +943,7 @@ impl RocksStorage {
     }
 
     // --- Index Query Helpers --- 
+    #[allow(dead_code)]
     fn get_event_ids_by_chain(&self, chain: &str) -> Result<Vec<String>> {
         let prefix = Key::prefix(format!("index:chain:{}", chain));
         let kv_pairs = self.scan_prefix(&prefix)?;
@@ -959,11 +960,11 @@ impl RocksStorage {
         // Filter the events manually by chain and block range
         let mut results = Vec::new();
         for item in iter {
-            let (key_bytes, value_bytes) = item.map_err(|e| Error::database(format!("RocksDB iterator error: {}", e)))?;
+            let (key_bytes, _value_bytes) = item.map_err(|e| Error::database(format!("RocksDB iterator error: {}", e)))?;
             let key_str = string_from_utf8(key_bytes.to_vec())?;
             
-            // The key format is "event:id" so we need to extract the ID part
-            if let Some(id) = key_str.strip_prefix("event:") {
+            // The key format is "events:id" so we need to extract the ID part
+            if let Some(id) = key_str.strip_prefix("events:") {
                 // Get the event data to check its chain and block number
                 if let Some(event) = self.get_event_by_id(id)? {
                     if event.chain() == chain && 
@@ -977,6 +978,7 @@ impl RocksStorage {
         Ok(results)
     }
 
+    #[allow(dead_code)]
     fn get_event_ids_by_chain_and_event_types(&self, chain: &str, event_types: &[String]) -> Result<Vec<String>> {
         // We'll use the events column family which is defined in the RocksStorage::new method
         let cf = self.cf_events()?;
@@ -988,8 +990,8 @@ impl RocksStorage {
             let (key_bytes, _) = item.map_err(|e| Error::database(format!("RocksDB iterator error: {}", e)))?;
             let key_str = string_from_utf8(key_bytes.to_vec())?;
             
-            // The key format is "event:id" so we need to extract the ID part
-            if let Some(id) = key_str.strip_prefix("event:") {
+            // The key format is "events:id" so we need to extract the ID part
+            if let Some(id) = key_str.strip_prefix("events:") {
                 // Get the event data to check its chain and event type
                 if let Some(event) = self.get_event_by_id(id)? {
                     if event.chain() == chain && 
@@ -1002,6 +1004,7 @@ impl RocksStorage {
         Ok(all_ids.into_iter().collect())
     }
 
+    #[allow(dead_code)]
     fn get_event_ids_by_chain_and_time_range(&self, chain: &str, min_time: u64, max_time: u64) -> Result<Vec<String>> {
         // We'll use the events column family which is defined in the RocksStorage::new method
         let cf = self.cf_events()?;
@@ -1013,8 +1016,8 @@ impl RocksStorage {
             let (key_bytes, _) = item.map_err(|e| Error::database(format!("RocksDB iterator error: {}", e)))?;
             let key_str = string_from_utf8(key_bytes.to_vec())?;
             
-            // The key format is "event:id" so we need to extract the ID part
-            if let Some(id) = key_str.strip_prefix("event:") {
+            // The key format is "events:id" so we need to extract the ID part
+            if let Some(id) = key_str.strip_prefix("events:") {
                 // Get the event data to check its chain and timestamp
                 if let Some(event) = self.get_event_by_id(id)? {
                     let timestamp = event.timestamp().duration_since(UNIX_EPOCH)
@@ -1032,8 +1035,9 @@ impl RocksStorage {
         Ok(results)
     }
 
+    #[allow(dead_code)]
     fn get_all_event_ids(&self) -> Result<Vec<String>> {
-        let prefix = Key::prefix("event");
+        let prefix = Key::prefix("events");
         let kv_pairs = self.scan_prefix(&prefix)?;
         kv_pairs.into_iter()
             .map(|(k, _)| Key::from_bytes(&k).map(|key| key.id))
@@ -1054,6 +1058,7 @@ impl RocksStorage {
         }
     }
 
+    #[allow(dead_code)]
     fn apply_remaining_filters(&self, events: Vec<Box<dyn Event>>, filter: &EventFilter) -> Vec<Box<dyn Event>> {
         events.into_iter().filter(move |event| {
             if let Some(event_types) = &filter.event_types {
@@ -1130,7 +1135,7 @@ impl EventData {
 
 /// Mock event implementation for deserialization
 #[derive(Debug)]
-struct MockEvent {
+pub struct MockEvent {
     id: String,
     chain: String,
     block_number: u64,

@@ -5,9 +5,8 @@
 
 use clap::{Parser, Subcommand};
 use std::sync::Arc;
-use tokio;
 use tracing::{info, error};
-use tracing_subscriber;
+use tracing_subscriber::fmt;
 
 // Import core types
 use indexer_core::{Error, Result};
@@ -62,7 +61,7 @@ enum Commands {
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize tracing
-    tracing_subscriber::fmt::init();
+    fmt::init();
     
     // Parse command line arguments
     let cli = Cli::parse();
@@ -116,7 +115,7 @@ async fn start_indexer(config_path: String, env_str: String) -> Result<()> {
     let config = config_manager.config();
     
     // Initialize storage
-    let storage = if let Some(postgres_url) = &config.database.postgres_url {
+    let _storage = if let Some(postgres_url) = &config.database.postgres_url {
         create_postgres_storage(postgres_url).await?
     } else {
         return Err(Error::generic("PostgreSQL URL not configured"));

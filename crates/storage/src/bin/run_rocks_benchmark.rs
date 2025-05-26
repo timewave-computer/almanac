@@ -241,7 +241,7 @@ async fn benchmark_rocksdb_query_performance(path: PathBuf) {
             let timestamp = event.timestamp().duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs();
-            timestamp >= 1600000000 && timestamp <= 1600000100
+            (1600000000..=1600000100).contains(&timestamp)
         })
         .collect();
     

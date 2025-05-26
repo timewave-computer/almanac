@@ -1,14 +1,13 @@
-/// Common test utilities for storage tests
-use std::time::{Duration, SystemTime};
-use std::sync::Arc;
+/// Common test utilities
+use std::time::{SystemTime, Duration};
 use std::any::Any;
 
 use indexer_core::event::Event;
 use async_trait::async_trait;
 use rand::{thread_rng, Rng};
-use indexer_core::BlockStatus;
 
 /// Assert that a duration is less than an expected maximum
+#[allow(dead_code)]
 pub fn assert_duration_less_than(actual: Duration, expected_max: Duration, message: &str) {
     if actual > expected_max {
         panic!("{}: actual duration {:?} exceeds max expected {:?}", 
@@ -17,6 +16,7 @@ pub fn assert_duration_less_than(actual: Duration, expected_max: Duration, messa
 }
 
 /// Create a single mock event for testing
+#[allow(dead_code)]
 pub fn create_mock_event(id: &str, chain: &str, block_number: u64) -> Box<dyn Event> {
     Box::new(MockEvent {
         id: id.to_string(),
@@ -31,6 +31,7 @@ pub fn create_mock_event(id: &str, chain: &str, block_number: u64) -> Box<dyn Ev
 }
 
 /// Create multiple mock events for testing
+#[allow(dead_code)]
 pub fn create_mock_events(chain: &str, count: usize) -> Vec<Box<dyn Event>> {
     let mut events = Vec::with_capacity(count);
     
@@ -96,9 +97,11 @@ impl Event for MockEvent {
 }
 
 /// Cloned event - workaround for Box<dyn Event> not implementing Clone
+#[allow(dead_code)]
 pub struct ClonedEvent(pub Box<dyn Event>);
 
 impl ClonedEvent {
+    #[allow(dead_code)]
     pub fn new(event: &Box<dyn Event>) -> Self {
         Self(Box::new(MockEvent {
             id: event.id().to_string(),
@@ -112,12 +115,14 @@ impl ClonedEvent {
         }))
     }
     
+    #[allow(dead_code)]
     pub fn into_event(self) -> Box<dyn Event> {
         self.0
     }
 }
 
 /// Generate random string for testing
+#[allow(dead_code)]
 pub fn random_string(length: usize) -> String {
     use rand::distributions::Alphanumeric;
     
@@ -129,12 +134,14 @@ pub fn random_string(length: usize) -> String {
 }
 
 /// Generate a simple timestamp for testing
+#[allow(dead_code)]
 pub fn random_timestamp() -> SystemTime {
     let seconds_offset = thread_rng().gen_range(0..10_000_000);
     SystemTime::UNIX_EPOCH + Duration::from_secs(seconds_offset)
 }
 
 /// Generate random data for testing
+#[allow(dead_code)]
 pub fn random_data(min_size: usize, max_size: usize) -> Vec<u8> {
     let size = thread_rng().gen_range(min_size..=max_size);
     let mut data = Vec::with_capacity(size);

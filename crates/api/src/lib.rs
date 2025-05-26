@@ -88,6 +88,12 @@ pub struct InMemorySchemaRegistry {
     schemas: Arc<Mutex<HashMap<String, Vec<ContractSchemaVersion>>>>,
 }
 
+impl Default for InMemorySchemaRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InMemorySchemaRegistry {
     /// Create a new in-memory schema registry
     pub fn new() -> Self {
@@ -294,7 +300,75 @@ impl ApiServer {
     /// Stop the API server
     pub async fn stop(&self) -> Result<()> {
         let mut running = self.running.lock().await;
+        if !*running {
+            return Err(Error::generic("Server is not running"));
+        }
+        
         *running = false;
+        info!("API server stopped");
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::{IpAddr, Ipv4Addr};
+    
+    #[test]
+    fn test_schema_registry_creation() {
+        let registry = InMemorySchemaRegistry::new();
+        assert!(registry.schemas.try_lock().is_ok());
+    }
+    
+    #[tokio::test]
+    async fn test_schema_registry_operations() {
+        let registry = InMemorySchemaRegistry::new();
+        
+        let schema = ContractSchema {
+            chain: "ethereum".to_string(),
+            address: "0x123".to_string(),
+            name: "TestContract".to_string(),
+            events: vec![],
+            functions: vec![],
+        };
+        
+        let schema_version = ContractSchemaVersion {
+            version: "1.0.0".to_string(),
+            schema: schema.clone(),
+        };
+        
+        // Test registration
+        assert!(registry.register_schema(schema_version).is_ok());
+        
+        // Test retrieval by version
+        let retrieved = registry.get_schema("ethereum", "0x123", "1.0.0").unwrap();
+        assert!(retrieved.is_some());
+        assert_eq!(retrieved.unwrap().name, "TestContract");
+        
+        // Test latest schema retrieval
+        let latest = registry.get_latest_schema("ethereum", "0x123").unwrap();
+        assert!(latest.is_some());
+        assert_eq!(latest.unwrap().name, "TestContract");
+        
+        // Test non-existent schema
+        let non_existent = registry.get_schema("ethereum", "0x456", "1.0.0").unwrap();
+        assert!(non_existent.is_none());
+    }
+    
+    #[test]
+    fn test_api_server_config() {
+        let config = ApiServerConfig {
+            http_addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080),
+            graphql_addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8081),
+            ws_addr: Some(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8082)),
+            enable_playground: true,
+        };
+        
+        assert_eq!(config.http_addr.port(), 8080);
+        assert_eq!(config.graphql_addr.port(), 8081);
+        assert!(config.ws_addr.is_some());
+        assert_eq!(config.ws_addr.unwrap().port(), 8082);
+        assert!(config.enable_playground);
     }
 } 

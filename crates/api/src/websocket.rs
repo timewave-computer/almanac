@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
-        ConnectInfo, Path, Query, State,
+        ConnectInfo, State,
     },
     http::HeaderMap,
     response::Response,
@@ -14,7 +14,7 @@ use axum::{
 use base64::prelude::*;
 use futures::{
     sink::SinkExt,
-    stream::{SplitSink, SplitStream, StreamExt},
+    stream::StreamExt,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -25,12 +25,12 @@ use uuid::Uuid;
 
 use indexer_core::{
     event::Event,
-    service::{BoxedEventService, EventSubscription},
+    service::{BoxedEventService},
     types::{ChainId, EventFilter as CoreEventFilter},
     Error, Result,
 };
 use crate::{
-    auth::{AuthState, OptionalUser, UserRole},
+    auth::{AuthState, UserRole},
     http::HttpState,
 };
 
@@ -50,6 +50,12 @@ pub struct PersistedSubscription {
 #[derive(Debug, Clone)]
 pub struct InMemorySubscriptionStorage {
     subscriptions: Arc<RwLock<HashMap<String, PersistedSubscription>>>,
+}
+
+impl Default for InMemorySubscriptionStorage {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl InMemorySubscriptionStorage {
@@ -808,7 +814,7 @@ async fn handle_websocket_message(
                 id: id.clone(),
                 status: "active".to_string(),
             };
-            tx.send(response).map_err(|e| Error::generic(&format!("Failed to send message: {}", e)))?;
+            tx.send(response).map_err(|e| Error::generic(format!("Failed to send message: {}", e)))?;
             
             // Event streaming is handled automatically by the background task
             debug!("Subscription created: {}", id);
@@ -820,13 +826,13 @@ async fn handle_websocket_message(
             
             // Send confirmation
             let response = WsMessage::Unsubscribed { id };
-            tx.send(response).map_err(|e| Error::generic(&format!("Failed to send message: {}", e)))?;
+            tx.send(response).map_err(|e| Error::generic(format!("Failed to send message: {}", e)))?;
         }
         
         WsMessage::Ping { timestamp } => {
             // Send pong
             let response = WsMessage::Pong { timestamp };
-            tx.send(response).map_err(|e| Error::generic(&format!("Failed to send message: {}", e)))?;
+            tx.send(response).map_err(|e| Error::generic(format!("Failed to send message: {}", e)))?;
         }
         
         WsMessage::Auth { token } => {
@@ -860,14 +866,14 @@ async fn handle_websocket_message(
                     user,
                     role,
                 };
-                tx.send(response).map_err(|e| Error::generic(&format!("Failed to send message: {}", e)))?;
+                tx.send(response).map_err(|e| Error::generic(format!("Failed to send message: {}", e)))?;
             } else {
                 let response = WsMessage::AuthResponse {
                     authenticated: false,
                     user: None,
                     role: None,
                 };
-                tx.send(response).map_err(|e| Error::generic(&format!("Failed to send message: {}", e)))?;
+                tx.send(response).map_err(|e| Error::generic(format!("Failed to send message: {}", e)))?;
             }
         }
         

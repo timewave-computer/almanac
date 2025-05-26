@@ -9,7 +9,6 @@ pub use indexer_core::{Error, Result, BlockStatus};
 // Common module imports
 use indexer_core::event::Event;
 use serde::{Serialize, Deserialize};
-use std::collections::HashMap;
 use std::sync::Arc;
 
 // Conditional modules based on features
@@ -29,8 +28,9 @@ mod tests;
 // Type aliases
 pub type BoxedStorage = Arc<dyn Storage + Send + Sync>;
 
-/// Storage interface for Almanac indexer data
+/// Main storage trait that all storage implementations must implement
 #[async_trait::async_trait]
+#[allow(clippy::too_many_arguments)]
 pub trait Storage: Send + Sync {
     /// Store an event
     async fn store_event(&self, chain: &str, event: Box<dyn Event>) -> Result<()>;
@@ -57,7 +57,7 @@ pub trait Storage: Send + Sync {
     async fn reorg_chain(&self, chain: &str, from_block: u64) -> Result<()>;
     
     /// Get the latest block before a specific block
-    async fn get_latest_block_before(&self, chain: &str, before_block: u64) -> Result<u64> {
+    async fn get_latest_block_before(&self, chain: &str, _before_block: u64) -> Result<u64> {
         // Default implementation returns the latest block
         self.get_latest_block(chain).await
     }

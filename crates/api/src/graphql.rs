@@ -13,8 +13,7 @@ use axum::{
     routing::get,
     Router, extract::State,
 };
-use serde::{Deserialize, Serialize};
-use serde_json::{json, Value as JsonValue};
+use serde_json::Value as JsonValue;
 use tracing::info;
 
 use indexer_core::{Error, Result};
@@ -26,16 +25,16 @@ use crate::{
 
 /// JSON scalar for GraphQL
 #[derive(Clone)]
-struct JSON(JsonValue);
+struct Json(JsonValue);
 
 /// Custom scalar for JSON
 #[Scalar]
-impl ScalarType for JSON {
+impl ScalarType for Json {
     fn parse(value: GraphQLValue) -> InputValueResult<Self> {
         if let GraphQLValue::Object(obj) = &value {
             // Convert GraphQL value to serde_json value
             let json_value = serde_json::to_value(obj).map_err(|_| InputValueError::expected_type(value))?;
-            Ok(JSON(json_value))
+            Ok(Json(json_value))
         } else {
             Err(InputValueError::expected_type(value))
         }
@@ -99,7 +98,7 @@ impl QueryRoot {
     async fn events(
         &self, 
         ctx: &Context<'_>,
-        filter: Option<EventFilterInput>
+        _filter: Option<EventFilterInput>
     ) -> async_graphql::Result<Vec<GraphQLEvent>> {
         let _state = ctx.data::<AppState>()?;
         
@@ -197,9 +196,9 @@ impl QueryRoot {
     async fn contract_schemas(
         &self,
         ctx: &Context<'_>,
-        chain: Option<String>,
-        limit: Option<i32>,
-        offset: Option<i32>,
+        _chain: Option<String>,
+        _limit: Option<i32>,
+        _offset: Option<i32>,
     ) -> async_graphql::Result<Vec<ContractSchemaVersion>> {
         let _state = ctx.data::<AppState>()?;
         
@@ -364,9 +363,9 @@ impl MutationRoot {
     async fn delete_contract_schema(
         &self, 
         ctx: &Context<'_>, 
-        chain: String, 
-        address: String, 
-        version: String
+        _chain: String, 
+        _address: String, 
+        _version: String
     ) -> async_graphql::Result<DeleteSchemaResult> {
         let _state = ctx.data::<AppState>()?;
         

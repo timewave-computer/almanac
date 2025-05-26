@@ -127,6 +127,7 @@ pub struct MaterializedView {
 
 /// Manager for aggregation views
 pub struct AggregationManager {
+    #[allow(dead_code)]
     storage: BoxedStorage,
     materialized_views: HashMap<String, MaterializedView>,
 }

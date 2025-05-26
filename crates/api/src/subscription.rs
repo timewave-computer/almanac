@@ -4,13 +4,11 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::{
-    extract::{ConnectInfo, State},
-    response::Response,
     routing::get,
     Router,
 };
 use tokio::net::TcpListener;
-use tracing::{info, error};
+use tracing::info;
 
 use indexer_core::service::BoxedEventService;
 use indexer_core::{Result, Error};
@@ -32,7 +30,7 @@ pub async fn start_websocket_server(
     let auth_state = AuthState::new(jwt_secret);
     
     // Create connection manager for WebSocket connections
-    let connection_manager = Arc::new(ConnectionManager::new(
+    let _connection_manager = Arc::new(ConnectionManager::new(
         event_service.clone(),
         auth_state.clone(),
     ));

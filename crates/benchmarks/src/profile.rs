@@ -326,7 +326,7 @@ mod tests {
         // Verify the structure
         assert!(usage.cpu.percentage >= 0.0);
         assert!(usage.memory.rss > 0);
-        assert_eq!(usage.timestamp.date(), chrono::Utc::now().date());
+        assert_eq!(usage.timestamp.date_naive(), chrono::Utc::now().date_naive());
     }
     
     #[tokio::test]

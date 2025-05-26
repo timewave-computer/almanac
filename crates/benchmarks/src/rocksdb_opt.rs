@@ -588,7 +588,7 @@ mod tests {
     #[test]
     fn test_create_optimized_options() {
         let config = RocksDbOptConfig::default();
-        let options = create_optimized_options(&config);
+        let _options = create_optimized_options(&config);
         
         // Just make sure it creates options without error
         // Note: get_max_write_buffer_number method may not be available in this rocksdb version

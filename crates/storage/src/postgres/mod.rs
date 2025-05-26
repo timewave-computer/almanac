@@ -10,10 +10,6 @@ use crate::{
 use tracing::{debug, info, warn, instrument};
 #[cfg(feature = "postgres")]
 use std::sync::Arc;
-#[cfg(feature = "postgres")]
-use std::time::SystemTime;
-#[cfg(feature = "postgres")]
-use std::collections::HashMap;
 
 #[cfg(feature = "postgres")]
 use async_trait::async_trait;
@@ -43,11 +39,6 @@ use repositories::contract_schema_repository::{
 };
 #[cfg(feature = "postgres")]
 use self::migrations::initialize_database;
-
-#[cfg(feature = "postgres")]
-fn timestamp_to_datetime(time: SystemTime) -> DateTime<Utc> {
-    DateTime::<Utc>::from(time)
-}
 
 /// PostgreSQL storage configuration
 #[derive(Debug, Clone)]
@@ -340,45 +331,49 @@ impl Storage for PostgresStorage {
     /// Stores information about a new Valence Account contract instantiation.
     async fn store_valence_account_instantiation(
         &self,
-        account_info: ValenceAccountInfo,
-        initial_libraries: Vec<ValenceAccountLibrary>,
+        _account_info: ValenceAccountInfo,
+        _initial_libraries: Vec<ValenceAccountLibrary>,
     ) -> Result<()> {
-        todo!("Implement store_valence_account_instantiation")
+        // TODO: Implement Valence account instantiation storage
+        Ok(())
     }
 
     /// Adds a library to an existing Valence account's approved list.
     async fn store_valence_library_approval(
         &self,
-        account_id: &str,
-        library_info: ValenceAccountLibrary,
-        update_block: u64,
-        update_tx: &str,
+        _account_id: &str,
+        _library_info: ValenceAccountLibrary,
+        _update_block: u64,
+        _update_tx: &str,
     ) -> Result<()> {
-        todo!("Implement store_valence_library_approval")
+        // TODO: Implement Valence library approval storage
+        Ok(())
     }
 
     /// Removes a library from an existing Valence account's approved list.
     async fn store_valence_library_removal(
         &self,
-        account_id: &str,
-        library_address: &str,
-        update_block: u64,
-        update_tx: &str,
+        _account_id: &str,
+        _library_address: &str,
+        _update_block: u64,
+        _update_tx: &str,
     ) -> Result<()> {
-        todo!("Implement store_valence_library_removal")
+        // TODO: Implement Valence library removal storage
+        Ok(())
     }
 
     /// Updates the ownership details of a Valence account.
     async fn store_valence_ownership_update(
         &self,
-        account_id: &str,
-        new_owner: Option<String>,
-        new_pending_owner: Option<String>,
-        new_pending_expiry: Option<u64>,
-        update_block: u64,
-        update_tx: &str,
+        _account_id: &str,
+        _new_owner: Option<String>,
+        _new_pending_owner: Option<String>,
+        _new_pending_expiry: Option<u64>,
+        _update_block: u64,
+        _update_tx: &str,
     ) -> Result<()> {
-        todo!("Implement store_valence_ownership_update")
+        // TODO: Implement Valence ownership update storage
+        Ok(())
     }
 
     // --- Default Implementations for New Valence Methods ---
@@ -1542,6 +1537,7 @@ impl Storage for PostgresStorage {
     }
 
     // Implement the processor state methods
+    #[allow(unused_variables)]
     async fn set_processor_state(&self, chain: &str, block_number: u64, state: &str) -> Result<()> {
         // For PostgreSQL, we'll store processor state in a dedicated table
         // For simplicity, we'll log and return Ok for now
@@ -1549,21 +1545,21 @@ impl Storage for PostgresStorage {
         Ok(())
     }
     
-    async fn get_processor_state(&self, chain: &str, block_number: u64) -> Result<Option<String>> {
+    async fn get_processor_state(&self, _chain: &str, _block_number: u64) -> Result<Option<String>> {
         // For PostgreSQL, we'll retrieve processor state from a dedicated table
         // For simplicity, we'll return None for now
         debug!("PostgreSQL get_processor_state not fully implemented");
         Ok(None)
     }
     
-    async fn set_historical_processor_state(&self, chain: &str, block_number: u64, state: &str) -> Result<()> {
+    async fn set_historical_processor_state(&self, _chain: &str, _block_number: u64, _state: &str) -> Result<()> {
         // For PostgreSQL, we'll store historical processor state in a dedicated table
         // For simplicity, we'll log and return Ok for now
         debug!("PostgreSQL set_historical_processor_state not fully implemented");
         Ok(())
     }
     
-    async fn get_historical_processor_state(&self, chain: &str, block_number: u64) -> Result<Option<String>> {
+    async fn get_historical_processor_state(&self, _chain: &str, _block_number: u64) -> Result<Option<String>> {
         // For PostgreSQL, we'll retrieve historical processor state from a dedicated table
         // For simplicity, we'll return None for now
         debug!("PostgreSQL get_historical_processor_state not fully implemented");

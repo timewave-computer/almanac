@@ -2,10 +2,11 @@
 use std::path::Path;
 use std::time::SystemTime;
 
-use sqlx::{Pool, Postgres};
-use sqlx::migrate::{MigrateDatabase, Migrator};
-use sqlx::Row;
+use sqlx::{Pool, Postgres, migrate::{MigrateDatabase, Migrator}};
 use tracing::{info, warn};
+
+#[cfg(test)]
+use sqlx::Row;
 
 use indexer_core::{Result, Error};
 
@@ -36,6 +37,7 @@ pub mod schema {
     }
 
     /// In-memory schema registry implementation
+    #[derive(Debug, Default)]
     pub struct InMemorySchemaRegistry {
         schemas: HashMap<String, ContractSchema>,
     }
@@ -185,7 +187,7 @@ CREATE INDEX IF NOT EXISTS idx_test_table_name ON test_table(name);
             .fetch_one(&pool)
             .await?;
         
-        let exists: bool = result.try_get::<bool, _>("exists")?;
+        let exists: bool = result.get("exists");
         assert!(exists);
         
         // Clean up

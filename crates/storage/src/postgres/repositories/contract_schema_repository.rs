@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use sqlx::{Pool, Postgres};
-use tracing::{instrument, debug};
+use tracing::instrument;
 
 use indexer_core::Result;
 

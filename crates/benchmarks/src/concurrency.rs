@@ -594,7 +594,7 @@ pub fn create_concurrency_tuning_plan(
     // Calculate batch size based on data size and memory constraints
     let batch_size = if data_size_mb > 0 && memory_constraint_mb > 0 {
         let max_batches = memory_constraint_mb / data_size_mb.max(1);
-        (expected_workload / worker_count / max_batches.max(1)).max(1).min(1000)
+        (expected_workload / worker_count / max_batches.max(1)).clamp(1, 1000)
     } else {
         100
     };

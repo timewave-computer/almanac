@@ -1,6 +1,5 @@
 /// PostgreSQL repository module
 /// Contains implementations for various data repositories
-
 // Re-export repositories
 pub mod event_repository;
 pub mod contract_schema_repository;

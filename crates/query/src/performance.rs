@@ -199,7 +199,7 @@ impl<T> PaginatedResult<T> {
     /// Check if this is the last page
     pub fn is_last_page(&self) -> bool {
         self.next_cursor.is_none() || 
-        self.next_cursor.as_ref().map_or(false, |c| c.is_last)
+        self.next_cursor.as_ref().is_some_and(|c| c.is_last)
     }
 }
 

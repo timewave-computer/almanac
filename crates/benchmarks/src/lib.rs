@@ -348,7 +348,7 @@ impl BenchmarkReport {
     /// Load a report from a file
     pub fn load(path: &Path) -> Result<Self, Error> {
         let json = std::fs::read_to_string(path)
-            .map_err(|e| Error::IO(e))?;
+            .map_err(Error::IO)?;
         
         let report: Self = serde_json::from_str(&json)
             .map_err(|e| Error::generic(format!("Failed to deserialize report: {}", e)))?;

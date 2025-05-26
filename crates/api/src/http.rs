@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::{
     extract::{Path, Query, State, ConnectInfo},
-    http::{StatusCode, HeaderMap, header},
+    http::StatusCode,
     middleware::{self, Next},
     response::{IntoResponse, Json, Response},
     routing::{get, post},
@@ -16,9 +16,7 @@ use axum::http::Request;
 use base64::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use tokio::net::TcpListener;
-use tracing::{debug, error, info, warn};
-use uuid::Uuid;
+use tracing::{debug, info};
 
 use indexer_core::{Error, Result, BlockStatus};
 use indexer_core::event::Event;
@@ -27,8 +25,8 @@ use indexer_core::types::{
     ChainId, EventFilter as CoreEventFilter, TextSearchConfig, TextSearchMode,
     AggregationConfig, AggregationResult, AggregationFunction, TimePeriod
 };
-use indexer_core::security::{RateLimiter, ConnectionManager};
-use crate::{ContractSchemaRegistry, auth::{AuthState, OptionalUser}};
+use indexer_core::security::RateLimiter;
+use crate::{ContractSchemaRegistry, auth::AuthState};
 
 /// HTTP server state
 #[derive(Clone)]
@@ -219,7 +217,7 @@ impl From<Error> for ApiError {
 
 /// Convert core event to API response
 fn event_to_response(event: &dyn Event) -> EventResponse {
-    let mut attributes = HashMap::new();
+    let attributes = HashMap::new();
     
     // Extract basic attributes from the event
     // This is a simplified implementation - in practice, you'd want to 
@@ -393,7 +391,7 @@ pub async fn start_http_server(
     axum::Server::bind(&addr)
         .serve(app.into_make_service_with_connect_info::<SocketAddr>())
         .await
-        .map_err(|e| Error::generic(&format!("HTTP server error: {}", e)))?;
+        .map_err(|e| Error::generic(format!("HTTP server error: {}", e)))?;
 
     Ok(())
 }
@@ -788,7 +786,7 @@ impl TryFrom<AggregationRequest> for AggregationConfig {
         
         // Parse time range
         let time_range = if let (Some(start_str), Some(end_str)) = (request.start_time, request.end_time) {
-            use std::time::{SystemTime, UNIX_EPOCH};
+            use std::time::UNIX_EPOCH;
             
             // For simplicity, parse as Unix timestamps
             let start_timestamp = start_str.parse::<u64>()

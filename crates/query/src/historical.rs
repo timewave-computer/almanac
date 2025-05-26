@@ -87,6 +87,7 @@ pub trait HistoricalStateQuerier {
 
 /// Implementation of historical state querier using PostgreSQL and RocksDB
 pub struct HistoricalState {
+    #[allow(dead_code)]
     storage: BoxedStorage,
 }
 
@@ -97,6 +98,7 @@ impl HistoricalState {
     }
     
     /// Find the closest block to a timestamp
+    #[allow(dead_code)]
     async fn find_block_at_timestamp(
         &self,
         _chain_id: &ChainId,
@@ -108,6 +110,7 @@ impl HistoricalState {
     }
     
     /// Get historical state from storage
+    #[allow(dead_code)]
     async fn get_historical_state<T: Serialize + for<'de> Deserialize<'de>>(
         &self,
         _chain_id: &ChainId,

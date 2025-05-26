@@ -4,7 +4,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use tempfile::TempDir;
-use rand::{thread_rng, Rng, seq::SliceRandom};
+use rand::{thread_rng, seq::SliceRandom};
 use indexer_core::Result;
 
 use crate::rocks::{RocksStorage, RocksConfig, Key};

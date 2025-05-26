@@ -84,6 +84,7 @@ impl PostgresEventRepository {
     }
     
     /// Ensure the block for this event exists in the database
+    #[allow(dead_code)]
     async fn ensure_block_exists(&self, event: &dyn Event) -> Result<()> {
         sqlx::query(
             r#"
