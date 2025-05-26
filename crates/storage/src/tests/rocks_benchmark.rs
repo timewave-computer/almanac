@@ -4,8 +4,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use tempfile::TempDir;
-use rand::{thread_rng, Rng};
-use indexer_pipeline::Result;
+use rand::{thread_rng, seq::SliceRandom};
+use indexer_core::Result;
 
 use crate::rocks::{RocksStorage, RocksConfig, Key};
 use crate::tests::common::{create_mock_event, create_mock_events, assert_duration_less_than};
@@ -105,12 +105,10 @@ async fn benchmark_read_performance() -> Result<()> {
     println!("Sequential reads: {} events, Duration: {:?}, Ops/sec: {:.2}", 
              total_events, duration, ops_per_sec);
              
-    // Test random reads
+    // Test random reads - now using shuffle instead of sort_by
     let mut random_ids = event_ids.clone();
-    random_ids.sort_by(|_, _| {
-        let mut rng = thread_rng();
-        if rng.gen() { std::cmp::Ordering::Less } else { std::cmp::Ordering::Greater }
-    });
+    let mut rng = thread_rng();
+    random_ids.shuffle(&mut rng);
     
     let start = Instant::now();
     for id in &random_ids {
@@ -160,11 +158,8 @@ async fn test_transaction_isolation() -> Result<()> {
             // Wait for a short time to ensure the main thread has started its operation
             tokio::time::sleep(Duration::from_millis(10)).await;
             
-            // Try to read the event
+            // Try to read the event using the public get method
             let key = Key::new("events", "event1");
-            
-            
-            // Return the result - it should either be None or a complete event, never partial
             storage_clone.get(&key)
         })
     });
@@ -176,19 +171,21 @@ async fn test_transaction_isolation() -> Result<()> {
     let read_result = handle.join().unwrap()?;
     
     // The result should be either None or a complete value, never partial
-    if let Some(value) = read_result {
-        // If a value was read, it should be a complete JSON string
-        let event_data: serde_json::Value = serde_json::from_slice(&value)?;
+    if let Some(bytes) = read_result {
+        // Verify that we can deserialize the data, which means it's complete
+        let event_data: Result<crate::rocks::EventData> = bincode::deserialize(&bytes)
+            .map_err(|e| indexer_core::Error::generic(format!("Failed to deserialize event data: {}", e)));
+        
+        let event_data = event_data?;
         
         // Verify the event data has all expected fields
-        assert!(event_data.get("id").is_some(), "Event is missing id field");
-        assert!(event_data.get("chain").is_some(), "Event is missing chain field");
-        assert!(event_data.get("block_number").is_some(), "Event is missing block_number field");
-        assert!(event_data.get("block_hash").is_some(), "Event is missing block_hash field");
-        assert!(event_data.get("tx_hash").is_some(), "Event is missing tx_hash field");
-        assert!(event_data.get("timestamp").is_some(), "Event is missing timestamp field");
-        assert!(event_data.get("event_type").is_some(), "Event is missing event_type field");
-        assert!(event_data.get("raw_data").is_some(), "Event is missing raw_data field");
+        assert_eq!(event_data.id, "event1", "Event has incorrect id");
+        assert_eq!(event_data.chain, chain, "Event has incorrect chain");
+        assert_eq!(event_data.block_number, 100, "Event has incorrect block number");
+        assert!(event_data.block_hash.starts_with("block_hash_"), "Event has incorrect block hash format");
+        assert!(event_data.tx_hash.starts_with("tx_hash_"), "Event has incorrect tx hash format");
+        assert!(event_data.event_type.len() > 0, "Event is missing event type");
+        assert!(event_data.raw_data.len() > 0, "Event is missing raw data");
     }
     
     println!("Transaction isolation test passed: concurrent read returned valid data");

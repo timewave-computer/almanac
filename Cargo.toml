@@ -1,42 +1,18 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/api",
     "crates/core",
-    "crates/cosmos",
-    "crates/ethereum",
     "crates/storage",
-    "crates/pipeline",
+    "crates/ethereum",
+    "crates/cosmos",
+    "crates/api",
+    "crates/tools",
+    "crates/benchmarks",
+    "crates/query",
+    "crates/causality",
 ]
 
-[package]
-name = "almanac"
-version = "0.1.0"
-edition = "2021"
-authors = ["Timewave"]
-repository = "https://github.com/timewave-computer/almanac"
-license = "MIT OR Apache-2.0"
 
-[dependencies]
-indexer-pipeline = { path = "crates/pipeline" }
-indexer-core = { path = "crates/core" }
-indexer-ethereum = { path = "crates/ethereum" }
-indexer-cosmos = { path = "crates/cosmos", features = ["contracts"] }
-indexer-storage = { path = "crates/storage" }
-indexer-api = { path = "crates/api" }
-tokio = { workspace = true, features = ["full"] }
-tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
-clap = { workspace = true, features = ["derive"] }
-anyhow = { workspace = true }
-async-trait = { workspace = true }
-
-# Ethereum interactions
-ethers = { workspace = true, features = ["ws", "rustls"] }
-eyre = "0.6.8"
-serde_json = { workspace = true }
-hex = { workspace = true }
-serde = { workspace = true }
 
 [workspace.package]
 version = "0.1.0"
@@ -64,13 +40,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 thiserror = "1.0.50"
 anyhow = "1.0"
 
-# Ethereum specific
-ethers = { version = "2.0", features = ["ws", "rustls"] }
-reth = { version = "0.1.0-alpha.6", default-features = false }
-
-# Cosmos specific
-cosmrs = { version = "0.14", features = ["rpc"] }
-
 # Storage
 rocksdb = "0.21"
 sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "macros", "chrono", "uuid", "json"] }
@@ -90,6 +59,7 @@ chrono = { version = "0.4", features = ["serde"] }
 num_cpus = "1.16.0"
 uuid = { version = "1.4", features = ["v4", "serde"] }
 bytes = "1.4"
+base64 = "0.22"
 
 [profile.release]
 opt-level = 3
@@ -100,6 +70,4 @@ codegen-units = 1
 opt-level = 0
 debug = true
 
-[[bin]]
-name = "reth_client"
-path = "src/tools/reth_client.rs" 
+ 

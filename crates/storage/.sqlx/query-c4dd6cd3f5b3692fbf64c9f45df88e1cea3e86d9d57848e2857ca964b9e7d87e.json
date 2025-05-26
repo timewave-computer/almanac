@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO valence_account_executions (\n                chain_id,\n                account_id,\n                executor_address,\n                payload,\n                raw_msgs,\n                tx_hash,\n                block_number,\n                message_index,\n                executed_at,\n                correlated_event_ids\n            )\n            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Varchar",
+        "Varchar",
+        "Varchar",
+        "Text",
+        "Jsonb",
+        "Varchar",
+        "Int8",
+        "Int4",
+        "Timestamptz",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c4dd6cd3f5b3692fbf64c9f45df88e1cea3e86d9d57848e2857ca964b9e7d87e"
+}

@@ -1,0 +1,42 @@
+[environment]
+environment = "Development"
+
+[database]
+postgres_url = "postgresql://almanac:almanac@localhost:5432/almanac_dev"
+max_connections = 10
+connection_timeout = 30
+rocks_path = "./data/rocks"
+
+[api]
+host = "127.0.0.1"
+port = 8080
+auth_enabled = false
+cors_enabled = true
+rate_limit = 1000
+request_timeout = 30
+
+[chains.ethereum]
+chain_id = "1"
+rpc_url = "https://mainnet.infura.io/v3/YOUR_PROJECT_ID"
+ws_url = "wss://mainnet.infura.io/ws/v3/YOUR_PROJECT_ID"
+start_block = 18000000
+confirmation_blocks = 12
+
+[chains.polygon]
+chain_id = "137"
+rpc_url = "https://polygon-mainnet.infura.io/v3/YOUR_PROJECT_ID"
+start_block = 50000000
+confirmation_blocks = 20
+
+[logging]
+level = "info"
+file = "./logs/almanac.log"
+
+[monitoring]
+metrics_enabled = true
+metrics_host = "127.0.0.1"
+metrics_port = 9090
+
+[security]
+jwt_secret = "your-jwt-secret-key"
+api_key = "your-api-key"

@@ -2,7 +2,7 @@
 use std::time::{Duration, Instant};
 use sqlx::{Pool, Postgres, postgres::PgPoolOptions};
 
-use indexer_common::{Result, BlockStatus, Error};
+use indexer_core::{Result, BlockStatus, Error};
 use indexer_core::event::Event;
 
 use crate::postgres::{PostgresStorage, PostgresConfig};

@@ -39,7 +39,7 @@ wasmd-node
 
 ```bash
 # Start the indexer in a separate terminal
-cargo run --bin indexer -- --config config/test_config.toml
+cargo run --bin almanac -- --config config/test_config.toml
 ```
 
 ## Test Components

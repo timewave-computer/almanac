@@ -1,0 +1,16 @@
+[package]
+name = "indexer-query"
+version = "0.1.0"
+edition = "2021"
+description = "Query utilities for Almanac indexer"
+
+[dependencies]
+indexer-storage = { path = "../storage" }
+indexer-core = { path = "../core" }
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+anyhow = "1.0"
+futures = "0.3"
+chrono = "0.4" 

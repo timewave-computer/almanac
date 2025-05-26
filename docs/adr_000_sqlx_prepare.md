@@ -1,8 +1,8 @@
-# ADR: Use `sqlx` with Trait-Based Query Interface and SQLX Schema Validation
+# ADR: Use SQLx with Macro-Based Query Interface and Compile-Time Validation
 
 ## Status
 
-Accepted
+Accepted (Revised)
 
 ## Context
 
@@ -10,75 +10,133 @@ Our cross-chain indexer requires high-performance and type-safe access to Postgr
 
 - Supports async execution for concurrency
 - Enables compile-time type checking of query results
-- Avoids the use of macros to improve transparency and reduce complexity
-- Allows separation of interface from implementation to facilitate testing and modularity
-- Provides low-level control without sacrificing maintainability
+- Uses SQLx macros for automatic type inference and validation
+- Provides excellent developer experience with minimal boilerplate
 - Validates SQL queries against the actual database schema to catch integration issues early
+- Allows for easy testing and development workflows
 
 ## Decision
 
-We will use the [`sqlx`](https://github.com/launchbadge/sqlx) crate to interact with PostgreSQL. We will:
+We will use the [`sqlx`](https://github.com/launchbadge/sqlx) crate to interact with PostgreSQL with a **macro-first approach**. We will:
 
-1. Use plain `sqlx::query_as::<_, T>()` and `sqlx::query()` calls with `.bind(...)` and `.fetch_*()` methods.
-2. Avoid macro-based query definitions such as `query!()` or `query_as!()` to retain transparency and control.
-3. Implement `sqlx::FromRow` manually for application data models as needed.
-4. Define domain-specific traits (e.g., `AccountRepository`, `ProcessorRepository`) that encapsulate query methods, allowing for mockable, testable abstractions.
-5. Integrate **compile-time SQL validation** using `sqlx prepare`:
-   - This tool will be used to statically validate SQL queries against a live database and cache a snapshot of the schema and query result types.
-   - This snapshot will be committed as `.sqlx/sqlx-data.json` and used in builds with `SQLX_OFFLINE=true` to enable type-checked compilation without requiring a live database.
+1. **Use SQLx macros** (`sqlx::query!()`, `sqlx::query_as!()`, and `sqlx::query_scalar!()`) as the primary interface for database queries.
+2. **Automatic type inference**: Let SQLx macros automatically infer result types from the database schema at compile time.
+3. **Minimal manual implementations**: Avoid manual `FromRow` implementations where macros can handle the mapping automatically.
+4. **Repository pattern**: Define domain-specific repository traits (e.g., `AccountRepository`, `ProcessorRepository`) that use SQLx macros internally.
+5. **Compile-time validation**: SQLx macros will validate SQL queries against a live database during development and use cached metadata for CI/offline builds.
 
-## Compile-Time Validation Strategy
+## Development Workflow
 
-To restore query safety without using macros, we will adopt the `sqlx prepare` workflow:
+### With Live Database (Development)
 
-### Development and Schema Change Workflow
+During development with a live database available:
 
 1. Start a local database via Nix
-2. Apply all migrations using `refinery`, `sqlx migrate`, or similar.
-3. Run:
-   ```bash
-   DATABASE_URL=postgres://user:pass@localhost/db sqlx prepare
+2. Apply all migrations using `sqlx migrate` or similar
+3. Write queries using SQLx macros:
+   ```rust
+   let users = sqlx::query!(
+       "SELECT id, name, email FROM users WHERE active = $1",
+       true
+   )
+   .fetch_all(&pool)
+   .await?;
+   
+   // users[0].id, users[0].name, users[0].email are automatically typed
+   ```
+4. SQLx macros will connect to the database at compile time to validate queries and infer types
 
-   This:
-   - Connects to the DB
-   - Validates all SQL queries in the codebase
-   - Generates .sqlx/sqlx-data.json containing schema + query metadata
+### Offline Mode (CI/Production)
 
-4. Commit .sqlx/sqlx-data.json into version control.
+For CI and environments without a live database:
 
-All subsequent builds (local or CI) will pass SQLX_OFFLINE=true to use this cached metadata instead of hitting the database.
+1. Use `SQLX_OFFLINE=true` environment variable
+2. SQLx will use cached metadata from the `.sqlx/` directory
+3. Run `cargo sqlx prepare` after schema changes to update the metadata cache
 
-## CI Integration
+## Example Usage
 
-In CI, we will:
+```rust
+// Simple query with automatic type inference
+let user_count = sqlx::query_scalar!(
+    "SELECT COUNT(*) FROM users WHERE active = $1",
+    true
+)
+.fetch_one(&pool)
+.await?;
 
-- Set SQLX_OFFLINE=true in the environment
-- Ensure .sqlx/sqlx-data.json is present
-- Compile the code as normal
+// Query with automatic struct mapping
+let users = sqlx::query!(
+    "SELECT id, name, email, created_at FROM users WHERE active = $1",
+    true
+)
+.fetch_all(&pool)
+.await?;
 
-This allows all query validation to be type-checked in CI, without starting a database.
+// Each user has fields: id, name, email, created_at with correct types
 
-Optionally, we may run sqlx prepare --check as a CI step to enforce that .sqlx/sqlx-data.json is up to date with the codebase:
+// Custom return type when needed
+#[derive(sqlx::FromRow)]
+struct UserSummary {
+    id: i64,
+    name: String,
+    user_count: i64,
+}
 
-`DATABASE_URL=postgres://user:pass@localhost/db sqlx prepare --check`
-
-This prevents stale .sqlx metadata from masking query errors.
+let summaries = sqlx::query_as!(
+    UserSummary,
+    "SELECT u.id, u.name, COUNT(p.id) as user_count 
+     FROM users u LEFT JOIN posts p ON u.id = p.user_id 
+     WHERE u.active = $1 
+     GROUP BY u.id, u.name",
+    true
+)
+.fetch_all(&pool)
+.await?;
+```
 
 ## Consequences
 
-- We retain full control over SQL structure and query behavior.
-- SQL queries are validated against the real schema using sqlx prepare.
-- Type mismatches, invalid columns, or incorrect bindings are caught at build time — even without macros.
-- Adding a new SQL query or changing a schema requires a sqlx prepare step to regenerate the metadata.
+### Benefits
 
-Developers must be familiar with the sqlx prepare flow and ensure .sqlx/sqlx-data.json stays in sync with the schema.
+- **Zero boilerplate**: No manual `FromRow` implementations needed for simple queries
+- **Compile-time safety**: SQL syntax errors, type mismatches, and schema inconsistencies caught at compile time
+- **Automatic type inference**: Result types automatically inferred from database schema
+- **Excellent IDE support**: Full autocomplete and type checking in IDEs
+- **Minimal maintenance**: Schema changes automatically reflected in query types
+- **Performance**: No runtime query parsing or type conversion overhead
+
+### Trade-offs
+
+- **Database dependency**: Compilation requires either a live database or cached metadata
+- **Compile-time overhead**: Initial compilation may be slower due to database queries
+- **Limited dynamic queries**: Complex dynamic query building requires fallback to `sqlx::query()` with manual typing
+
+### Migration Strategy
+
+For existing code using `sqlx::query()` without macros:
+
+1. Replace with appropriate macro (`query!`, `query_as!`, or `query_scalar!`)
+2. Remove manual `FromRow` implementations where macros handle the mapping
+3. Update repository implementations to use macros
+4. Run `cargo sqlx prepare` to generate metadata for the new queries
+
+## CI Integration
+
+In CI pipelines:
+
+1. Set `SQLX_OFFLINE=true` environment variable
+2. Ensure `.sqlx/` metadata directory is committed and up-to-date
+3. Optionally run `cargo sqlx prepare --check` to verify metadata is current
+4. Compile and test as normal
 
 ## Alternatives Considered
 
-- Diesel: Rejected due to lack of native async support and reliance on code generation macros.
-- SeaORM: Rejected due to unnecessary abstraction and runtime-based query construction.
-- tokio-postgres: Rejected due to verbosity and lack of integration with typed query result validation.
+- **Manual SQLx usage**: Rejected due to excessive boilerplate and lack of compile-time validation
+- **Diesel**: Rejected due to lack of native async support and complex schema management
+- **SeaORM**: Rejected due to unnecessary abstraction and runtime overhead
+- **tokio-postgres**: Rejected due to lack of compile-time safety
 
 ## Related Decisions
 
-We will use refinery for database migrations, enabling explicit, versioned SQL migration files and compatibility with sqlx prepare.
+We will continue using `sqlx migrate` for database migrations, which integrates seamlessly with SQLx macros and compile-time validation.

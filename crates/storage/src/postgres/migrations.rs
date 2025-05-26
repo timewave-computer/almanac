@@ -2,11 +2,67 @@
 use std::path::Path;
 use std::time::SystemTime;
 
-use sqlx::{Pool, Postgres};
-use sqlx::migrate::{MigrateDatabase, Migrator};
+use sqlx::{Pool, Postgres, migrate::{MigrateDatabase, Migrator}};
 use tracing::{info, warn};
 
+#[cfg(test)]
+use sqlx::Row;
+
 use indexer_core::{Result, Error};
+
+/// Schema module with contract schema types
+pub mod schema {
+    use std::collections::HashMap;
+
+    /// Registry for contract schemas
+    pub trait ContractSchemaRegistry {
+        /// Get schema for a contract
+        fn get_schema(&self, chain: &str, address: &str) -> Option<&ContractSchema>;
+        
+        /// Store schema for a contract
+        fn store_schema(&mut self, chain: &str, address: &str, schema: ContractSchema);
+    }
+
+    /// Contract ABI schema
+    #[derive(Debug, Clone)]
+    pub struct ContractSchema {
+        /// The contract chain
+        pub chain: String,
+        
+        /// The contract address
+        pub address: String,
+        
+        /// Raw schema data
+        pub schema_data: Vec<u8>,
+    }
+
+    /// In-memory schema registry implementation
+    #[derive(Debug, Default)]
+    pub struct InMemorySchemaRegistry {
+        schemas: HashMap<String, ContractSchema>,
+    }
+
+    impl InMemorySchemaRegistry {
+        /// Create a new in-memory schema registry
+        pub fn new() -> Self {
+            Self {
+                schemas: HashMap::new(),
+            }
+        }
+    }
+
+    impl ContractSchemaRegistry for InMemorySchemaRegistry {
+        fn get_schema(&self, chain: &str, address: &str) -> Option<&ContractSchema> {
+            let key = format!("{}:{}", chain, address);
+            self.schemas.get(&key)
+        }
+        
+        fn store_schema(&mut self, chain: &str, address: &str, schema: ContractSchema) {
+            let key = format!("{}:{}", chain, address);
+            self.schemas.insert(key, schema);
+        }
+    }
+}
 
 /// Migration manager for PostgreSQL
 pub struct PostgresMigrationManager {
@@ -74,6 +130,12 @@ impl PostgresMigrationManager {
     }
 }
 
+/// Initialize the database with migrations
+pub async fn initialize_database(connection_string: &str, migrations_path: &str) -> Result<()> {
+    let manager = PostgresMigrationManager::new(connection_string, migrations_path);
+    manager.migrate().await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -121,14 +183,15 @@ CREATE INDEX IF NOT EXISTS idx_test_table_name ON test_table(name);
         let pool = Pool::<Postgres>::connect(connection_string).await?;
         
         // Check if the table exists
-        let result = sqlx::query!("SELECT EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'test_table') as exists")
+        let result = sqlx::query("SELECT EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'test_table') as exists")
             .fetch_one(&pool)
             .await?;
         
-        assert!(result.exists.unwrap_or(false));
+        let exists: bool = result.get("exists");
+        assert!(exists);
         
         // Clean up
-        sqlx::query!("DROP TABLE IF EXISTS test_table")
+        sqlx::query("DROP TABLE IF EXISTS test_table")
             .execute(&pool)
             .await?;
         

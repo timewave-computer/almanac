@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::time::SystemTime;
 
 use async_trait::async_trait;
-use indexer_common::{Error, Result, BlockStatus};
+use indexer_core::{Error, Result, BlockStatus};
 use indexer_core::event::Event;
 use serde::{Serialize, Deserialize};
 use tracing::debug;
@@ -12,6 +12,12 @@ use tracing::debug;
 use crate::{
     Storage, EventFilter, ValenceAccountInfo, ValenceAccountLibrary, 
     ValenceAccountExecution, ValenceAccountState
+};
+
+use indexer_core::{
+    types::{EventFilter, SortField, SortDirection},
+    aggregation::{Aggregator, DefaultAggregator},
+    types::{AggregationConfig, AggregationResult},
 };
 
 /// In-memory storage implementation suitable for examples
@@ -191,37 +197,7 @@ impl Storage for MemoryStorage {
         
         for filter in filters {
             let mut matching_events: Vec<Box<dyn Event>> = events.iter()
-                .filter(|e| {
-                    // Apply chain filter
-                    if let Some(chain) = &filter.chain {
-                        if &e.chain != chain {
-                            return false;
-                        }
-                    }
-                    
-                    // Apply block range filter
-                    if let Some((min_block, max_block)) = filter.block_range {
-                        if e.block_number < min_block || e.block_number > max_block {
-                            return false;
-                        }
-                    }
-                    
-                    // Apply time range filter
-                    if let Some((min_time, max_time)) = filter.time_range {
-                        if e.timestamp < min_time || e.timestamp > max_time {
-                            return false;
-                        }
-                    }
-                    
-                    // Apply event type filter
-                    if let Some(event_types) = &filter.event_types {
-                        if !event_types.contains(&e.event_type) {
-                            return false;
-                        }
-                    }
-                    
-                    true
-                })
+                .filter(|e| filter.matches_event(e.as_ref()))
                 .map(|e| {
                     let memory_event = MemoryEvent {
                         id: e.id.clone(),
@@ -238,15 +214,52 @@ impl Storage for MemoryStorage {
                 })
                 .collect();
             
+            // If text search is enabled, apply it with proper scoring
+            if let (Some(text_query), Some(text_config)) = (&filter.text_query, &filter.text_search_config) {
+                use indexer_core::text_search::{DefaultTextSearcher, TextSearcher};
+                
+                let searcher = DefaultTextSearcher::new();
+                if let Ok(search_results) = searcher.search(text_query, text_config, matching_events).await {
+                    // Extract events from search results (sorted by score)
+                    matching_events = search_results.into_iter().map(|r| r.event).collect();
+                } else {
+                    // If text search fails, continue with original results
+                    debug!("Text search failed, using original filter results");
+                }
+            }
+            
+            // Apply sorting if specified
+            if let (Some(sort_field), Some(sort_direction)) = (&filter.sort_by, &filter.sort_direction) {
+                matching_events.sort_by(|a, b| {
+                    let ordering = match sort_field {
+                        indexer_core::types::SortField::BlockNumber => a.block_number().cmp(&b.block_number()),
+                        indexer_core::types::SortField::Timestamp => a.timestamp().cmp(&b.timestamp()),
+                        indexer_core::types::SortField::EventType => a.event_type().cmp(b.event_type()),
+                        indexer_core::types::SortField::Chain => a.chain().cmp(b.chain()),
+                        indexer_core::types::SortField::TxHash => a.tx_hash().cmp(b.tx_hash()),
+                        indexer_core::types::SortField::Attribute(_attr) => {
+                            // For attributes, we'd need access to event data
+                            // This is a placeholder - would need event data parsing
+                            std::cmp::Ordering::Equal
+                        }
+                    };
+                    
+                    match sort_direction {
+                        indexer_core::types::SortDirection::Ascending => ordering,
+                        indexer_core::types::SortDirection::Descending => ordering.reverse(),
+                    }
+                });
+            }
+            
             // Apply offset and limit
             if let Some(offset) = filter.offset {
                 matching_events = matching_events.into_iter().skip(offset).collect();
             }
-            
+
             if let Some(limit) = filter.limit {
                 matching_events = matching_events.into_iter().take(limit).collect();
             }
-            
+
             results.extend(matching_events);
         }
         
@@ -747,5 +760,30 @@ impl Storage for MemoryStorage {
     ) -> Result<Vec<ValenceLibraryUsage>> {
         // Simplified implementation for examples
         Ok(Vec::new())
+    }
+
+    /// Get aggregated event data
+    pub async fn aggregate_events(&self, config: AggregationConfig) -> Result<Vec<AggregationResult>> {
+        let events = self.events.read().unwrap();
+        
+        // Convert stored events to Event trait objects
+        let event_objects: Vec<Box<dyn Event>> = events.iter()
+            .map(|e| {
+                let memory_event = MemoryEvent {
+                    id: e.id.clone(),
+                    chain: e.chain.clone(),
+                    block_number: e.block_number,
+                    block_hash: e.block_hash.clone(),
+                    tx_hash: e.tx_hash.clone(),
+                    timestamp: std::time::UNIX_EPOCH + std::time::Duration::from_secs(e.timestamp),
+                    event_type: e.event_type.clone(),
+                    raw_data: e.raw_data.clone(),
+                };
+                Box::new(memory_event) as Box<dyn Event>
+            })
+            .collect();
+        
+        let aggregator = DefaultAggregator::new();
+        aggregator.aggregate(event_objects, &config).await
     }
 } 

@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM blocks WHERE chain = $1 AND number >= $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5a989da93afa67d437c38ecfc07a82ab6d8f302042be34ccbcdc4cec62cdb2dd"
+}

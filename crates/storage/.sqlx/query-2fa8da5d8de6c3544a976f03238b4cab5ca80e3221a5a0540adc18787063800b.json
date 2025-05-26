@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n             INSERT INTO blocks (chain, number, hash, timestamp, status)\n             VALUES ($1, $2, $3, $4, $5)\n             ON CONFLICT (chain, number) DO UPDATE SET\n                 status = EXCLUDED.status,\n                 hash = EXCLUDED.hash, -- Keep hash updated\n                 timestamp = EXCLUDED.timestamp; -- Keep timestamp updated\n             ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Varchar",
+        "Int8",
+        "Varchar",
+        "Int8",
+        "Varchar"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "2fa8da5d8de6c3544a976f03238b4cab5ca80e3221a5a0540adc18787063800b"
+}

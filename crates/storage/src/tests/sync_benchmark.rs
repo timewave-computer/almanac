@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 use std::sync::Arc;
 use std::thread;
 
-use indexer_common::{Result, BlockStatus, Error};
+use indexer_core::{Result, BlockStatus, Error};
 use indexer_core::event::Event;
 use tempfile::TempDir;
 

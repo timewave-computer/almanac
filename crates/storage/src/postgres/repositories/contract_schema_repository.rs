@@ -1,27 +1,8 @@
 use async_trait::async_trait;
-use sqlx::{Pool, Postgres, FromRow};
-use tracing::{instrument, debug};
+use sqlx::{Pool, Postgres};
+use tracing::instrument;
 
-use indexer_pipeline::Result;
-
-/// Record for a contract schema in the database
-#[derive(Debug, FromRow)]
-pub struct ContractSchemaRecord {
-    /// Chain ID
-    pub chain: String,
-    
-    /// Contract address
-    pub address: String,
-    
-    /// Schema data
-    pub schema_data: Vec<u8>,
-    
-    /// Created at timestamp
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    
-    /// Updated at timestamp
-    pub updated_at: chrono::DateTime<chrono::Utc>,
-}
+use indexer_core::Result;
 
 /// Repository for managing contract schemas
 #[async_trait]
@@ -48,63 +29,45 @@ impl PostgresContractSchemaRepository {
 
 #[async_trait]
 impl ContractSchemaRepository for PostgresContractSchemaRepository {
-    #[instrument(skip(self, schema_data), level = "debug")]
+    #[instrument(skip(self, schema_data), fields(chain = %chain, address = %address))]
     async fn store_schema(&self, chain: &str, address: &str, schema_data: &[u8]) -> Result<()> {
-        // For benchmarks, we'll bypass database access since the benchmarks don't rely on this
-        debug!("store_schema called for chain: {}, address: {}", chain, address);
-        
-        // Return success without actually accessing the database
-        // This is temporary to allow benchmarks to run
-        return Ok(());
-        
-        // Original implementation commented out
-        /*
-        // Store the contract schema in the database
-        sqlx::query!(
+        // Use basic SQLx query to store schema data as BYTEA
+        sqlx::query(
             r#"
-            INSERT INTO contract_schemas (chain, address, name, schema_data)
-            VALUES ($1, $2, $3, $4)
-            ON CONFLICT (chain, address) DO UPDATE SET
-                schema_data = EXCLUDED.schema_data
-            "#,
-            chain,
-            address,
-            format!("{}_{}", chain, address),  // Default name
-            schema_data
+            INSERT INTO contract_schemas (chain, address, schema_data)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (chain, address) 
+            DO UPDATE SET 
+                schema_data = EXCLUDED.schema_data,
+                updated_at = NOW()
+            "#
         )
+        .bind(chain)
+        .bind(address)
+        .bind(schema_data)
         .execute(&self.pool)
         .await?;
         
         Ok(())
-        */
     }
     
-    /// Get a contract schema
+    #[instrument(skip(self), fields(chain = %chain, address = %address))]
     async fn get_schema(&self, chain: &str, address: &str) -> Result<Option<Vec<u8>>> {
-        // For benchmarks, we'll bypass database access since the benchmarks don't rely on this
-        debug!("get_schema called for chain: {}, address: {}", chain, address);
+        use sqlx::Row;
         
-        // Return empty result without actually accessing the database
-        // This is temporary to allow benchmarks to run
-        return Ok(None);
-        
-        // Original implementation commented out
-        /*
-        let result = sqlx::query!(
+        // Use manual row mapping to get schema data as BYTEA
+        let row = sqlx::query(
             r#"
             SELECT schema_data
             FROM contract_schemas
             WHERE chain = $1 AND address = $2
-            "#,
-            chain,
-            address
+            "#
         )
+        .bind(chain)
+        .bind(address)
         .fetch_optional(&self.pool)
         .await?;
         
-        let schema_data = result.map(|row| row.schema_data.to_vec());
-        
-        Ok(schema_data)
-        */
+        Ok(row.map(|r| r.get("schema_data")))
     }
 } 

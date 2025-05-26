@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO blocks (chain, number, hash, timestamp)\n            VALUES ($1, $2, $3, $4)\n            ON CONFLICT (chain, number) DO NOTHING\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Varchar",
+        "Int8",
+        "Varchar",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "40621037c906ac1ccae3a01a3ac84b5c5d2bc551f7f157659fd8f1564990fbe9"
+}

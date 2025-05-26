@@ -1,0 +1,53 @@
+[package]
+name = "indexer-causality"
+version = "0.1.0"
+edition = "2021"
+description = "SMT-based causality indexing for the Almanac cross-chain indexer"
+authors = ["Timewave Labs"]
+rust-version = "1.70.0"
+license = "Apache-2.0"
+
+[lib]
+
+[features]
+default = ["std", "serde"]
+std = []
+serde = ["dep:serde", "serde/derive", "dep:serde_json"]
+
+[dependencies]
+# Core indexer dependencies
+indexer-core = { path = "../core" }
+indexer-storage = { path = "../storage" }
+
+# Error handling
+anyhow = "1.0.75"
+thiserror = "1.0.50"
+
+# Async utilities
+tokio = { version = "1.34.0", features = ["full"] }
+async-trait = "0.1.74"
+
+# Cryptography for SMT
+sha2 = "0.10.8"
+blake3 = "1.5.0"
+hex = "0.4.3"
+
+# Serialization
+serde = { version = "1.0", optional = true, features = ["derive"] }
+serde_json = { version = "1.0", optional = true }
+
+# Data structures
+hashbrown = "0.14.0"
+
+# Logging
+tracing = "0.1"
+
+# Zero-copy serialization for SMT nodes
+zerocopy = { version = "0.7", features = ["derive"] }
+
+# Thread-safe synchronization
+parking_lot = "0.12"
+
+[dev-dependencies]
+tempfile = "3.8.1"
+tracing-test = "0.2" 

@@ -3,17 +3,16 @@ use std::any::Any;
 
 use async_trait::async_trait;
 use sqlx::{Pool, Postgres};
-use sqlx::FromRow;
 
 use indexer_core::event::{Event, EventMetadata};
 use indexer_core::Result;
 
 use crate::EventFilter;
 
-/// Event data as stored in the database
-#[derive(Debug, FromRow)]
+/// Database representation of an event
+#[derive(Debug)]
 pub struct EventRecord {
-    /// Unique identifier for the event
+    /// Unique identifier for the event  
     pub id: String,
     
     /// Chain from which the event originated
@@ -38,7 +37,7 @@ pub struct EventRecord {
     pub raw_data: Vec<u8>,
     
     /// Created at timestamp
-    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub created_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// Repository for event data
@@ -85,18 +84,19 @@ impl PostgresEventRepository {
     }
     
     /// Ensure the block for this event exists in the database
+    #[allow(dead_code)]
     async fn ensure_block_exists(&self, event: &dyn Event) -> Result<()> {
-        sqlx::query!(
+        sqlx::query(
             r#"
-            INSERT INTO blocks (chain, block_number, block_hash, timestamp)
+            INSERT INTO blocks (chain, number, hash, timestamp)
             VALUES ($1, $2, $3, $4)
-            ON CONFLICT (chain, block_number) DO NOTHING
-            "#,
-            event.chain(),
-            event.block_number() as i64,
-            event.block_hash(),
-            event.timestamp().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() as i64
+            ON CONFLICT (chain, number) DO NOTHING
+            "#
         )
+        .bind(event.chain())
+        .bind(event.block_number() as i64)
+        .bind(event.block_hash())
+        .bind(event.timestamp().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() as i64)
         .execute(&self.pool)
         .await?;
         
@@ -153,28 +153,25 @@ impl Event for EventWrapper {
 
 #[async_trait]
 impl EventRepository for PostgresEventRepository {
-    /// Store an event in the database
+    /// Store an event in the database using SQLx
     async fn store_event(&self, event: Box<dyn Event>) -> Result<()> {
-        // Insert into events table
-        sqlx::query!(
+        // Insert into events table using basic SQLx query (no compile-time validation for now)
+        sqlx::query(
             r#"
             INSERT INTO events (id, chain, block_number, block_hash, tx_hash, timestamp, event_type, raw_data)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            "#,
-            event.id(), // Use &str directly
-            event.chain(),
-            event.block_number() as i64,
-            event.block_hash(),
-            event.tx_hash(),
-            event.timestamp().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() as i64,
-            event.event_type(),
-            event.raw_data()
+            "#
         )
+        .bind(event.id())
+        .bind(event.chain())
+        .bind(event.block_number() as i64)
+        .bind(event.block_hash())
+        .bind(event.tx_hash())
+        .bind(event.timestamp().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() as i64)
+        .bind(event.event_type())
+        .bind(event.raw_data())
         .execute(&self.pool)
         .await?;
-        
-        // Update blocks table (or insert if not exists)
-        // Removed the query that caused errors here, assuming block info is handled elsewhere or by update_block_status
         
         Ok(())
     }
@@ -185,7 +182,9 @@ impl EventRepository for PostgresEventRepository {
         
         // For now, we'll just query all events if filters is empty, or return an empty vector
         if filters.is_empty() {
-            let records = sqlx::query_as::<_, EventRecord>(
+            use sqlx::Row;
+            
+            let rows = sqlx::query(
                 r#"
                 SELECT id, chain, block_number, block_hash, tx_hash, timestamp, event_type, raw_data, created_at
                 FROM events
@@ -196,8 +195,21 @@ impl EventRepository for PostgresEventRepository {
             .fetch_all(&self.pool)
             .await?;
             
-            let events = records.into_iter()
-                .map(|record| self.record_to_event(record))
+            let events = rows.into_iter()
+                .map(|row| {
+                    let record = EventRecord {
+                        id: row.get("id"),
+                        chain: row.get("chain"),
+                        block_number: row.get("block_number"),
+                        block_hash: row.get("block_hash"),
+                        tx_hash: row.get("tx_hash"),
+                        timestamp: row.get("timestamp"),
+                        event_type: row.get("event_type"),
+                        raw_data: row.get("raw_data"),
+                        created_at: row.get("created_at"),
+                    };
+                    self.record_to_event(record)
+                })
                 .collect();
             
             return Ok(events);
@@ -209,19 +221,21 @@ impl EventRepository for PostgresEventRepository {
     }
     
     async fn get_latest_block(&self, chain: &str) -> Result<u64> {
-        // Get the latest block from the database
-        let result = sqlx::query!(
+        // Get the latest block from the database using basic SQLx query
+        let result: Option<(Option<i64>,)> = sqlx::query_as(
             r#"
-            SELECT MAX(block_number) as max_block
+            SELECT MAX(number) as max_block
             FROM blocks
             WHERE chain = $1
-            "#,
-            chain
+            "#
         )
-        .fetch_one(&self.pool)
+        .bind(chain)
+        .fetch_optional(&self.pool)
         .await?;
         
-        let max_block = result.max_block.unwrap_or(0) as u64;
+        let max_block = result
+            .and_then(|(max_block,)| max_block)
+            .unwrap_or(0) as u64;
         
         Ok(max_block)
     }

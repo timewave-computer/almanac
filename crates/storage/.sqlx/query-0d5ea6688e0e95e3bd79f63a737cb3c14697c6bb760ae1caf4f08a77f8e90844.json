@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM events WHERE chain = $1 AND block_number >= $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "0d5ea6688e0e95e3bd79f63a737cb3c14697c6bb760ae1caf4f08a77f8e90844"
+}

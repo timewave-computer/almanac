@@ -10,8 +10,10 @@ description = "API interface for the indexer"
 [dependencies]
 # Internal crates
 indexer-core = { path = "../core" }
-indexer-pipeline = { path = "../pipeline" }
-indexer-storage = { path = "../storage" }
+indexer-storage = { path = "../storage", features = ["postgres", "rocks"] }
+indexer-ethereum = { path = "../ethereum" }
+indexer-cosmos = { path = "../cosmos" }
+indexer-tools = { path = "../tools" }
 
 # Async runtime
 tokio.workspace = true
@@ -32,22 +34,51 @@ serde.workspace = true
 serde_json.workspace = true
 
 # Base64 encoding for binary data
-base64 = "0.21.7"
+base64.workspace = true
 
 # Date and time
 chrono = { version = "0.4", features = ["serde"] }
 
 # Logging and error handling
 tracing.workspace = true
+tracing-subscriber.workspace = true
 thiserror.workspace = true
 anyhow = "1.0"
 uuid = { version = "1.6", features = ["v4", "serde"] }
+
+# Authentication and security
+jsonwebtoken = "8.3"
+bcrypt = "0.15"
+
+# CLI
+clap.workspace = true
 
 # Testing
 axum-test-helper = { version = "0.3.0", optional = true }
 
 [features]
-default = []
+default = ["postgres", "rocks"]
 postgres = ["indexer-core/postgres"]
 rocks = ["indexer-core/rocks"]
-test-utils = ["axum-test-helper"] 
+test-utils = ["axum-test-helper"]
+
+[[bin]]
+name = "almanac"
+path = "src/bin/almanac.rs"
+
+# Remove the following binary definitions since the files don't exist yet:
+# [[bin]]
+# name = "almanac-migrate"
+# path = "src/bin/almanac-migrate.rs"
+# 
+# [[bin]]
+# name = "almanac-data"
+# path = "src/bin/almanac-data.rs"
+# 
+# [[bin]]
+# name = "almanac-monitor"
+# path = "src/bin/almanac-monitor.rs"
+# 
+# [[bin]]
+# name = "almanac-dev"
+# path = "src/bin/almanac-dev.rs" 

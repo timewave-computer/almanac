@@ -1,17 +1,157 @@
 /// The API crate provides HTTP and GraphQL API endpoints for the indexer service
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::collections::HashMap;
 
-use indexer_pipeline::{Result, Error};
+use indexer_core::{Error, Result};
 use indexer_core::service::BoxedEventService;
 use indexer_core::types::ApiConfig;
-use indexer_storage::migrations::schema::ContractSchemaRegistry;
 use tracing::{info, error};
 use tokio::sync::Mutex;
+use async_graphql::SimpleObject;
 
 pub mod http;
 pub mod graphql;
 pub mod subscription;
+pub mod auth;
+pub mod websocket;
+
+/// Registry for contract schemas
+pub trait ContractSchemaRegistry: Send + Sync {
+    /// Get a contract schema by chain and address
+    fn get_schema(&self, chain: &str, address: &str, version: &str) -> Result<Option<ContractSchema>>;
+    
+    /// Get the latest schema version for a contract
+    fn get_latest_schema(&self, chain: &str, address: &str) -> Result<Option<ContractSchema>>;
+    
+    /// Register a new schema
+    fn register_schema(&self, schema: ContractSchemaVersion) -> Result<()>;
+}
+
+/// Contract schema version
+#[derive(Clone, Debug, SimpleObject)]
+pub struct ContractSchemaVersion {
+    /// Version string (e.g. "1.0.0")
+    pub version: String,
+    /// The contract schema
+    pub schema: ContractSchema,
+}
+
+/// Contract schema
+#[derive(Clone, Debug, SimpleObject)]
+pub struct ContractSchema {
+    /// Chain ID (e.g. "ethereum", "polygon")
+    pub chain: String,
+    /// Contract address
+    pub address: String,
+    /// Contract name
+    pub name: String,
+    /// Event schemas
+    pub events: Vec<EventSchema>,
+    /// Function schemas
+    pub functions: Vec<FunctionSchema>,
+}
+
+/// Event schema
+#[derive(Clone, Debug, SimpleObject)]
+pub struct EventSchema {
+    /// Event name
+    pub name: String,
+    /// Event fields
+    pub fields: Vec<FieldSchema>,
+}
+
+/// Function schema
+#[derive(Clone, Debug, SimpleObject)]
+pub struct FunctionSchema {
+    /// Function name
+    pub name: String,
+    /// Function inputs
+    pub inputs: Vec<FieldSchema>,
+    /// Function outputs
+    pub outputs: Vec<FieldSchema>,
+}
+
+/// Field schema
+#[derive(Clone, Debug, SimpleObject)]
+pub struct FieldSchema {
+    /// Field name
+    pub name: String,
+    /// Field type (e.g. "uint256", "address")
+    pub type_name: String,
+    /// Whether the field is indexed (only applicable for events)
+    pub indexed: bool,
+}
+
+/// In-memory implementation of contract schema registry
+pub struct InMemorySchemaRegistry {
+    schemas: Arc<Mutex<HashMap<String, Vec<ContractSchemaVersion>>>>,
+}
+
+impl Default for InMemorySchemaRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl InMemorySchemaRegistry {
+    /// Create a new in-memory schema registry
+    pub fn new() -> Self {
+        InMemorySchemaRegistry {
+            schemas: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+    
+    fn create_key(chain: &str, address: &str) -> String {
+        format!("{}:{}", chain, address)
+    }
+}
+
+impl ContractSchemaRegistry for InMemorySchemaRegistry {
+    fn get_schema(&self, chain: &str, address: &str, version: &str) -> Result<Option<ContractSchema>> {
+        let schemas_lock = self.schemas.try_lock()
+            .map_err(|_| Error::generic("Failed to acquire lock on schema registry"))?;
+        
+        let key = Self::create_key(chain, address);
+        
+        if let Some(versions) = schemas_lock.get(&key) {
+            for ver in versions {
+                if ver.version == version {
+                    return Ok(Some(ver.schema.clone()));
+                }
+            }
+        }
+        
+        Ok(None)
+    }
+    
+    fn get_latest_schema(&self, chain: &str, address: &str) -> Result<Option<ContractSchema>> {
+        let schemas_lock = self.schemas.try_lock()
+            .map_err(|_| Error::generic("Failed to acquire lock on schema registry"))?;
+        
+        let key = Self::create_key(chain, address);
+        
+        if let Some(versions) = schemas_lock.get(&key) {
+            if !versions.is_empty() {
+                return Ok(Some(versions.last().unwrap().schema.clone()));
+            }
+        }
+        
+        Ok(None)
+    }
+    
+    fn register_schema(&self, schema: ContractSchemaVersion) -> Result<()> {
+        let mut schemas_lock = self.schemas.try_lock()
+            .map_err(|_| Error::generic("Failed to acquire lock on schema registry"))?;
+        
+        let key = Self::create_key(&schema.schema.chain, &schema.schema.address);
+        
+        let versions = schemas_lock.entry(key).or_insert_with(Vec::new);
+        versions.push(schema);
+        
+        Ok(())
+    }
+}
 
 /// API server configuration
 pub struct ApiServerConfig {
@@ -31,6 +171,8 @@ pub struct ApiServer {
     event_service: BoxedEventService,
     /// Schema registry
     schema_registry: Arc<dyn ContractSchemaRegistry + Send + Sync>,
+    /// Authentication state
+    auth_state: auth::AuthState,
     /// API server configuration
     config: ApiServerConfig,
     /// Running state
@@ -44,9 +186,14 @@ impl ApiServer {
         schema_registry: Arc<dyn ContractSchemaRegistry + Send + Sync>,
         config: ApiServerConfig,
     ) -> Self {
+        // Create default JWT secret (in production, this should be from config)
+        let jwt_secret = b"your-256-bit-secret-key-here-please-change-this-in-production";
+        let auth_state = auth::AuthState::new(jwt_secret);
+        
         Self {
             event_service,
             schema_registry,
+            auth_state,
             config,
             running: Arc::new(Mutex::new(false)),
         }
@@ -105,15 +252,17 @@ impl ApiServer {
         *running = true;
         drop(running);
         
-        // Start HTTP server if enabled
+        // Start HTTP REST API server if enabled
         if self.config.http_addr.port() != 0 {
             let event_service = self.event_service.clone();
+            let schema_registry = self.schema_registry.clone();
+            let auth_state = self.auth_state.clone();
             let addr = self.config.http_addr;
             
             // Spawn HTTP server task
             tokio::spawn(async move {
-                if let Err(e) = http::start_http_server(addr, event_service).await {
-                    error!("HTTP server error: {}", e);
+                if let Err(e) = http::start_http_server(addr, event_service, schema_registry, auth_state).await {
+                    error!("HTTP REST API server error: {}", e);
                 }
             });
         }
@@ -151,7 +300,75 @@ impl ApiServer {
     /// Stop the API server
     pub async fn stop(&self) -> Result<()> {
         let mut running = self.running.lock().await;
+        if !*running {
+            return Err(Error::generic("Server is not running"));
+        }
+        
         *running = false;
+        info!("API server stopped");
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::{IpAddr, Ipv4Addr};
+    
+    #[test]
+    fn test_schema_registry_creation() {
+        let registry = InMemorySchemaRegistry::new();
+        assert!(registry.schemas.try_lock().is_ok());
+    }
+    
+    #[tokio::test]
+    async fn test_schema_registry_operations() {
+        let registry = InMemorySchemaRegistry::new();
+        
+        let schema = ContractSchema {
+            chain: "ethereum".to_string(),
+            address: "0x123".to_string(),
+            name: "TestContract".to_string(),
+            events: vec![],
+            functions: vec![],
+        };
+        
+        let schema_version = ContractSchemaVersion {
+            version: "1.0.0".to_string(),
+            schema: schema.clone(),
+        };
+        
+        // Test registration
+        assert!(registry.register_schema(schema_version).is_ok());
+        
+        // Test retrieval by version
+        let retrieved = registry.get_schema("ethereum", "0x123", "1.0.0").unwrap();
+        assert!(retrieved.is_some());
+        assert_eq!(retrieved.unwrap().name, "TestContract");
+        
+        // Test latest schema retrieval
+        let latest = registry.get_latest_schema("ethereum", "0x123").unwrap();
+        assert!(latest.is_some());
+        assert_eq!(latest.unwrap().name, "TestContract");
+        
+        // Test non-existent schema
+        let non_existent = registry.get_schema("ethereum", "0x456", "1.0.0").unwrap();
+        assert!(non_existent.is_none());
+    }
+    
+    #[test]
+    fn test_api_server_config() {
+        let config = ApiServerConfig {
+            http_addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080),
+            graphql_addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8081),
+            ws_addr: Some(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8082)),
+            enable_playground: true,
+        };
+        
+        assert_eq!(config.http_addr.port(), 8080);
+        assert_eq!(config.graphql_addr.port(), 8081);
+        assert!(config.ws_addr.is_some());
+        assert_eq!(config.ws_addr.unwrap().port(), 8082);
+        assert!(config.enable_playground);
     }
 } 

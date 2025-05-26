@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE blocks\n            SET status = $1\n            WHERE chain = $2 AND number = $3\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Varchar",
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "b7fe08a4d90e6f83d8d21c7eb746c3dbd461b70f319edcdf6c0f924f6045fa5b"
+}

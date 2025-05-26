@@ -1,113 +1,119 @@
 # Almanac: Cross-Chain Indexer
 
-A performant indexer designed to track Valence, Causality and associated contract state across multiple chains. Almanac currently supports Ethereum and Cosmos chains, with easy extensibility to others in the future.
+A performant indexer designed to track Valence, Causality and associated contract state across multiple chains. Almanac currently supports Ethereum and Cosmos chains using Sam's branch of the `valence-domain-clients` library.
+
+The system includes a comprehensive causality indexing module that provides Sparse Merkle Tree (SMT) based tracking of causal relationships between events, resources, and entities across blockchain domains.
 
 ![](./almanac.png)
 
-## Status
-
-Still under development. Basic intexing works, but a simulation system still being scaffolded to test the system properly.
-
 ## Project Overview
 
-Almanac enables tracking Valence programs and the state associated with related contracts across different blockchains. For non-BFT chains it handles chain finality conditions with appropriate determinism classifications. The system employs a hybrid storage architecture using RocksDB for high-performance paths and PostgreSQL for complex queries. This makes it appropriate for use with both cross-chain strategy operations and client UI development.
+Almanac enables tracking Valence programs and the state associated with related contracts across different blockchains. The system employs a hybrid storage architecture using RocksDB for high-performance paths and PostgreSQL for complex queries.
 
-- **Multi-chain support**: Ethereum and Cosmos chains with plans for Solana and Move-based chains
-- **Hybrid storage architecture**:
-  - RocksDB for high-performance, real-time access paths
-  - PostgreSQL for complex queries, historical data, and relationships
-- **Valence contract tracking**:
-  - Account creation, ownership, and library approvals
-  - Processor state and cross-chain message processing
-  - Authorization grants, revocations, and policy changes
-  - Library deployments, upgrades, and usage
-- **Chain reorganization handling**
-- **Block finality tracking**: confirmed, safe, justified, finalized states
-- **Determinism classification** for Cosmos events
-- **Program lifecycle tracking** across domains
-- **Cross-chain debugging** with multi-chain traces
+Key features:
+- Multi-chain support: EVM chains (Ethereum, Polygon, Base) and Cosmos chains (Noble, Osmosis, Neutron)
+- Hybrid storage: RocksDB for performance, PostgreSQL for complex queries
+- Valence contract tracking: Account creation, processor state, authorization grants, library deployments
+- Causality indexing: Content-addressed entity tracking with SMT-based proof generation
+- Advanced blockchain features: Chain reorganization handling, block finality tracking, determinism classification
+- Cross-chain debugging: Multi-chain traces and causal relationship tracking
 
 ## Getting Started
 
-### Installation
-
-Clone the repository:
+Clone the repository and enter the development environment:
 
 ```bash
 git clone <repository-url>
 cd almanac
-```
-
-Enter the development shell:
-
-```bash
 nix develop
 ```
 
-This will set up a complete development environment with all necessary dependencies.
+The development shell provides:
+- Rust toolchain and crate2nix for reproducible builds
+- PostgreSQL database server and RocksDB
+- Foundry (anvil, forge, cast) for Ethereum development
+- All required system libraries and build tools
 
-### Build and Run
+Available commands:
+- `init_databases` - Initialize and start databases
+- `stop_databases` - Stop PostgreSQL server  
+- `generate_cargo_nix` - Generate Cargo.nix for Nix builds
+- `run_almanac_tests` - Run the test suite
 
-Build the project:
+## Build and Run
+
+Generate the Nix build configuration:
 ```bash
-cargo build
+generate_cargo_nix
 ```
 
-Run the indexer:
+Build components using Nix:
 ```bash
-cargo run
+# Build the main almanac binary
+nix build .#indexer-api
+
+# Build specific workspace crates
+nix build .#indexer-core
+nix build .#indexer-ethereum
+nix build .#indexer-cosmos
 ```
 
-## Storage Benchmarks
+## Development Workflows
 
-The system includes performance benchmarks comparing RocksDB with filesystem operations:
+Select and run development workflows:
 
 ```bash
-cargo run --bin run_rocks_benchmark
+cd nix/environments
+nix run .  # Interactive menu
 ```
+
+Or run specific workflows directly:
+```bash
+# Ethereum development workflows
+nix run ./nix/environments#anvil-workflow
+nix run ./nix/environments#reth-workflow
+
+# Cosmos development workflow
+nix run ./nix/environments#cosmwasm-workflow
+
+# Run all workflows
+nix run ./nix/environments#all-workflows
+```
+
+For more details, see the [workflows documentation](nix/environments/README.md).
 
 ## Testing
 
-Run the storage synchronization test:
+Run tests using Nix commands:
 
 ```bash
-cargo test -p indexer-storage --test storage_sync
-```
-
-Test the Ethereum adapter against Anvil:
-```bash
+# Integration tests
 nix run .#test-ethereum-adapter-anvil
-```
-
-Test the Cosmos adapter:
-```bash
 nix run .#test-cosmos-adapter
+nix run .#cross-chain-e2e-test
+
+# Comprehensive test suite
+run_almanac_tests
+
+# Unit tests (in dev shell)
+cargo test --package indexer-ethereum
+cargo test --package indexer-cosmos
+cargo test --package indexer-causality
 ```
 
-Test chain reorganization handling:
-```bash
-./scripts/test-chain-reorg.sh
-```
+## Available Nix Commands
 
-## Available Commands
+Cosmos:
+- `nix run .#wasmd-node` - Start local wasmd node
+- `nix run .#test-cosmos-adapter` - Test cosmos adapter
 
-The following commands are available:
-
-**Cosmos:**
-- `nix run .#wasmd-node`: Start a local wasmd node for testing
-- `nix run .#test-cosmos-adapter`: Run cosmos adapter tests against the local node
-
-**Ethereum:**
-- `nix run .#start-anvil`: Start local Ethereum test node (Anvil)
-- `nix run .#start-reth`: Start Reth Ethereum node (requires config)
-- `nix run .#test-ethereum-adapter-anvil`: Run tests against local Anvil node
-- `nix run .#test-ethereum-adapter-reth`: Run tests against local Reth node
-
-These commands are also available directly within the Nix development shell (`nix develop`).
+Ethereum:
+- `nix run .#start-anvil` - Start Anvil test node
+- `nix run .#start-reth` - Start Reth node
+- `nix run .#test-ethereum-adapter-anvil` - Test against Anvil
+- `nix run .#test-ethereum-adapter-reth` - Test against Reth
 
 ## Architecture
-
-The indexer follows a modular architecture:
 
 ```
 ┌───────────────────────────────────────────────────────────────────┐
@@ -119,8 +125,8 @@ The indexer follows a modular architecture:
 │  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘  │
 │                                                                   │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐  │
-│  │Schema       │ │Cross-Chain  │ │Sync         │ │Extension    │  │
-│  │Registry     │ │Aggregator   │ │Manager      │ │Framework    │  │
+│  │Schema       │ │Cross-Chain  │ │Causality    │ │Extension    │  │
+│  │Registry     │ │Aggregator   │ │Indexer      │ │Framework    │  │
 │  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘  │
 └───────────────────────────────────────────────────────────────────┘
 ```
@@ -134,57 +140,26 @@ The indexer follows a modular architecture:
                 │                     │
     ┌───────────▼────────┐   ┌────────▼──────────┐
     │  RocksDB Layer     │   │  PostgreSQL Layer │
-    │  (Performance)     │   │   (Rick Queries)  │
+    │  (Performance)     │   │   (Rich Queries)  │
     └────────────────────┘   └───────────────────┘
 ```
 
-## Performance
+## Performance Targets
 
-The system is designed to meet the following performance targets:
-
-- Block processing latency < 500ms for normal operations
+- Block processing latency < 500ms
 - Event indexing latency < 1 second from block finality
-- Read latency for RocksDB paths < 50ms (99th percentile)
-- Complex query latency for PostgreSQL < 500ms (95th percentile)
-- Support for at least 100 concurrent read queries
+- RocksDB read latency < 50ms (99th percentile)
+- PostgreSQL query latency < 500ms (95th percentile)
+- Support for 100+ concurrent read queries
 
-## Cross-Chain Testing
+## Troubleshooting
 
-The project now includes full Ethereum contract implementations for testing cross-chain functionality:
-
-1. **Simplified Contract Suite**:
-   - `TestToken`: An ERC20-compatible token for cross-chain transfers
-   - `BaseAccount`: An account abstraction for controlled access
-   - `UniversalGateway`: A gateway for cross-chain message passing
-   - `EthereumProcessor`: A contract for handling cross-chain messages
-
-2. **End-to-End Test Script**:
-   The `scripts/cross_chain_e2e_test.sh` script demonstrates the full Ethereum-side functionality:
-   - Deploys all necessary contracts to an Anvil test node
-   - Configures contracts and their relationships
-   - Tests token transfers through the BaseAccount abstraction
-   - Demonstrates cross-chain message sending and delivery
-   - Verifies correct event emission for indexer integration
-   - Tests sequential transfers between Ethereum and Cosmos chains
-
-3. **Running the Test**:
-   ```bash
-   # Run directly (not recommended, use Nix instead)
-   ./scripts/cross_chain_e2e_test.sh
-   
-   # Or using Nix (preferred method)
-   nix run .#cross-chain-e2e-test
-   ```
-
-   The Nix run command will:
-   - Compile the test WASM contracts automatically
-   - Set up both Ethereum and Cosmos nodes
-   - Deploy necessary contracts
-   - Run the full end-to-end test suite
-   - Clean up all resources after completion
-
-This implementation provides a robust framework for testing cross-chain interactions between Ethereum and Cosmos chains.
+Check log files if workflows fail:
+- Anvil logs: `logs/anvil.log`
+- Reth logs: `logs/reth.log`
+- wasmd logs: `logs/wasmd.log`
+- PostgreSQL logs: `data/postgres/postgres.log`
 
 ## Credit
 
-- Cover image from [Gaine's New-York pocket almanack for the year 1789](https://www.loc.gov/resource/rbc0001.2022madison98629)
+Cover image from [Gaine's New-York pocket almanack for the year 1789](https://www.loc.gov/resource/rbc0001.2022madison98629)

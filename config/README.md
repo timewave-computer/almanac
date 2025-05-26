@@ -12,13 +12,13 @@ Pass the configuration file to the indexer using the `--config` parameter:
 
 ```bash
 # Development
-cargo run -- run --config config/dev.toml
+cargo run --bin almanac -- run --config config/dev.toml
 
 # Test
-cargo run -- run --config config/test.toml
+cargo run --bin almanac -- run --config config/test.toml
 
 # Production
-cargo run -- run --config config/prod.toml
+cargo run --bin almanac -- run --config config/prod.toml
 ```
 
 ## Environment Variables
