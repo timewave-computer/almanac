@@ -8,24 +8,58 @@ This directory contains example applications demonstrating how to use the Almana
 
 `basic_indexer.rs` - A simple example showing how to set up a cross-chain indexer using Almanac.
 
-This example uses MemoryStorage instead of RocksDB or PostgreSQL to avoid compilation issues that currently exist in the storage implementations.
+This example demonstrates:
+- Setting up chain adapters for Ethereum and Cosmos
+- Configuring storage backends (Memory, RocksDB, PostgreSQL)
+- Processing events from multiple chains
+- Basic querying and data retrieval
 
-## Using Examples
+### Causality Indexing Examples
 
-The examples in this directory are provided as reference implementations rather than directly runnable applications. Due to compilation issues in the current codebase, attempting to run these examples directly may fail.
+The causality crate includes several examples demonstrating advanced features:
 
-To use these examples effectively:
+- `basic_indexing.rs` - Basic entity indexing and querying
+- `cross_chain.rs` - Cross-chain causality tracking
+- `proof_generation.rs` - SMT proof generation and verification
+- `domain_queries.rs` - Domain-based entity queries
 
-1. Review the code to understand the architecture and patterns
-2. Copy relevant sections into your own projects
-3. Use MemoryStorage implementation rather than RocksDB or PostgreSQL until the storage issues are resolved
+## Running Examples
 
-## Known Issues
+All examples can be run directly using cargo:
 
-The main codebase currently has compilation errors in:
+```bash
+# Run the basic indexer example
+cargo run --example basic_indexer
 
-1. RocksDB implementation - Functions incorrectly defined in a struct definition 
-2. Storage trait implementations - Missing required method implementations
-3. PostgreSQL implementation - SQL query errors due to missing database connection
+# Run causality examples
+cargo run --package indexer-causality --example basic_indexing
+cargo run --package indexer-causality --example cross_chain
+cargo run --package indexer-causality --example proof_generation
+cargo run --package indexer-causality --example domain_queries
+```
 
-The examples have been designed to work around these issues by using the MemoryStorage implementation which is fully functional. 
+## Storage Options
+
+Examples support multiple storage backends:
+
+1. **Memory Storage** - Fast, in-memory storage for development and testing
+2. **RocksDB Storage** - High-performance persistent storage for production
+3. **PostgreSQL Storage** - Rich querying capabilities for complex analysis
+
+## Prerequisites
+
+For examples using PostgreSQL:
+- Ensure PostgreSQL is running (use `init_databases` in the nix shell)
+- Set `DATABASE_URL` environment variable if using custom connection
+
+For examples using RocksDB:
+- No additional setup required - RocksDB is embedded
+
+## Development
+
+To create new examples:
+
+1. Add your example file to the `examples/` directory
+2. Use the existing examples as templates
+3. Test with different storage backends
+4. Document any specific requirements or setup steps 
