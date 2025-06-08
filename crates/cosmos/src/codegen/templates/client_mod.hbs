@@ -1,0 +1,39 @@
+//! Generated client code for contract: {{contract_address}}
+//! Chain: {{chain_id}}
+
+pub mod query;
+pub mod execute;
+pub mod instantiate;
+{{#if migrate_msg}}
+pub mod migrate;
+{{/if}}
+pub mod types;
+
+use indexer_core::Result;
+use indexer_cosmos::CosmosClientWrapper;
+
+/// Client for interacting with the {{contract_name}} contract
+pub struct {{contract_class}}Client {
+    cosmos_client: CosmosClientWrapper,
+    contract_address: String,
+}
+
+impl {{contract_class}}Client {
+    /// Create a new client instance
+    pub fn new(cosmos_client: CosmosClientWrapper, contract_address: String) -> Self {
+        Self {
+            cosmos_client,
+            contract_address,
+        }
+    }
+
+    /// Get the contract address
+    pub fn contract_address(&self) -> &str {
+        &self.contract_address
+    }
+
+    /// Get the underlying cosmos client
+    pub fn cosmos_client(&self) -> &CosmosClientWrapper {
+        &self.cosmos_client
+    }
+} 

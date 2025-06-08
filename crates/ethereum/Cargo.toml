@@ -7,6 +7,10 @@ repository.workspace = true
 license.workspace = true
 description = "Ethereum client using valence-domain-clients EVM integration"
 
+[features]
+default = ["codegen"]
+codegen = ["ethabi", "handlebars", "clap", "chrono", "convert_case", "sha3", "hex", "alloy-primitives", "serde_json", "thiserror"]
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
@@ -15,7 +19,7 @@ indexer-core = { path = "../core" }
 
 # Minimal async support
 async-trait.workspace = true
-tokio = { workspace = true, features = ["rt"] }
+tokio = { workspace = true, features = ["rt", "fs"] }
 
 # Error handling
 anyhow.workspace = true
@@ -23,5 +27,21 @@ anyhow.workspace = true
 # Valence domain clients integration for EVM support
 valence-domain-clients = { git = "https://github.com/timewave-computer/valence-domain-clients", rev = "766a1b593bcea9ed67b45c8c1ea9c548d0692a71" }
 
+# Core serialization
+serde = { workspace = true, features = ["derive"] }
+
+# Optional dependencies for codegen
+serde_json = { version = "1.0", optional = true }
+handlebars = { version = "4.3", optional = true }
+ethabi = { version = "18.0", optional = true }
+clap = { version = "4.0", optional = true, features = ["derive"] }
+chrono = { version = "0.4", optional = true }
+convert_case = { version = "0.6", optional = true }
+sha3 = { version = "0.10", optional = true }
+hex = { version = "0.4", optional = true }
+alloy-primitives = { version = "1.0", optional = true }
+thiserror = { version = "1.0", optional = true }
+
 [dev-dependencies]
-tokio = { version = "1.0", features = ["full", "test-util"] } 
+tokio = { version = "1.0", features = ["full", "test-util"] }
+tempfile = "3.8" 

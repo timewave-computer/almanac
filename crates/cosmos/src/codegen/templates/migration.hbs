@@ -1,0 +1,82 @@
+-- Migration for contract: {{contract_address}}
+-- Chain: {{chain_id}}
+-- Generated at: {{timestamp}}
+
+-- Contract state table
+CREATE TABLE IF NOT EXISTS {{table_name}}_state (
+    id BIGSERIAL PRIMARY KEY,
+    contract_address TEXT NOT NULL,
+    block_height BIGINT NOT NULL,
+    transaction_hash TEXT NOT NULL,
+    timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    state_data JSONB NOT NULL,
+    
+    -- Constraints
+    CONSTRAINT unique_{{table_name}}_state_block_tx UNIQUE (contract_address, block_height, transaction_hash)
+);
+
+-- Indexes for {{table_name}}_state
+CREATE INDEX IF NOT EXISTS idx_{{table_name}}_state_contract ON {{table_name}}_state(contract_address);
+CREATE INDEX IF NOT EXISTS idx_{{table_name}}_state_block ON {{table_name}}_state(block_height);
+CREATE INDEX IF NOT EXISTS idx_{{table_name}}_state_timestamp ON {{table_name}}_state(timestamp);
+CREATE INDEX IF NOT EXISTS idx_{{table_name}}_state_data_gin ON {{table_name}}_state USING GIN (state_data);
+
+-- Contract events table  
+CREATE TABLE IF NOT EXISTS {{table_name}}_events (
+    id BIGSERIAL PRIMARY KEY,
+    contract_address TEXT NOT NULL,
+    block_height BIGINT NOT NULL,
+    transaction_hash TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    event_data JSONB NOT NULL,
+    timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Indexes for {{table_name}}_events
+CREATE INDEX IF NOT EXISTS idx_{{table_name}}_events_contract ON {{table_name}}_events(contract_address);
+CREATE INDEX IF NOT EXISTS idx_{{table_name}}_events_type ON {{table_name}}_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_{{table_name}}_events_block ON {{table_name}}_events(block_height);
+CREATE INDEX IF NOT EXISTS idx_{{table_name}}_events_data_gin ON {{table_name}}_events USING GIN (event_data);
+
+-- Contract metadata table
+CREATE TABLE IF NOT EXISTS {{table_name}}_metadata (
+    contract_address TEXT PRIMARY KEY,
+    chain_id TEXT NOT NULL,
+    code_id BIGINT,
+    admin TEXT,
+    label TEXT,
+    created_at_block BIGINT NOT NULL,
+    created_at_tx TEXT NOT NULL,
+    last_updated_block BIGINT NOT NULL,
+    last_updated_tx TEXT NOT NULL,
+    metadata JSONB DEFAULT '{}'::jsonb
+);
+
+-- Index for metadata
+CREATE INDEX IF NOT EXISTS idx_{{table_name}}_metadata_chain ON {{table_name}}_metadata(chain_id);
+CREATE INDEX IF NOT EXISTS idx_{{table_name}}_metadata_code_id ON {{table_name}}_metadata(code_id);
+
+{{#if custom_migrations}}
+{{#each custom_migrations}}
+-- {{description}}
+{{sql}}
+
+{{/each}}
+{{/if}}
+
+-- Insert contract metadata if not exists
+INSERT INTO {{table_name}}_metadata (
+    contract_address,
+    chain_id,
+    created_at_block,
+    created_at_tx,
+    last_updated_block,
+    last_updated_tx
+) VALUES (
+    '{{contract_address}}',
+    '{{chain_id}}',
+    0, -- TODO: Set actual creation block
+    '', -- TODO: Set actual creation transaction
+    0, -- TODO: Set actual last update block  
+    ''  -- TODO: Set actual last update transaction
+) ON CONFLICT (contract_address) DO NOTHING; 

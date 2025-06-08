@@ -1,0 +1,74 @@
+-- Generated PostgreSQL schema for contract: {{contract_address}}
+-- Chain: {{chain_id}}
+-- Generated at: {{generated_at}}
+
+-- Extension for JSONB operations
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Main contract state table
+CREATE TABLE IF NOT EXISTS {{table_prefix}}_state (
+    id BIGSERIAL PRIMARY KEY,
+    contract_address TEXT NOT NULL,
+    block_number BIGINT NOT NULL,
+    block_timestamp TIMESTAMPTZ NOT NULL,
+    transaction_hash TEXT NOT NULL,
+    state_data JSONB NOT NULL,
+    state_version INTEGER NOT NULL DEFAULT 1,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Contract transactions table
+CREATE TABLE IF NOT EXISTS {{table_prefix}}_transactions (
+    id BIGSERIAL PRIMARY KEY,
+    transaction_hash TEXT NOT NULL UNIQUE,
+    contract_address TEXT NOT NULL,
+    block_number BIGINT NOT NULL,
+    block_timestamp TIMESTAMPTZ NOT NULL,
+    from_address TEXT NOT NULL,
+    function_name TEXT NOT NULL,
+    function_data JSONB NOT NULL,
+    gas_used BIGINT,
+    gas_price BIGINT,
+    success BOOLEAN NOT NULL,
+    error_message TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Contract events table
+CREATE TABLE IF NOT EXISTS {{table_prefix}}_events (
+    id BIGSERIAL PRIMARY KEY,
+    transaction_hash TEXT NOT NULL,
+    contract_address TEXT NOT NULL,
+    block_number BIGINT NOT NULL,
+    block_timestamp TIMESTAMPTZ NOT NULL,
+    event_name TEXT NOT NULL,
+    event_data JSONB NOT NULL,
+    log_index INTEGER NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+{{#each events}}
+-- Specific table for {{name}} events
+CREATE TABLE IF NOT EXISTS {{../table_prefix}}_{{snake_case name}}_events (
+    id BIGSERIAL PRIMARY KEY,
+    transaction_hash TEXT NOT NULL,
+    contract_address TEXT NOT NULL,
+    block_number BIGINT NOT NULL,
+    block_timestamp TIMESTAMPTZ NOT NULL,
+{{#each inputs}}
+    {{name}} {{postgres_type}},
+{{/each}}
+    log_index INTEGER NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+{{/each}}
+
+-- Indexes for performance
+CREATE INDEX IF NOT EXISTS idx_{{table_prefix}}_state_contract ON {{table_prefix}}_state(contract_address);
+CREATE INDEX IF NOT EXISTS idx_{{table_prefix}}_state_block ON {{table_prefix}}_state(block_number);
+CREATE INDEX IF NOT EXISTS idx_{{table_prefix}}_transactions_contract ON {{table_prefix}}_transactions(contract_address);
+CREATE INDEX IF NOT EXISTS idx_{{table_prefix}}_transactions_block ON {{table_prefix}}_transactions(block_number);
+CREATE INDEX IF NOT EXISTS idx_{{table_prefix}}_events_contract ON {{table_prefix}}_events(contract_address);
+CREATE INDEX IF NOT EXISTS idx_{{table_prefix}}_events_block ON {{table_prefix}}_events(block_number); 

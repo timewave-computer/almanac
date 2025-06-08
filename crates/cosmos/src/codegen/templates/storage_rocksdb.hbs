@@ -1,0 +1,85 @@
+//! Generated RocksDB schemas for contract: {{contract_address}}
+
+use indexer_core::Result;
+use rocksdb::{DB, Options};
+use serde::{Deserialize, Serialize};
+
+pub struct {{contract_class}}RocksDB {
+    db: DB,
+}
+
+impl {{contract_class}}RocksDB {
+    pub fn new(path: &str) -> Result<Self> {
+        let mut opts = Options::default();
+        opts.create_if_missing(true);
+        
+        let db = DB::open(&opts, path)
+            .map_err(|e| indexer_core::Error::Database(format!("Failed to open RocksDB: {}", e)))?;
+        
+        Ok(Self { db })
+    }
+    
+    /// Store contract state at a specific block height
+    pub fn store_state(&self, block_height: u64, state: &{{contract_class}}State) -> Result<()> {
+        let key = format!("state:{}:{}", self.contract_address(), block_height);
+        let value = serde_json::to_vec(state)
+            .map_err(|e| indexer_core::Error::Serialization(format!("Failed to serialize state: {}", e)))?;
+        
+        self.db.put(key.as_bytes(), &value)
+            .map_err(|e| indexer_core::Error::Database(format!("Failed to store state: {}", e)))?;
+        
+        // Update latest state pointer
+        let latest_key = format!("latest_state:{}", self.contract_address());
+        self.db.put(latest_key.as_bytes(), block_height.to_be_bytes())
+            .map_err(|e| indexer_core::Error::Database(format!("Failed to update latest state: {}", e)))?;
+        
+        Ok(())
+    }
+    
+    /// Get contract state at a specific block height
+    pub fn get_state(&self, block_height: u64) -> Result<Option<{{contract_class}}State>> {
+        let key = format!("state:{}:{}", self.contract_address(), block_height);
+        
+        match self.db.get(key.as_bytes())
+            .map_err(|e| indexer_core::Error::Database(format!("Failed to get state: {}", e)))? 
+        {
+            Some(value) => {
+                let state: {{contract_class}}State = serde_json::from_slice(&value)
+                    .map_err(|e| indexer_core::Error::Serialization(format!("Failed to deserialize state: {}", e)))?;
+                Ok(Some(state))
+            }
+            None => Ok(None),
+        }
+    }
+    
+    /// Get the latest contract state
+    pub fn get_latest_state(&self) -> Result<Option<{{contract_class}}State>> {
+        let latest_key = format!("latest_state:{}", self.contract_address());
+        
+        match self.db.get(latest_key.as_bytes())
+            .map_err(|e| indexer_core::Error::Database(format!("Failed to get latest state pointer: {}", e)))?
+        {
+            Some(height_bytes) => {
+                let height = u64::from_be_bytes(
+                    height_bytes.try_into()
+                        .map_err(|_| indexer_core::Error::Database("Invalid height format".to_string()))?
+                );
+                self.get_state(height)
+            }
+            None => Ok(None),
+        }
+    }
+    
+    fn contract_address(&self) -> &str {
+        "{{contract_address}}"
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct {{contract_class}}State {
+    // Contract state fields will be generated based on schema
+    pub block_height: u64,
+    pub transaction_hash: String,
+    pub timestamp: u64,
+    // TODO: Add contract-specific state fields
+} 

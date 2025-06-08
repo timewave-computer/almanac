@@ -14,6 +14,8 @@ use valence_domain_clients::evm::base_client::EvmBaseClient;
 use valence_domain_clients::clients::ethereum::EthereumClient as ValenceEthereumClient;
 use valence_domain_clients::common::transaction::TransactionResponse;
 
+pub mod codegen;
+
 /// EVM chain configuration
 #[derive(Debug, Clone)]
 pub struct EvmChainConfig {

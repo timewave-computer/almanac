@@ -1,0 +1,23 @@
+//! Generated transaction methods for contract: {{contract_address}}
+
+use super::types::*;
+use super::{{contract_class}}Client;
+use indexer_core::Result;
+use ethers::types::{U256, Address, Bytes, TransactionReceipt};
+
+impl {{contract_class}}Client {
+{{#each transaction_functions}}
+    /// {{description}}
+    pub async fn {{name}}(
+        &self,
+{{#each inputs}}
+        {{name}}: {{rust_type}},
+{{/each}}
+    ) -> Result<TransactionReceipt> {
+        // TODO: Implement actual contract transaction
+        // This would use self.ethereum_client().send_contract_transaction(...)
+        todo!("Implement contract transaction: {{name}}")
+    }
+
+{{/each}}
+} 

@@ -1,0 +1,82 @@
+//! Generated REST endpoints for contract: {{contract_address}}
+
+use axum::{
+    extract::{Path, Query, State},
+    http::StatusCode,
+    response::Json,
+    routing::{get, post},
+    Router,
+};
+use indexer_core::Result;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+
+pub fn {{contract_snake}}_routes() -> Router<Arc<dyn {{contract_class}}Storage>> {
+    Router::new()
+        .route("/{{contract_snake}}/state/latest", get(get_latest_state))
+        .route("/{{contract_snake}}/state/:block_height", get(get_state_at_block))
+        .route("/{{contract_snake}}/events", get(get_events))
+        {{#each query_methods}}
+        .route("/{{../../contract_snake}}/query/{{method_name}}", get({{method_name}}_handler))
+        {{/each}}
+}
+
+#[derive(Debug, Deserialize)]
+pub struct EventsQuery {
+    pub from_block: Option<u64>,
+    pub to_block: Option<u64>,
+    pub limit: Option<usize>,
+}
+
+/// Get latest contract state
+async fn get_latest_state(
+    State(storage): State<Arc<dyn {{contract_class}}Storage>>,
+) -> Result<Json<Option<{{contract_class}}State>>, StatusCode> {
+    match storage.get_latest_state().await {
+        Ok(state) => Ok(Json(state)),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+}
+
+/// Get contract state at specific block height
+async fn get_state_at_block(
+    Path(block_height): Path<u64>,
+    State(storage): State<Arc<dyn {{contract_class}}Storage>>,
+) -> Result<Json<Option<{{contract_class}}State>>, StatusCode> {
+    match storage.get_state(block_height).await {
+        Ok(state) => Ok(Json(state)),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+}
+
+/// Get contract events
+async fn get_events(
+    Query(params): Query<EventsQuery>,
+    State(storage): State<Arc<dyn {{contract_class}}Storage>>,
+) -> Result<Json<Vec<ContractEvent>>, StatusCode> {
+    let from_block = params.from_block.unwrap_or(0);
+    let to_block = params.to_block.unwrap_or(u64::MAX);
+    
+    match storage.get_events(from_block, to_block).await {
+        Ok(events) => {
+            let limited_events = if let Some(limit) = params.limit {
+                events.into_iter().take(limit).collect()
+            } else {
+                events
+            };
+            Ok(Json(limited_events))
+        }
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+}
+
+{{#each query_methods}}
+/// Handler for {{method_name}} query
+async fn {{method_name}}_handler(
+    State(_storage): State<Arc<dyn {{contract_class}}Storage>>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    // TODO: Implement {{method_name}} query handler
+    Err(StatusCode::NOT_IMPLEMENTED)
+}
+
+{{/each}} 

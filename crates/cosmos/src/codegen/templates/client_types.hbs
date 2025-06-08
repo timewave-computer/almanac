@@ -1,0 +1,36 @@
+//! Generated types for contract: {{contract_address}}
+
+use serde::{Deserialize, Serialize};
+
+{{#each type_definitions}}
+{{#if is_enum}}
+/// {{description}}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum {{name}} {
+    {{#each variants}}
+    {{#if has_fields}}
+    {{variant_name}} {
+        {{#each fields}}
+        {{field_name}}: {{field_type}},
+        {{/each}}
+    },
+    {{else}}
+    {{variant_name}},
+    {{/if}}
+    {{/each}}
+}
+{{else}}
+/// {{description}}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct {{name}} {
+    {{#each fields}}
+    {{#if optional}}
+    #[serde(skip_serializing_if = "Option::is_none")]
+    {{/if}}
+    pub {{field_name}}: {{field_type}},
+    {{/each}}
+}
+{{/if}}
+
+{{/each}} 

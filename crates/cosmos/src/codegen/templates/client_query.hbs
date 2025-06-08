@@ -1,0 +1,16 @@
+//! Generated query methods for contract: {{contract_address}}
+
+use super::types::*;
+use super::{{contract_class}}Client;
+use indexer_core::Result;
+
+impl {{contract_class}}Client {
+    {{#each query_methods}}
+    /// {{description}}
+    pub async fn {{method_name}}(&self{{#if params}}, {{params}}{{/if}}) -> Result<{{return_type}}> {
+        // TODO: Implement query method for {{variant_name}}
+        todo!("Implement {{method_name}} query")
+    }
+    
+    {{/each}}
+} 

@@ -1,0 +1,54 @@
+-- Generated PostgreSQL schema for contract: {{contract_address}}
+-- Chain: {{chain_id}}
+
+-- Contract state table
+CREATE TABLE IF NOT EXISTS {{table_name}}_state (
+    id BIGSERIAL PRIMARY KEY,
+    contract_address TEXT NOT NULL,
+    block_height BIGINT NOT NULL,
+    transaction_hash TEXT NOT NULL,
+    timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    state_data JSONB NOT NULL,
+    
+    -- Indexes
+    CONSTRAINT unique_{{table_name}}_state_block_tx UNIQUE (contract_address, block_height, transaction_hash)
+);
+
+CREATE INDEX idx_{{table_name}}_state_contract ON {{table_name}}_state(contract_address);
+CREATE INDEX idx_{{table_name}}_state_block ON {{table_name}}_state(block_height);
+CREATE INDEX idx_{{table_name}}_state_timestamp ON {{table_name}}_state(timestamp);
+
+-- Contract events table
+CREATE TABLE IF NOT EXISTS {{table_name}}_events (
+    id BIGSERIAL PRIMARY KEY,
+    contract_address TEXT NOT NULL,
+    block_height BIGINT NOT NULL,
+    transaction_hash TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    event_data JSONB NOT NULL,
+    timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_{{table_name}}_events_contract ON {{table_name}}_events(contract_address);
+CREATE INDEX idx_{{table_name}}_events_type ON {{table_name}}_events(event_type);
+CREATE INDEX idx_{{table_name}}_events_block ON {{table_name}}_events(block_height);
+
+{{#if custom_tables}}
+{{#each custom_tables}}
+-- {{description}}
+CREATE TABLE IF NOT EXISTS {{table_name}} (
+    {{#each columns}}
+    {{column_name}} {{column_type}}{{#if not_null}} NOT NULL{{/if}}{{#if default_value}} DEFAULT {{default_value}}{{/if}},
+    {{/each}}
+    
+    {{#if primary_key}}
+    PRIMARY KEY ({{primary_key}})
+    {{/if}}
+);
+
+{{#each indexes}}
+CREATE INDEX {{index_name}} ON {{../table_name}}({{columns}});
+{{/each}}
+
+{{/each}}
+{{/if}} 

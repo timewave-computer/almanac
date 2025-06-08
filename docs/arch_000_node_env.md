@@ -1,202 +1,315 @@
-# System Architecture
+# Almanac System Architecture
 
-This document describes the overall architecture of the integrated Ethereum and UFO node system.
+This document describes the overall architecture of the Almanac cross-chain indexer system.
 
 ## Overview
 
-The system consists of two main components:
-1. An Ethereum node with a faucet contract for token management
-2. A UFO (Universal Fast Orderer) node for Cosmos SDK chain consensus with its own faucet
+The Almanac system consists of several key components:
+1. A cross-chain indexer service supporting Ethereum and Cosmos chains
+2. A hybrid storage architecture using PostgreSQL and RocksDB
+3. REST, GraphQL, and WebSocket APIs for data access
+4. A comprehensive Nix-based development environment
+5. Causality indexing with Sparse Merkle Tree implementation
 
-These components are packaged together in a Nix flake that provides a unified interface for development, testing, and operation. Both faucets share a similar API for consistency.
+These components work together to provide comprehensive indexing of Valence protocol contracts and cross-chain state across multiple blockchain ecosystems.
 
 ## Component Architecture
 
 ```mermaid
 graph TD
-    A[Nix Flake] --> B[Ethereum Module]
-    A --> C[UFO Module]
+    A[Almanac Indexer] --> B[Chain Adapters]
+    A --> C[Storage Layer]
+    A --> D[API Layer]
+    A --> E[Causality Engine]
     
-    B --> D[Anvil Node]
-    B --> E[Faucet Contract]
-    B --> F[Ethereum Scripts]
+    B --> F[Ethereum Client]
+    B --> G[Cosmos Client]
+    B --> H[Future Chains]
     
-    C --> G[UFO Node]
-    C --> H[Osmosis Integration]
-    C --> I[UFO Scripts]
+    C --> I[PostgreSQL]
+    C --> J[RocksDB]
+    C --> K[Sync Manager]
     
-    J[Shared Commands] --> K[Run All Nodes]
-    J --> L[E2E Tests]
+    D --> L[HTTP API]
+    D --> M[GraphQL API]
+    D --> N[WebSocket API]
+    
+    E --> O[Sparse Merkle Tree]
+    E --> P[Content Addressing]
+    E --> Q[Proof Generation]
+    
+    R[Nix Environment] --> S[Development Tools]
+    R --> T[Database Setup]
+    R --> U[Test Infrastructure]
 ```
 
-## Flow Diagrams
+## Data Flow Diagrams
 
-### Ethereum Node Workflow
+### Event Indexing Workflow
 
 ```mermaid
 sequenceDiagram
     actor User
-    participant Anvil
-    participant Faucet
-    participant Account1
-    participant Account2
+    participant ChainAdapter
+    participant IndexingPipeline
+    participant Storage
+    participant API
     
-    User->>Anvil: Start node
-    User->>Faucet: Deploy contract
-    User->>Faucet: Mint tokens to Account1
-    Faucet->>Account1: Transfer tokens
-    User->>Account1: Transfer to Account2
-    Account1->>Account2: Send tokens
-    User->>Account1: Check balance
-    User->>Account2: Check balance
+    User->>ChainAdapter: Monitor chain
+    ChainAdapter->>IndexingPipeline: New block/events
+    IndexingPipeline->>Storage: Store events (PostgreSQL)
+    IndexingPipeline->>Storage: Store state (RocksDB)
+    IndexingPipeline->>Storage: Update causality (SMT)
+    User->>API: Query events
+    API->>Storage: Retrieve data
+    Storage->>API: Return results
+    API->>User: Event data
 ```
 
-### UFO Node Workflow
+### Cross-Chain Message Tracking
 
 ```mermaid
 sequenceDiagram
     actor User
-    participant Script
-    participant UFO
-    participant UFOFaucet
-    participant Osmosis
-    participant Account1
-    participant Account2
+    participant SourceChain
+    participant Indexer
+    participant TargetChain
+    participant MessageTracker
     
-    User->>Script: Start UFO node
-    Script->>Osmosis: Check source code
-    alt Patched Mode
-        Script->>Osmosis: Apply UFO patches
-        Osmosis->>UFO: Integrate consensus
-    else Bridged Mode
-        Script->>UFO: Start UFO process
-        Script->>Osmosis: Start Osmosis process
-        UFO->>Osmosis: Connect via bridge
-    else Fauxmosis Mode
-        Script->>UFO: Start with mock app
-    end
-    User->>UFOFaucet: Mint tokens to Account1
-    UFOFaucet->>Account1: Transfer tokens
-    User->>UFOFaucet: Mint tokens to Account2
-    UFOFaucet->>Account2: Transfer tokens
+    User->>SourceChain: Send cross-chain message
+    SourceChain->>Indexer: Emit message event
+    Indexer->>MessageTracker: Track message (Originated)
+    MessageTracker->>MessageTracker: Update status (In Transit)
+    TargetChain->>Indexer: Delivery event
+    Indexer->>MessageTracker: Update status (Delivered)
+    TargetChain->>Indexer: Execution event
+    Indexer->>MessageTracker: Update status (Executed)
 ```
 
-## Faucet Architecture
+## Storage Architecture
 
 ```mermaid
 classDiagram
-    class FaucetInterface {
-        mint(address, amount)
-        getBalance(address)
+    class HybridStorage {
+        +PostgreSQL storage
+        +RocksDB storage
+        +SyncManager sync
+        store_event()
+        get_events()
+        atomic_update()
     }
     
-    class EthereumFaucet {
-        contract address
-        rpcUrl
-        privateKey
-        mint(address, amount)
-        getBalance(address)
+    class PostgreSQLStorage {
+        +Complex queries
+        +Historical data
+        +Cross-chain relationships
+        +Full-text search
+        store_valence_account()
+        store_processor_message()
+        get_events_with_status()
     }
     
-    class UFOFaucet {
-        buildMode
-        validators
-        blockTime
-        mint(address, amount)
-        getBalance(address)
+    class RocksDBStorage {
+        +High-performance reads
+        +Latest state lookups
+        +Time-critical operations
+        get_latest_block()
+        set_account_state()
+        get_processor_state()
     }
     
-    FaucetInterface <|-- EthereumFaucet
-    FaucetInterface <|-- UFOFaucet
+    HybridStorage --> PostgreSQLStorage
+    HybridStorage --> RocksDBStorage
+```
+
+## Valence Contract Architecture
+
+```mermaid
+classDiagram
+    class ValenceIndexer {
+        +AccountIndexer account
+        +ProcessorIndexer processor
+        +AuthorizationIndexer authorization
+        +LibraryIndexer library
+        index_contract_event()
+    }
+    
+    class AccountIndexer {
+        +ValenceAccountInfo account_info
+        +ValenceAccountExecution executions
+        process_account_created()
+        process_library_approved()
+        process_executed()
+    }
+    
+    class ProcessorIndexer {
+        +ValenceProcessorInfo processor_info
+        +ValenceProcessorMessage messages
+        process_message_received()
+        process_message_processed()
+        correlate_cross_chain_messages()
+    }
+    
+    class AuthorizationIndexer {
+        +ValenceAuthorizationInfo auth_info
+        +ValenceAuthorizationGrant grants
+        process_policy_updated()
+        process_grant_created()
+        process_authorization_request()
+    }
+    
+    class LibraryIndexer {
+        +ValenceLibraryInfo library_info
+        +ValenceLibraryVersion versions
+        process_library_deployed()
+        process_version_updated()
+        track_library_usage()
+    }
+    
+    ValenceIndexer --> AccountIndexer
+    ValenceIndexer --> ProcessorIndexer
+    ValenceIndexer --> AuthorizationIndexer
+    ValenceIndexer --> LibraryIndexer
 ```
 
 ## Module Structure
 
 ```mermaid
 classDiagram
-    class FlakeOutputs {
-        packages
-        apps
-        devShells
+    class AlmanacWorkspace {
+        +indexer-core
+        +indexer-storage
+        +indexer-ethereum
+        +indexer-cosmos
+        +indexer-api
+        +indexer-causality
+        +indexer-query
+        +indexer-tools
+        +indexer-benchmarks
     }
     
-    class EthereumModule {
-        rpcUrl: string
-        privateKey: string
-        start-anvil()
-        deploy-contract()
-        mint-tokens()
-        e2e-test()
+    class CoreModule {
+        +Error handling
+        +Type definitions
+        +Service abstractions
+        +Event types
+        +Configuration
     }
     
-    class UFOModule {
-        osmosisSource: string
-        buildMode: enum
-        validators: number
-        blockTimes: number[]
-        faucet: {
-            enabled: boolean
-            initialSupply: number
-            tokenName: string
-            tokenSymbol: string
-        }
-        run-ufo-node()
-        ufo-mint-tokens()
-        build-osmosis-ufo()
-        benchmark-ufo()
-        ufo-e2e-test()
+    class StorageModule {
+        +PostgreSQL migrations
+        +RocksDB configuration
+        +Hybrid storage trait
+        +Valence data models
+        +Sync mechanisms
     }
     
-    FlakeOutputs --> EthereumModule
-    FlakeOutputs --> UFOModule
+    class ChainModules {
+        +EthereumClient
+        +CosmosClient
+        +valence-domain-clients integration
+        +Event processing
+        +Block finality tracking
+    }
+    
+    class APIModule {
+        +HTTP REST endpoints
+        +GraphQL schema
+        +WebSocket subscriptions
+        +Authentication
+        +Schema registry
+    }
+    
+    AlmanacWorkspace --> CoreModule
+    AlmanacWorkspace --> StorageModule
+    AlmanacWorkspace --> ChainModules
+    AlmanacWorkspace --> APIModule
 ```
 
 ## Configuration Management
 
-Configuration for both modules is defined in the main `flake.nix` file. The Ethereum module configuration includes RPC URL and private key information, while the UFO module configuration includes the path to the Osmosis source code, the build mode, the number of validators, the block times for benchmarking, and faucet settings.
+Configuration is managed through multiple mechanisms:
 
-Example configuration:
+### Nix-based Environment
+```bash
+# Enter development environment
+nix develop
 
-```nix
-# Ethereum configuration
-ethereum = {
-  rpcUrl = "http://localhost:8545";
-  privateKey = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
-};
+# Initialize databases
+init_databases
 
-# UFO configuration
-ufo = {
-  osmosisSource = "/tmp/osmosis-source";
-  buildMode = "patched";
-  validators = 1;
-  blockTimes = [ 1000 100 10 1 ];
-  faucet = {
-    enabled = true;
-    initialSupply = 1000000;
-    tokenName = "UFO";
-    tokenSymbol = "UFO";
-  };
-};
+# Build specific crates
+nix build .#indexer-api
+nix build .#indexer-ethereum
+```
+
+### Runtime Configuration
+```toml
+# almanac-config.json
+{
+  "chains": {
+    "ethereum": {
+      "rpc_url": "http://localhost:8545",
+      "chain_id": "1"
+    },
+    "cosmos": {
+      "grpc_url": "http://localhost:9090",
+      "chain_id": "cosmoshub-4"
+    }
+  },
+  "storage": {
+    "postgres_url": "postgresql://postgres:postgres@localhost:5432/indexer",
+    "rocksdb_path": "./data/rocksdb"
+  },
+  "api": {
+    "host": "127.0.0.1",
+    "port": 8000,
+    "enable_graphql": true,
+    "enable_websocket": true
+  }
+}
 ```
 
 ## Integration Points
 
-The main integration point between the Ethereum and UFO components is the `run-all-nodes` command, which starts both nodes and manages their lifecycle. This allows developers to work with both systems simultaneously.
+The main integration points include:
 
-Both faucets share a similar API, allowing for consistent token management across both chains:
+### Chain Connectivity
+- **Ethereum**: Uses `valence-domain-clients` EVM integration for robust Ethereum, Polygon, and Base support
+- **Cosmos**: Uses `valence-domain-clients` Cosmos integration for Noble, Osmosis, and Neutron support
 
+### Storage Synchronization
+- Atomic updates across PostgreSQL and RocksDB
+- Consistency verification and error recovery
+- Performance-optimized data paths
+
+### API Consistency
 ```bash
-# Ethereum faucet
-nix run .#mint-tokens 0xAddress 100
+# REST API
+curl http://localhost:8000/api/v1/chains/ethereum/status
 
-# UFO faucet
-nix run .#ufo-mint-tokens osmo1address 100
+# GraphQL API
+curl -X POST http://localhost:8000/graphql \
+  -H "Content-Type: application/json" \
+  -d '{"query": "{ latestFinalizedBlock(chain: \"ethereum\") }"}'
+
+# WebSocket API
+wscat -c ws://localhost:8000/api/v1/ws
 ```
+
+## Performance Targets
+
+- **Block processing latency**: < 500ms
+- **Event indexing latency**: < 1 second from block finality
+- **RocksDB read latency**: < 50ms (99th percentile)
+- **PostgreSQL query latency**: < 500ms (95th percentile)
+- **Concurrent query support**: 100+ concurrent read queries
 
 ## Future Considerations
 
 Potential future enhancements:
-- Cross-chain communication between Ethereum and Cosmos
-- Shared token standards
-- Unified monitoring and logging
-- State synchronization between chains 
+- Solana and Move-based chain support
+- Enhanced causality proof verification
+- Cross-chain debugging visualization
+- Advanced analytics and reporting
+- Horizontal scaling and sharding 
