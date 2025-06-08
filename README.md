@@ -46,7 +46,6 @@ almanac cosmos generate-contract valence_base_account_schema.json \
 - [Valence Base Account Integration Example](examples/cosmos/valence_base_account.md)
 - [Integration Tutorial](docs/cosmos_integration_tutorial.md)
 - [CLI Reference](docs/cosmos_cli_reference.md)
-- [Troubleshooting Guide](docs/cosmos_troubleshooting.md)
 
 ### Ethereum Code Generation
 Generate comprehensive integration code from Ethereum contract ABIs:
@@ -72,7 +71,6 @@ almanac ethereum generate-contract usdc_abi.json \
 - [USDC Integration Example](examples/ethereum/erc20_token.md)
 - [Integration Tutorial](docs/ethereum_integration_tutorial.md)
 - [CLI Reference](docs/ethereum_cli_reference.md)
-- [Troubleshooting Guide](docs/ethereum_troubleshooting.md)
 
 **Generated Code Structure:**
 ```
