@@ -19,6 +19,10 @@ use indexer_ethereum::EthereumClient;
 use indexer_tools::service::ServiceManager;
 use indexer_tools::config::{ConfigManager, Environment};
 
+// Import codegen modules
+use indexer_cosmos::codegen::{CosmosCodegenConfig, generate_contract_code as generate_cosmos_contract};
+use indexer_ethereum::codegen::{EthereumCodegenConfig, generate_contract_code as generate_ethereum_contract};
+
 #[derive(Parser)]
 #[command(name = "almanac")]
 #[command(about = "Almanac cross-chain indexer")]
@@ -56,6 +60,76 @@ enum Commands {
         #[arg(short, long)]
         database_url: String,
     },
+    /// Cosmos-related commands
+    Cosmos {
+        #[command(subcommand)]
+        command: CosmosCommands,
+    },
+    /// Ethereum-related commands
+    Ethereum {
+        #[command(subcommand)]
+        command: EthereumCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum CosmosCommands {
+    /// Generate code for interacting with a CosmWasm contract
+    GenerateContract {
+        /// Path to the CosmWasm message schema JSON file (*_msg.json)
+        msg_file: String,
+        /// Contract address on the chain
+        #[arg(long)]
+        address: String,
+        /// Chain ID where the contract is deployed
+        #[arg(long)]
+        chain: String,
+        /// Output directory for generated code
+        #[arg(long, default_value = "./generated")]
+        output_dir: String,
+        /// Namespace for generated code
+        #[arg(long)]
+        namespace: Option<String>,
+        /// Comma-separated list of features to generate
+        #[arg(long, default_value = "client,storage,api,migrations")]
+        features: String,
+        /// Preview generated code without writing files
+        #[arg(long)]
+        dry_run: bool,
+        /// Enable verbose output
+        #[arg(long, short)]
+        verbose: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum EthereumCommands {
+    /// Generate code for interacting with an Ethereum contract
+    GenerateContract {
+        /// Path to the contract ABI JSON file
+        abi_file: String,
+        /// Contract address on the chain
+        #[arg(long)]
+        address: String,
+        /// Chain ID where the contract is deployed
+        #[arg(long)]
+        chain: String,
+        /// Output directory for generated code
+        #[arg(long, default_value = "./generated")]
+        output_dir: String,
+        /// Namespace for generated code
+        #[arg(long)]
+        namespace: Option<String>,
+        /// Comma-separated list of features to generate
+        #[arg(long, default_value = "client,storage,api,migrations")]
+        features: String,
+        /// Preview generated code without writing files
+        #[arg(long)]
+        dry_run: bool,
+        /// Enable verbose output
+        #[arg(long, short)]
+        verbose: bool,
+    },
 }
 
 #[tokio::main]
@@ -81,6 +155,12 @@ async fn main() -> Result<()> {
         }
         Commands::InitDb { database_url } => {
             init_database(database_url).await?;
+        }
+        Commands::Cosmos { command } => {
+            handle_cosmos_command(command).await?;
+        }
+        Commands::Ethereum { command } => {
+            handle_ethereum_command(command).await?;
         }
     }
 
@@ -253,6 +333,237 @@ async fn init_database(database_url: String) -> Result<()> {
         }
     }
     
+    Ok(())
+}
+
+async fn handle_cosmos_command(command: CosmosCommands) -> Result<()> {
+    match command {
+        CosmosCommands::GenerateContract {
+            msg_file,
+            address,
+            chain,
+            output_dir,
+            namespace,
+            features,
+            dry_run,
+            verbose,
+        } => {
+            // Validate contract address format
+            validate_cosmos_contract_address(&address)?;
+
+            // Validate chain ID
+            validate_cosmos_chain_id(&chain)?;
+
+            // Validate message file exists
+            validate_cosmos_msg_file(&msg_file).await?;
+
+            let features = features
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .collect();
+
+            let config = CosmosCodegenConfig {
+                contract_address: address.clone(),
+                chain_id: chain.clone(),
+                output_dir: output_dir.clone(),
+                namespace,
+                features,
+                dry_run,
+            };
+
+            if verbose {
+                println!("Cosmos Contract Code Generation");
+                println!("==============================");
+                println!("Message file: {}", msg_file);
+                println!("Contract address: {}", address);
+                println!("Chain ID: {}", chain);
+                println!("Output directory: {}", output_dir);
+                if let Some(ref ns) = config.namespace {
+                    println!("Namespace: {}", ns);
+                }
+                println!("Features: {}", config.features.join(", "));
+                println!("Dry run: {}", dry_run);
+                println!();
+            }
+
+            if dry_run {
+                println!("🔍 Performing dry run - no files will be written");
+            } else {
+                println!("🚀 Generating cosmos contract code...");
+            }
+
+            generate_cosmos_contract(&msg_file, config).await?;
+
+            if !dry_run {
+                println!("✅ Code generation completed successfully!");
+                println!("📁 Generated files are located in: {}", output_dir);
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn handle_ethereum_command(command: EthereumCommands) -> Result<()> {
+    match command {
+        EthereumCommands::GenerateContract {
+            abi_file,
+            address,
+            chain,
+            output_dir,
+            namespace,
+            features,
+            dry_run,
+            verbose,
+        } => {
+            // Validate contract address format
+            validate_ethereum_contract_address(&address)?;
+
+            // Validate chain ID
+            validate_ethereum_chain_id(&chain)?;
+
+            // Validate ABI file exists
+            validate_ethereum_abi_file(&abi_file).await?;
+
+            let features = features
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .collect();
+
+            let config = EthereumCodegenConfig {
+                contract_address: address.clone(),
+                chain_id: chain.clone(),
+                output_dir: output_dir.clone(),
+                namespace,
+                features,
+                dry_run,
+            };
+
+            if verbose {
+                println!("Ethereum Contract Code Generation");
+                println!("=================================");
+                println!("ABI file: {}", abi_file);
+                println!("Contract address: {}", address);
+                println!("Chain ID: {}", chain);
+                println!("Output directory: {}", output_dir);
+                if let Some(ref ns) = config.namespace {
+                    println!("Namespace: {}", ns);
+                }
+                println!("Features: {}", config.features.join(", "));
+                println!("Dry run: {}", dry_run);
+                println!();
+            }
+
+            if dry_run {
+                println!("🔍 Performing dry run - no files will be written");
+            } else {
+                println!("🚀 Generating ethereum contract code...");
+            }
+
+            generate_ethereum_contract(&abi_file, config).await?;
+
+            if !dry_run {
+                println!("✅ Code generation completed successfully!");
+                println!("📁 Generated files are located in: {}", output_dir);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Validate cosmos contract address format
+fn validate_cosmos_contract_address(address: &str) -> Result<()> {
+    if address.is_empty() {
+        return Err(Error::generic("Contract address cannot be empty"));
+    }
+
+    // Cosmos contract addresses typically start with a chain prefix
+    if !address.contains('1') {
+        return Err(Error::generic(
+            "Contract address should be a valid bech32 address"
+        ));
+    }
+
+    Ok(())
+}
+
+/// Validate cosmos chain ID format
+fn validate_cosmos_chain_id(chain_id: &str) -> Result<()> {
+    if chain_id.is_empty() {
+        return Err(Error::generic("Chain ID cannot be empty"));
+    }
+
+    // Basic format validation
+    if chain_id.len() < 3 {
+        return Err(Error::generic("Chain ID is too short"));
+    }
+
+    Ok(())
+}
+
+/// Validate cosmos message file exists and is readable
+async fn validate_cosmos_msg_file(file_path: &str) -> Result<()> {
+    if !tokio::fs::try_exists(file_path).await
+        .map_err(|e| Error::generic(format!("Failed to check file existence: {}", e)))? 
+    {
+        return Err(Error::generic(format!("Message file not found: {}", file_path)));
+    }
+
+    // Try to read the file to ensure it's accessible
+    let content = tokio::fs::read_to_string(file_path).await
+        .map_err(|e| Error::generic(format!("Failed to read message file: {}", e)))?;
+
+    // Basic JSON validation
+    let _: serde_json::Value = serde_json::from_str(&content)
+        .map_err(|e| Error::generic(format!("Invalid JSON in message file: {}", e)))?;
+
+    Ok(())
+}
+
+/// Validate ethereum contract address format
+fn validate_ethereum_contract_address(address: &str) -> Result<()> {
+    if address.is_empty() {
+        return Err(Error::generic("Contract address cannot be empty"));
+    }
+
+    // Ethereum addresses should start with 0x and be 42 characters long
+    if !address.starts_with("0x") || address.len() != 42 {
+        return Err(Error::generic(
+            "Contract address should be a valid Ethereum address (0x followed by 40 hex characters)"
+        ));
+    }
+
+    Ok(())
+}
+
+/// Validate ethereum chain ID format
+fn validate_ethereum_chain_id(chain_id: &str) -> Result<()> {
+    if chain_id.is_empty() {
+        return Err(Error::generic("Chain ID cannot be empty"));
+    }
+
+    // Chain ID should be a valid number
+    chain_id.parse::<u64>()
+        .map_err(|_| Error::generic("Chain ID must be a valid number"))?;
+
+    Ok(())
+}
+
+/// Validate ethereum ABI file exists and is readable
+async fn validate_ethereum_abi_file(file_path: &str) -> Result<()> {
+    if !tokio::fs::try_exists(file_path).await
+        .map_err(|e| Error::generic(format!("Failed to check file existence: {}", e)))? 
+    {
+        return Err(Error::generic(format!("ABI file not found: {}", file_path)));
+    }
+
+    // Try to read the file to ensure it's accessible
+    let content = tokio::fs::read_to_string(file_path).await
+        .map_err(|e| Error::generic(format!("Failed to read ABI file: {}", e)))?;
+
+    // Basic JSON validation
+    let _: serde_json::Value = serde_json::from_str(&content)
+        .map_err(|e| Error::generic(format!("Invalid JSON in ABI file: {}", e)))?;
+
     Ok(())
 }
 

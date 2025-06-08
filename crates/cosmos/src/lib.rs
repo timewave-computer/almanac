@@ -13,6 +13,9 @@ use indexer_core::event::{Event, UnifiedEvent};
 use indexer_core::service::{EventService, EventSubscription};
 use indexer_core::types::{ChainId, EventFilter};
 
+pub mod contracts;
+pub mod codegen;
+
 /// Cosmos chain configuration
 #[derive(Debug, Clone)]
 pub struct CosmosChainConfig {

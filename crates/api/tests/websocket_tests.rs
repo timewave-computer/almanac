@@ -381,7 +381,7 @@ async fn test_subscription_cleanup() {
     let new_time = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
-        .as_secs() - (1 * 3600); // 1 hour ago
+        .as_secs() - 3600; // 1 hour ago
     
     let old_subscription = PersistedSubscription {
         id: "old-sub".to_string(),

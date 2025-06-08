@@ -2,16 +2,17 @@
 
 ## Overview
 
-This project uses Nix to manage the development environment, dependencies, and deployment workflows. The goal is to provide a reproducible environment for both development and deployment.
+This project uses Nix to manage the development environment, dependencies, and deployment workflows. The goal is to provide a reproducible environment for both development and deployment of the Almanac cross-chain indexer.
 
 ## Nix Flake Structure
 
 Our `flake.nix` defines the following components:
 
-1. Development environment
-2. Build configuration
-3. Runtime dependencies
-4. Testing infrastructure
+1. Development environment with all required tools
+2. Build configuration using `crate2nix`
+3. Runtime dependencies for PostgreSQL and RocksDB
+4. Testing infrastructure for multiple blockchain environments
+5. Workflow automation for development tasks
 
 ## Key Nix Components
 
@@ -24,80 +25,118 @@ nix develop
 ```
 
 This loads a shell with:
-- Rust toolchain
-- PostgreSQL libraries
-- RocksDB libraries
-- Foundry (Anvil, Forge, Cast)
-- Wasmd tools
-- Additional utilities
+- Rust toolchain with proper versions
+- PostgreSQL 15 and database tools
+- RocksDB libraries and dependencies
+- Foundry (Anvil, Forge, Cast) for Ethereum development
+- `wasmd` tools for Cosmos development
+- `sqlx-cli` for database migrations
+- Additional utilities (git, curl, jq, etc.)
 
-### Blockchain Nodes
+### Database Management
 
-We maintain Nix configurations for both Ethereum and Cosmos test nodes:
+Database initialization and management:
 
 ```bash
-# Start Ethereum test node
+# Initialize and start databases
+init_databases
+
+# Stop databases
+stop_databases
+
+# Generate Cargo.nix for Nix builds
+generate_cargo_nix
+
+# Run comprehensive test suite
+run_almanac_tests
+```
+
+### Blockchain Node Support
+
+We maintain Nix configurations for both Ethereum and Cosmos test environments:
+
+```bash
+# Start Ethereum test node (Anvil)
 nix run .#start-anvil
 
-# Start Cosmos test node
+# Start Reth Ethereum node
+nix run .#start-reth
+
+# Start Cosmos test node (wasmd)
 nix run .#wasmd-node
 ```
 
-### Contract Deployment
+### Build System
 
-Valence contract deployment is managed through Nix functions in `nix/valence-contracts.nix`:
+Build specific components of the Almanac system:
 
 ```bash
-# Build all contracts
-nix run .#build-valence-contracts
+# Build the main indexer API service
+nix build .#indexer-api
 
-# Deploy individual contract types
-nix run .#deploy-valence-account
-nix run .#deploy-valence-processor
-nix run .#deploy-valence-authorization
-nix run .#deploy-valence-library
-
-# Deploy all Cosmos contracts
-nix run .#deploy-valence-cosmos-contracts
-
-# Deploy Ethereum contracts
-nix run .#deploy-valence-ethereum-contracts
-```
-
-### Nix Utilities
-
-The Valence contract deployment functionality is implemented using Nix functions:
-
-- `valenceUtils.makeWasmdConfig`: Creates configuration for wasmd nodes
-- `valenceUtils.makeAnvilConfig`: Creates configuration for Anvil nodes
-- `valenceUtils.deployContract`: Generates deployment scripts for Valence contracts
-
-Example of generating a custom wasmd config:
-
-```nix
-let
-  wasmdConfig = valenceUtils.makeWasmdConfig {
-    chainId = "custom-chain";
-    rpcUrl = "http://localhost:26657";
-    apiUrl = "http://localhost:1317";
-  };
-in
-  # Use the config...
+# Build specific workspace crates
+nix build .#indexer-core
+nix build .#indexer-storage
+nix build .#indexer-ethereum
+nix build .#indexer-cosmos
+nix build .#indexer-causality
 ```
 
 ### Testing Infrastructure
 
-We provide Nix-based testing commands:
+Comprehensive testing commands for different environments:
 
 ```bash
-# Run all tests
-nix run .#test-all
+# Test Ethereum adapter against Anvil
+nix run .#test-ethereum-adapter-anvil
 
-# Run contract-specific tests
-nix run .#test-valence-contracts
+# Test Ethereum adapter against Reth
+nix run .#test-ethereum-adapter-reth
+
+# Test Cosmos adapter
+nix run .#test-cosmos-adapter
+
+# Run cross-chain end-to-end tests
+nix run .#cross-chain-e2e-test
+```
+
+### Development Workflows
+
+Interactive workflow selection and automation:
+
+```bash
+# Interactive workflow menu
+cd nix/environments
+nix run .
+
+# Run specific workflows
+nix run ./nix/environments#anvil-workflow
+nix run ./nix/environments#reth-workflow
+nix run ./nix/environments#cosmwasm-workflow
+nix run ./nix/environments#all-workflows
 ```
 
 ## Custom Nix Configurations
+
+### Environment Variables
+
+The development shell automatically sets up essential environment variables:
+
+```bash
+# Database configuration
+export PGDATA="$PROJECT_ROOT/data/postgres"
+export PGUSER="postgres"
+export PGPASSWORD="postgres"
+export PGDATABASE="indexer"
+export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/indexer"
+
+# SQLx offline mode for compilation
+export SQLX_OFFLINE="true"
+
+# macOS compatibility
+export MACOSX_DEPLOYMENT_TARGET="11.0"
+export DEVELOPER_DIR=""
+```
 
 ### Adding New Commands
 
@@ -110,56 +149,144 @@ Example:
 
 ```nix
 packages.${system} = {
-  my-command = pkgs.writeShellScriptBin "my-command" ''
-    echo "Hello, world!"
-  '';
+  my-indexer-tool = pkgs.writeShellApplication {
+    name = "my-indexer-tool";
+    runtimeInputs = with pkgs; [ curl jq ];
+    text = ''
+      echo "Custom indexer tool"
+      # Tool implementation...
+    '';
+  };
 };
 
 apps.${system} = {
-  my-command = {
+  my-indexer-tool = {
     type = "app";
-    program = "${self.packages.${system}.my-command}/bin/my-command";
+    program = "${self.packages.${system}.my-indexer-tool}/bin/my-indexer-tool";
   };
 };
 ```
 
-This can be run with `nix run .#my-command`.
+This can be run with `nix run .#my-indexer-tool`.
 
 ### Setting Up a New Development Environment
 
-To create a new environment for a specific task:
+To create a specialized environment for specific tasks:
 
 ```nix
 devShells.${system}.migration = pkgs.mkShell {
-  buildInputs = [
-    pkgs.postgresql_14
-    pkgs.sqlx-cli
+  buildInputs = with pkgs; [
+    postgresql_15
+    sqlx-cli
+    rust-bin.stable.latest.default
   ];
   
   shellHook = ''
     export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/indexer"
+    export SQLX_OFFLINE=true
     echo "Migration development environment ready!"
+    echo "Run 'sqlx migrate run' to apply database migrations"
   '';
 };
 ```
 
 Load this environment with `nix develop .#migration`.
 
+### Crate-Specific Overrides
+
+The flake includes specific build overrides for system dependencies:
+
+```nix
+# RocksDB system dependencies
+librocksdb-sys = attrs: {
+  nativeBuildInputs = with pkgs; [ pkg-config cmake ];
+  buildInputs = with pkgs; [
+    zlib bzip2 lz4 zstd snappy
+  ] ++ lib.optionals pkgs.stdenv.isDarwin [
+    pkgs.darwin.apple_sdk.frameworks.Security
+    pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
+  ];
+};
+
+# PostgreSQL/SQLx dependencies
+indexer-storage = attrs: {
+  buildInputs = with pkgs; [
+    postgresql_15
+    sqlx-cli
+  ] ++ lib.optionals pkgs.stdenv.isDarwin [
+    pkgs.darwin.apple_sdk.frameworks.Security
+    pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
+  ];
+  
+  preBuild = ''
+    export SQLX_OFFLINE=true
+  '';
+};
+```
+
 ## Advantages of Nix Integration
 
-1. **Reproducibility**: Every developer gets exactly the same environment
+1. **Reproducibility**: Every developer gets exactly the same environment across platforms
 2. **Isolation**: Dependencies don't conflict with system packages
-3. **Versioning**: Exact versions of tools are specified and pinned
-4. **Configuration as Code**: Node and deployment configurations are managed as code
-5. **Cross-platform**: Works consistently across macOS and Linux
-6. **Custom Commands**: Simple addition of project-specific commands
+3. **Versioning**: Exact versions of tools are specified and pinned in `flake.lock`
+4. **Cross-platform**: Works consistently across macOS (Apple Silicon/Intel) and Linux
+5. **Incremental Builds**: Efficient caching and incremental compilation
+6. **Testing Automation**: Consistent test environments across different blockchain nodes
 
-## Nix-Native Contract Deployment
+## Platform Support
 
-Contract deployment scripts have been implemented as Nix functions rather than standalone shell scripts, providing better integration, reproducibility, and maintainability:
+The flake is designed to work across multiple platforms:
 
-1. Configuration files are generated through Nix functions
-2. Deployment scripts are templated with Nix functions
-3. Command-line interfaces are exposed through the Nix flake
+- **macOS (Apple Silicon)**: Full support with proper framework linking
+- **macOS (Intel)**: Full support with Intel-specific optimizations  
+- **Linux (x86_64)**: Full support with native Linux tooling
+- **Nix on other platforms**: Basic support where Nix is available
 
-The primary implementation is in `nix/valence-contracts.nix`. 
+## Troubleshooting
+
+### Common Issues
+
+1. **Database Connection Issues**:
+   ```bash
+   # Check if PostgreSQL is running
+   pg_isready -h localhost -p 5432
+   
+   # Restart databases if needed
+   stop_databases
+   init_databases
+   ```
+
+2. **Build Failures**:
+   ```bash
+   # Regenerate Cargo.nix if dependencies changed
+   generate_cargo_nix
+   
+   # Clean and rebuild
+   nix build .#indexer-api --rebuild
+   ```
+
+3. **Missing Environment Variables**:
+   ```bash
+   # Ensure you're in the development shell
+   nix develop
+   
+   # Check environment variables
+   env | grep -E "(DATABASE_URL|SQLX_OFFLINE|PG)"
+   ```
+
+### Log Files
+
+Check log files for debugging workflow issues:
+- Anvil logs: `logs/anvil.log`
+- Reth logs: `logs/reth.log`
+- wasmd logs: `logs/wasmd.log`
+- PostgreSQL logs: `data/postgres/postgres.log`
+
+## Performance Optimizations
+
+The Nix configuration includes several performance optimizations:
+
+1. **Parallel Builds**: Configured for optimal CPU utilization
+2. **Caching**: Aggressive caching of dependencies and build artifacts
+3. **System Libraries**: Direct linking to system libraries where possible
+4. **Cross-Compilation**: Support for efficient cross-platform builds 

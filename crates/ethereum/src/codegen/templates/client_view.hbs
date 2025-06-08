@@ -1,0 +1,23 @@
+//! Generated view methods for contract: {{contract_address}}
+
+use super::types::*;
+use super::{{contract_class}}Client;
+use indexer_core::Result;
+use ethers::types::{U256, Address, Bytes};
+
+impl {{contract_class}}Client {
+{{#each view_functions}}
+    /// {{description}}
+    pub async fn {{name}}(
+        &self,
+{{#each inputs}}
+        {{name}}: {{rust_type}},
+{{/each}}
+    ) -> Result<{{output_type}}> {
+        // TODO: Implement actual contract call
+        // This would use self.ethereum_client().call_contract_function(...)
+        todo!("Implement contract view function: {{name}}")
+    }
+
+{{/each}}
+} 

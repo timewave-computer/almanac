@@ -1,0 +1,20 @@
+[ethereum]
+output_dir = "./generated"
+default_features = ["client", "storage", "api"]
+
+[ethereum.templates]
+template_dir = "./templates"
+
+[ethereum.database]
+url = "postgresql://localhost/test_db"
+schema_prefix = "contract_"
+
+[ethereum.api]
+base_path = "/api/v1/ethereum"
+rate_limiting = true
+cors = true
+
+[[ethereum.contracts]]
+name_pattern = "erc20_*"
+features = ["client", "storage", "api"]
+namespace_prefix = "token_"

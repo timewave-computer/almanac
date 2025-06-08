@@ -1,0 +1,133 @@
+//! Generated REST endpoints for contract: {{contract_address}}
+
+use axum::{
+    extract::{Path, Query, State},
+    http::StatusCode,
+    response::Json,
+    routing::{get, post},
+    Router,
+};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::collections::HashMap;
+use indexer_core::Result;
+use super::types::*;
+use super::{{contract_class}}Client;
+
+/// Create routes for {{contract_name}} contract API
+pub fn {{snake_case contract_name}}_routes() -> Router<AppState> {
+    Router::new()
+        .route("/contract/{{contract_address}}/info", get(get_contract_info))
+        .route("/contract/{{contract_address}}/state", get(get_contract_state))
+        .route("/contract/{{contract_address}}/transactions", get(get_contract_transactions))
+        .route("/contract/{{contract_address}}/events", get(get_contract_events))
+{{#each view_functions}}
+        .route("/contract/{{../contract_address}}/call/{{name}}", get(call_{{name}}))
+{{/each}}
+{{#each transaction_functions}}
+        .route("/contract/{{../contract_address}}/send/{{name}}", post(send_{{name}}))
+{{/each}}
+}
+
+/// Application state for API handlers
+#[derive(Clone)]
+pub struct AppState {
+    pub client: {{contract_class}}Client,
+}
+
+/// Standard API response wrapper
+#[derive(Debug, Serialize)]
+pub struct ApiResponse<T> {
+    pub success: bool,
+    pub data: Option<T>,
+    pub error: Option<String>,
+    pub metadata: Option<ApiMetadata>,
+}
+
+/// API response metadata
+#[derive(Debug, Serialize)]
+pub struct ApiMetadata {
+    pub block_number: Option<u64>,
+    pub timestamp: Option<String>,
+    pub gas_used: Option<u64>,
+}
+
+/// Get contract information
+pub async fn get_contract_info(
+    State(state): State<AppState>,
+) -> Result<Json<ApiResponse<ContractInfo>>, StatusCode> {
+    let contract_info = ContractInfo {
+        address: state.client.contract_address().to_string(),
+        chain_id: "{{chain_id}}".to_string(),
+        contract_type: "Ethereum".to_string(),
+    };
+
+    Ok(Json(ApiResponse {
+        success: true,
+        data: Some(contract_info),
+        error: None,
+        metadata: None,
+    }))
+}
+
+{{#each view_functions}}
+/// Call {{name}} view function
+pub async fn call_{{name}}(
+    State(state): State<AppState>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Result<Json<ApiResponse<Value>>, StatusCode> {
+    // TODO: Parse parameters and call contract view function
+    let placeholder_result = serde_json::json!({
+        "function": "{{name}}",
+        "message": "View function call not yet implemented",
+        "parameters": params
+    });
+
+    Ok(Json(ApiResponse {
+        success: true,
+        data: Some(placeholder_result),
+        error: None,
+        metadata: Some(ApiMetadata {
+            block_number: None,
+            timestamp: Some(chrono::Utc::now().to_rfc3339()),
+            gas_used: None,
+        }),
+    }))
+}
+
+{{/each}}
+
+{{#each transaction_functions}}
+/// Send {{name}} transaction
+pub async fn send_{{name}}(
+    State(state): State<AppState>,
+    Json(payload): Json<Value>,
+) -> Result<Json<ApiResponse<Value>>, StatusCode> {
+    // TODO: Parse payload and send contract transaction
+    let placeholder_result = serde_json::json!({
+        "function": "{{name}}",
+        "message": "Transaction sending not yet implemented",
+        "payload": payload
+    });
+
+    Ok(Json(ApiResponse {
+        success: true,
+        data: Some(placeholder_result),
+        error: None,
+        metadata: Some(ApiMetadata {
+            block_number: None,
+            timestamp: Some(chrono::Utc::now().to_rfc3339()),
+            gas_used: None,
+        }),
+    }))
+}
+
+{{/each}}
+
+/// Contract information response
+#[derive(Debug, Serialize)]
+pub struct ContractInfo {
+    pub address: String,
+    pub chain_id: String,
+    pub contract_type: String,
+} 

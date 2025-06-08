@@ -1,0 +1,32 @@
+//! Generated storage traits for contract: {{contract_address}}
+
+use indexer_core::Result;
+use async_trait::async_trait;
+use super::{{contract_class}}State;
+
+#[async_trait]
+pub trait {{contract_class}}Storage: Send + Sync {
+    /// Store contract state
+    async fn store_state(&self, block_height: u64, state: &{{contract_class}}State) -> Result<()>;
+    
+    /// Get contract state at specific block height
+    async fn get_state(&self, block_height: u64) -> Result<Option<{{contract_class}}State>>;
+    
+    /// Get the latest contract state
+    async fn get_latest_state(&self) -> Result<Option<{{contract_class}}State>>;
+    
+    /// Store contract event
+    async fn store_event(&self, block_height: u64, event_type: &str, event_data: serde_json::Value) -> Result<()>;
+    
+    /// Get contract events in block range
+    async fn get_events(&self, from_block: u64, to_block: u64) -> Result<Vec<ContractEvent>>;
+}
+
+#[derive(Debug, Clone)]
+pub struct ContractEvent {
+    pub block_height: u64,
+    pub transaction_hash: String,
+    pub event_type: String,
+    pub event_data: serde_json::Value,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+} 

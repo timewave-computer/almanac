@@ -3,7 +3,6 @@ use std::time::{SystemTime, Duration};
 use std::any::Any;
 
 use indexer_core::event::Event;
-use async_trait::async_trait;
 use rand::{thread_rng, Rng};
 
 /// Assert that a duration is less than an expected maximum
@@ -57,7 +56,6 @@ pub struct MockEvent {
     pub raw_data: Vec<u8>,
 }
 
-#[async_trait]
 impl Event for MockEvent {
     fn id(&self) -> &str {
         &self.id
@@ -102,7 +100,7 @@ pub struct ClonedEvent(pub Box<dyn Event>);
 
 impl ClonedEvent {
     #[allow(dead_code)]
-    pub fn new(event: &Box<dyn Event>) -> Self {
+    pub fn new(event: &dyn Event) -> Self {
         Self(Box::new(MockEvent {
             id: event.id().to_string(),
             chain: event.chain().to_string(),

@@ -14,9 +14,75 @@ Key features:
 - Multi-chain support: EVM chains (Ethereum, Polygon, Base) and Cosmos chains (Noble, Osmosis, Neutron)
 - Hybrid storage: RocksDB for performance, PostgreSQL for complex queries
 - Valence contract tracking: Account creation, processor state, authorization grants, library deployments
+- **Contract code generation**: Automatic generation of type-safe client code from contract ABIs and schemas
 - Causality indexing: Content-addressed entity tracking with SMT-based proof generation
 - Advanced blockchain features: Chain reorganization handling, block finality tracking, determinism classification
 - Cross-chain debugging: Multi-chain traces and causal relationship tracking
+
+## Contract Code Generation
+
+Almanac includes powerful code generation capabilities that automatically create everything needed to integrate smart contracts into your indexer:
+
+### Cosmos Code Generation
+Generate comprehensive integration code from CosmWasm contract schemas:
+
+```bash
+# Generate from Valence Base Account contract
+almanac cosmos generate-contract valence_base_account_schema.json \
+  --address cosmos1... \
+  --chain cosmoshub-4 \
+  --features client,storage,api
+```
+
+**Features:**
+- Type-safe client code for contract interactions
+- Database schemas for event indexing (PostgreSQL + RocksDB)
+- REST and GraphQL API endpoints
+- WebSocket subscriptions for real-time events
+- Database migrations and test templates
+
+**Documentation:**
+- [Cosmos Codegen Overview](docs/cosmos_codegen.md)
+- [Valence Base Account Integration Example](examples/cosmos/valence_base_account.md)
+- [Integration Tutorial](docs/cosmos_integration_tutorial.md)
+- [CLI Reference](docs/cosmos_cli_reference.md)
+- [Troubleshooting Guide](docs/cosmos_troubleshooting.md)
+
+### Ethereum Code Generation
+Generate comprehensive integration code from Ethereum contract ABIs:
+
+```bash
+# Generate from ERC20 token contract
+almanac ethereum generate-contract usdc_abi.json \
+  --address 0xA0b86a33E6dc39C9c6D7C7CcF9C2e5C2c8C0b0 \
+  --chain 1 \
+  --features client,storage,api
+```
+
+**Features:**
+- Type-safe contract interaction methods
+- Event parsing and indexing infrastructure
+- Database schemas and storage models
+- REST and GraphQL API generation
+- Gas estimation and transaction management
+- Support for proxy contracts and complex types
+
+**Documentation:**
+- [Ethereum Codegen Overview](docs/ethereum_codegen.md)
+- [USDC Integration Example](examples/ethereum/erc20_token.md)
+- [Integration Tutorial](docs/ethereum_integration_tutorial.md)
+- [CLI Reference](docs/ethereum_cli_reference.md)
+- [Troubleshooting Guide](docs/ethereum_troubleshooting.md)
+
+**Generated Code Structure:**
+```
+generated/
+├── client/          # Contract interaction code
+├── storage/         # Database models and schemas
+├── api/            # REST and GraphQL endpoints
+├── migrations/     # Database migration files
+└── tests/          # Integration test templates
+```
 
 ## Getting Started
 
@@ -116,19 +182,25 @@ Ethereum:
 ## Architecture
 
 ```
-┌───────────────────────────────────────────────────────────────────┐
-│                        Cross-Chain Indexer                        │
-│                                                                   │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐  │
-│  │Chain        │ │Indexing     │ │Storage      │ │Query        │  │
-│  │Adapters     │ │Pipeline     │ │Layer        │ │Engine       │  │
-│  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘  │
-│                                                                   │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐  │
-│  │Schema       │ │Cross-Chain  │ │Causality    │ │Extension    │  │
-│  │Registry     │ │Aggregator   │ │Indexer      │ │Framework    │  │
-│  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘  │
-└───────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         Cross-Chain Indexer                               │
+│                                                                            │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐           │
+│  │Chain        │ │Indexing     │ │Storage      │ │Query        │           │
+│  │Adapters     │ │Pipeline     │ │Layer        │ │Engine       │           │
+│  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘           │
+│                                                                            │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐           │
+│  │Code         │ │Cross-Chain  │ │Causality    │ │Extension    │           │
+│  │Generation   │ │Aggregator   │ │Indexer      │ │Framework    │           │
+│  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘           │
+│                                                                            │
+│  Contract Code Generation System:                                         │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐           │
+│  │ABI/Schema   │ │Type-Safe    │ │Database     │ │API          │           │
+│  │Parser       │ │Client Gen   │ │Schema Gen   │ │Generation   │           │
+│  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘           │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Storage Design
@@ -159,6 +231,10 @@ Check log files if workflows fail:
 - Reth logs: `logs/reth.log`
 - wasmd logs: `logs/wasmd.log`
 - PostgreSQL logs: `data/postgres/postgres.log`
+
+For contract code generation issues, see the troubleshooting guides:
+- [Cosmos Troubleshooting](docs/cosmos_troubleshooting.md)
+- [Ethereum Troubleshooting](docs/ethereum_troubleshooting.md)
 
 ## Credit
 

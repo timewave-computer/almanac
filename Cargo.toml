@@ -10,6 +10,7 @@ members = [
     "crates/benchmarks",
     "crates/query",
     "crates/causality",
+    "e2e",
 ]
 
 

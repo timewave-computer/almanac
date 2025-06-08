@@ -1,0 +1,16 @@
+//! Generated execute methods for contract: {{contract_address}}
+
+use super::types::*;
+use super::{{contract_class}}Client;
+use indexer_core::Result;
+
+impl {{contract_class}}Client {
+    {{#each execute_methods}}
+    /// {{description}}
+    pub async fn {{method_name}}(&self{{#if params}}, {{params}}{{/if}}) -> Result<String> {
+        // TODO: Implement execute method for {{variant_name}}
+        todo!("Implement {{method_name}} execution")
+    }
+    
+    {{/each}}
+} 

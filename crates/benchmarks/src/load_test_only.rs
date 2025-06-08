@@ -77,7 +77,7 @@ mod tests {
         };
         
         assert_eq!(response.duration, Duration::from_millis(15));
-        assert_eq!(response.success, true);
+        assert!(response.success);
         assert_eq!(response.bytes, 1024);
     }
 } 

@@ -1,0 +1,37 @@
+//! Generated client code for contract: {{contract_address}}
+//! Chain: {{chain_id}}
+
+pub mod view;
+pub mod transaction;
+pub mod deployment;
+pub mod events;
+pub mod types;
+
+use indexer_core::Result;
+use indexer_ethereum::EthereumClient;
+
+/// Client for interacting with the {{contract_name}} contract
+pub struct {{contract_class}}Client {
+    ethereum_client: EthereumClient,
+    contract_address: String,
+}
+
+impl {{contract_class}}Client {
+    /// Create a new client instance
+    pub fn new(ethereum_client: EthereumClient, contract_address: String) -> Self {
+        Self {
+            ethereum_client,
+            contract_address,
+        }
+    }
+
+    /// Get the contract address
+    pub fn contract_address(&self) -> &str {
+        &self.contract_address
+    }
+
+    /// Get the underlying ethereum client
+    pub fn ethereum_client(&self) -> &EthereumClient {
+        &self.ethereum_client
+    }
+} 

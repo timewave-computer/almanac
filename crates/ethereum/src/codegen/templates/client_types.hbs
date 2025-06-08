@@ -1,0 +1,55 @@
+//! Generated types for contract: {{contract_address}}
+
+use serde::{Deserialize, Serialize};
+use ethers::types::{U256, Address, Bytes, H256};
+
+// Re-export ethers types that might be used
+pub use ethers::types::{U256, U64, Address, Bytes, H256, TransactionReceipt, Log};
+
+{{#each structs}}
+/// {{description}}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct {{name}} {
+{{#each fields}}
+    pub {{name}}: {{rust_type}},
+{{/each}}
+}
+
+{{/each}}
+
+{{#each enums}}
+/// {{description}}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum {{name}} {
+{{#each variants}}
+    {{this}},
+{{/each}}
+}
+
+{{/each}}
+
+/// Error handling types
+#[derive(Debug, thiserror::Error)]
+pub enum ContractError {
+    #[error("ABI encoding error: {0}")]
+    AbiEncoding(String),
+    
+    #[error("Core indexer error: {0}")]
+    Core(#[from] indexer_core::Error),
+    
+    #[error("Contract call failed: {0}")]
+    CallFailed(String),
+    
+    #[error("Transaction failed: {0}")]
+    TransactionFailed(String),
+    
+    #[error("Event parsing failed: {0}")]
+    EventParsingFailed(String),
+}
+
+impl From<ContractError> for indexer_core::Error {
+    fn from(err: ContractError) -> Self {
+        indexer_core::Error::generic(err.to_string())
+    }
+} 

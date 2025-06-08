@@ -1,431 +1,372 @@
 # Almanac Crate API Documentation
 
-This document outlines how to use Almanac as an imported Rust crate, focusing on its stable public interfaces.
+This document outlines how to use Almanac as an imported Rust crate, focusing on its stable public interfaces for cross-chain blockchain indexing.
 
 ## Core Concepts
 
-Almanac provides a unified way to access events across multiple blockchains through a consistent API. The core concepts are:
+Almanac provides a unified way to access blockchain events and state across multiple chains through a consistent API. The core concepts are:
 
 - **Events**: Structured data emitted by on-chain activities
-- **Chains**: Different blockchain networks supported by Almanac
-- **Addresses**: Resources or contracts that emit events
-- **Filtering**: Methods to query for specific events
+- **Storage**: Hybrid PostgreSQL/RocksDB storage for performance and flexibility
+- **Chains**: Different blockchain networks (Ethereum, Cosmos, etc.)
+- **Valence Contracts**: Specialized indexing for Valence protocol contracts
+- **Causality**: Content-addressed entity tracking with SMT-based proofs
 
 ## API Overview
 
-When using Almanac as a Rust crate, you'll primarily interact with two core traits:
+When using Almanac as a Rust crate, you'll primarily interact with these core interfaces:
 
-1. `EventStore`: For accessing and querying indexed events
-2. `ChainReader`: For accessing chain-specific information
+1. `Storage`: Main storage interface for indexed data
+2. `EventService`: Chain-specific event processing
+3. `CausalityIndexer`: Content-addressed causality tracking
 
-## Using the EventStore API
+## Using the Storage API
 
-The `EventStore` trait is the primary interface for accessing indexed blockchain events.
+The `Storage` trait is the primary interface for accessing indexed blockchain data.
 
 ```rust
-/// Core trait for accessing indexed events
-pub trait EventStore: Send + Sync {
-    /// Get events by address (resource)
-    async fn get_events_by_address(
-        &self, 
-        address: &Address,
-        options: QueryOptions,
-    ) -> Result<Vec<Event>, EventStoreError>;
+use indexer_storage::{Storage, BoxedStorage, create_postgres_storage, ValenceAccountInfo};
+use indexer_core::{Result, BlockStatus};
+
+/// Main storage trait for accessing indexed data
+#[async_trait::async_trait]
+pub trait Storage: Send + Sync {
+    /// Store an event
+    async fn store_event(&self, chain: &str, event: Box<dyn Event>) -> Result<()>;
     
     /// Get events by chain and block range
-    async fn get_events_by_chain(
-        &self,
-        chain_id: &ChainId,
-        from_height: Option<u64>,
-        to_height: Option<u64>,
-        options: QueryOptions,
-    ) -> Result<Vec<Event>, EventStoreError>;
+    async fn get_events(&self, chain: &str, from_block: u64, to_block: u64) -> Result<Vec<Box<dyn Event>>>;
     
-    /// Subscribe to events matching a filter
-    async fn subscribe(
+    /// Get the latest block height for a chain
+    async fn get_latest_block(&self, chain: &str) -> Result<u64>;
+    
+    /// Get the latest block with specific finality status
+    async fn get_latest_block_with_status(&self, chain: &str, status: BlockStatus) -> Result<u64>;
+    
+    /// Store Valence account information
+    async fn store_valence_account_instantiation(
         &self,
-        filter: EventFilter,
-    ) -> Result<impl Stream<Item = Result<Event, EventStoreError>>, EventStoreError>;
+        account_info: ValenceAccountInfo,
+        initial_libraries: Vec<ValenceAccountLibrary>,
+    ) -> Result<()>;
+    
+    /// Get Valence account state
+    async fn get_valence_account_state(&self, account_id: &str) -> Result<Option<ValenceAccountState>>;
 }
 ```
 
 ### Getting Started with Almanac Crate
 
-First, add Almanac to your Cargo.toml:
+First, add Almanac crates to your Cargo.toml:
 
 ```toml
 [dependencies]
-indexer-api = { path = "path/to/almanac/crates/api" }
+indexer-core = { path = "path/to/almanac/crates/core" }
+indexer-storage = { path = "path/to/almanac/crates/storage", features = ["postgres", "rocks"] }
+indexer-ethereum = { path = "path/to/almanac/crates/ethereum" }
+indexer-cosmos = { path = "path/to/almanac/crates/cosmos" }
 # Or if published to crates.io:
-# indexer-api = "0.1.0"
+# indexer-storage = { version = "0.1.0", features = ["postgres", "rocks"] }
 ```
 
 Then, in your code:
 
 ```rust
-use indexer_api::{AlmanacClient, EventStore, ChainReader};
-
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Create a client
-    let client = AlmanacClient::new().await?;
-    
-    // Use the client as an EventStore
-    // Example queries follow...
-    
-    Ok(())
-}
-```
-
-### Querying Events by Address
-
-To retrieve events emitted by a specific address (like a contract):
-
-```rust
-use indexer_api::{EventStore, Address, ChainId, QueryOptions};
-
-async fn get_contract_events(store: &impl EventStore, contract_address: &str, chain: &str) -> Vec<Event> {
-    let address = Address {
-        chain_id: ChainId(chain.to_string()),
-        value: contract_address.to_string(),
-    };
-    
-    let options = QueryOptions {
-        limit: Some(100),
-        offset: None,
-        ascending: false, // latest events first
-    };
-    
-    match store.get_events_by_address(&address, options).await {
-        Ok(events) => events,
-        Err(err) => {
-            eprintln!("Failed to get events: {}", err);
-            vec![]
-        }
-    }
-}
-```
-
-### Querying Events by Chain
-
-To retrieve events from a specific blockchain within a block range:
-
-```rust
-use indexer_api::{EventStore, ChainId, QueryOptions};
-
-async fn get_recent_chain_events(store: &impl EventStore, chain: &str, last_n_blocks: u64) -> Vec<Event> {
-    let chain_id = ChainId(chain.to_string());
-    
-    // If you know the current height, you could calculate from_height more precisely
-    let from_height = None; // or Some(current_height - last_n_blocks)
-    let to_height = None; // or Some(current_height) for a specific range
-    
-    let options = QueryOptions {
-        limit: Some(500),
-        offset: None,
-        ascending: true, // chronological order
-    };
-    
-    match store.get_events_by_chain(&chain_id, from_height, to_height, options).await {
-        Ok(events) => events,
-        Err(err) => {
-            eprintln!("Failed to get chain events: {}", err);
-            vec![]
-        }
-    }
-}
-```
-
-### Subscribing to Events
-
-For real-time processing of events as they're indexed:
-
-```rust
-use indexer_api::{EventStore, EventFilter, ChainId};
-use futures::StreamExt;
-use std::collections::HashMap;
-
-async fn monitor_events(store: &impl EventStore, chain: &str, event_type: &str) {
-    let filter = EventFilter {
-        chain_id: Some(ChainId(chain.to_string())),
-        address: None, // all addresses
-        event_type: Some(event_type.to_string()),
-        attributes: HashMap::new(), // no attribute filtering
-        from_height: None, // all heights from now
-        to_height: None,
-    };
-    
-    match store.subscribe(filter).await {
-        Ok(mut stream) => {
-            println!("Subscribed to {} events on {}", event_type, chain);
-            
-            while let Some(result) = stream.next().await {
-                match result {
-                    Ok(event) => {
-                        println!("New event: {}:{} at height {}", 
-                            event.event_type, event.address, event.height);
-                        // Process the event...
-                    },
-                    Err(err) => {
-                        eprintln!("Error in event stream: {}", err);
-                    }
-                }
-            }
-        },
-        Err(err) => {
-            eprintln!("Failed to subscribe: {}", err);
-        }
-    }
-}
-```
-
-## Using the ChainReader API
-
-The `ChainReader` trait provides access to information about indexed chains:
-
-```rust
-/// Chain data access
-pub trait ChainReader: Send + Sync {
-    /// Get status of a chain
-    async fn get_chain_status(&self, chain_id: &ChainId) -> Result<ChainStatus, ChainReaderError>;
-}
-```
-
-### Getting Chain Status
-
-To check the status of an indexed chain:
-
-```rust
-use indexer_api::{ChainReader, ChainId};
-
-async fn check_chain_status(reader: &impl ChainReader, chain: &str) {
-    let chain_id = ChainId(chain.to_string());
-    
-    match reader.get_chain_status(&chain_id).await {
-        Ok(status) => {
-            println!("Chain: {}", chain);
-            println!("Latest height: {}", status.latest_height);
-            
-            if let Some(finalized) = status.finalized_height {
-                println!("Finalized height: {}", finalized);
-            }
-            
-            println!("Actively indexing: {}", status.is_indexing);
-            println!("Last indexed: {} seconds ago", 
-                     std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs() - status.last_indexed_at);
-            
-            if let Some(error) = status.error {
-                println!("Error: {}", error);
-            }
-        },
-        Err(err) => {
-            eprintln!("Failed to get chain status: {}", err);
-        }
-    }
-}
-```
-
-## Working with Event Data
-
-The `Event` struct contains all the data associated with a blockchain event:
-
-```rust
-/// Event data
-pub struct Event {
-    /// Chain this event came from
-    pub chain_id: ChainId,
-    
-    /// Block height
-    pub height: u64,
-    
-    /// Transaction hash
-    pub tx_hash: String,
-    
-    /// Event index within transaction
-    pub index: u32,
-    
-    /// Address (contract, account) that emitted the event
-    pub address: String,
-    
-    /// Event type or name
-    pub event_type: String,
-    
-    /// Event attributes/fields
-    pub attributes: HashMap<String, EventValue>,
-    
-    /// Raw event data
-    pub raw_data: Vec<u8>,
-    
-    /// Timestamp when this event was created (in seconds since Unix epoch)
-    pub timestamp: u64,
-}
-```
-
-### Accessing Event Attributes
-
-Attributes are stored in a HashMap with values that can be of various types:
-
-```rust
-async fn process_event(event: &Event) {
-    println!("Processing event: {} from {}", event.event_type, event.address);
-    
-    for (key, value) in &event.attributes {
-        match value {
-            EventValue::String(s) => println!("  {} = {}", key, s),
-            EventValue::Integer(i) => println!("  {} = {}", key, i),
-            EventValue::Float(f) => println!("  {} = {}", key, f),
-            EventValue::Boolean(b) => println!("  {} = {}", key, b),
-            EventValue::Array(arr) => println!("  {} = array with {} items", key, arr.len()),
-            EventValue::Object(obj) => println!("  {} = object with {} properties", key, obj.len()),
-            EventValue::Null => println!("  {} = null", key),
-        }
-    }
-    
-    // Example: Extract a specific attribute
-    if let Some(EventValue::String(recipient)) = event.attributes.get("recipient") {
-        println!("Transfer recipient: {}", recipient);
-    }
-}
-```
-
-## Library Integration Examples
-
-### Using Almanac in a Background Service
-
-```rust
-use indexer_api::{AlmanacClient, EventStore, EventFilter, ChainId};
-use futures::StreamExt;
-use tokio::time::{sleep, Duration};
-use std::sync::Arc;
-
-async fn run_background_service() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize Almanac client
-    let client = Arc::new(AlmanacClient::new().await?);
-    
-    // Setup filter for events we're interested in
-    let filter = EventFilter {
-        chain_id: Some(ChainId("ethereum".to_string())),
-        event_type: Some("Transfer".to_string()),
-        // ... other filter parameters
-        ..Default::default()
-    };
-    
-    // Subscribe to events
-    let mut stream = client.subscribe(filter).await?;
-    
-    // Process events in background
-    tokio::spawn(async move {
-        while let Some(result) = stream.next().await {
-            match result {
-                Ok(event) => {
-                    // Process event
-                    println!("Received event: {} at height {}", 
-                        event.event_type, event.height);
-                    
-                    // Perform business logic with event data
-                    process_business_logic(&event).await;
-                },
-                Err(e) => {
-                    eprintln!("Error in event stream: {}", e);
-                    sleep(Duration::from_secs(5)).await;
-                }
-            }
-        }
-    });
-    
-    Ok(())
-}
-
-async fn process_business_logic(event: &Event) {
-    // Your business logic here
-}
-```
-
-### Integrating with a Web Application
-
-```rust
-use indexer_api::{AlmanacClient, EventStore, Address, ChainId, QueryOptions};
-use axum::{
-    routing::get,
-    Router,
-    extract::Path,
-    Json,
-};
-use std::sync::Arc;
-
-// Shared application state
-struct AppState {
-    almanac: Arc<AlmanacClient>,
-}
+use indexer_storage::{create_postgres_storage, create_rocks_storage, BoxedStorage};
+use indexer_core::Result;
 
 #[tokio::main]
-async fn main() {
-    // Initialize Almanac client
-    let almanac = Arc::new(AlmanacClient::new().await.expect("Failed to create Almanac client"));
+async fn main() -> Result<()> {
+    // Create PostgreSQL storage
+    let pg_storage = create_postgres_storage(
+        "postgresql://postgres:postgres@localhost:5432/indexer"
+    ).await?;
     
-    // Create app state
-    let state = Arc::new(AppState { almanac });
+    // Create RocksDB storage
+    let rocks_storage = create_rocks_storage("./data/rocksdb")?;
     
-    // Build router
-    let app = Router::new()
-        .route("/events/:chain/:address", get(get_address_events))
-        .with_state(state);
+    // Use storage for queries
+    let latest_block = pg_storage.get_latest_block("ethereum").await?;
+    println!("Latest Ethereum block: {}", latest_block);
     
-    // Start server
-    let addr = "0.0.0.0:3000";
-    println!("Listening on {}", addr);
-    axum::Server::bind(&addr.parse().unwrap())
-        .serve(app.into_make_service())
-        .await
-        .unwrap();
+    Ok(())
 }
+```
 
-async fn get_address_events(
-    Path((chain, address)): Path<(String, String)>,
-    axum::extract::State(state): axum::extract::State<Arc<AppState>>,
-) -> Json<Vec<Event>> {
-    let addr = Address {
-        chain_id: ChainId(chain),
-        value: address,
+### Working with Valence Account Data
+
+Query and manage Valence account information:
+
+```rust
+use indexer_storage::{Storage, ValenceAccountInfo, ValenceAccountState, ValenceAccountLibrary};
+use indexer_core::Result;
+
+async fn track_valence_account(
+    storage: &dyn Storage, 
+    chain_id: &str, 
+    contract_address: &str
+) -> Result<()> {
+    let account_id = format!("{}:{}", chain_id, contract_address);
+    
+    // Store new account
+    let account_info = ValenceAccountInfo {
+        id: account_id.clone(),
+        chain_id: chain_id.to_string(),
+        contract_address: contract_address.to_string(),
+        created_at_block: 12345,
+        created_at_tx: "0xabc123...".to_string(),
+        current_owner: Some("0xowner123...".to_string()),
+        pending_owner: None,
+        pending_owner_expiry: None,
+        last_updated_block: 12345,
+        last_updated_tx: "0xabc123...".to_string(),
     };
     
-    let options = QueryOptions {
-        limit: Some(100),
-        offset: None,
-        ascending: false,
+    let initial_libraries = vec![
+        ValenceAccountLibrary {
+            account_id: account_id.clone(),
+            library_address: "0xlibrary123...".to_string(),
+            approved_at_block: 12345,
+            approved_at_tx: "0xabc123...".to_string(),
+        }
+    ];
+    
+    storage.store_valence_account_instantiation(account_info, initial_libraries).await?;
+    
+    // Retrieve account state
+    if let Some(state) = storage.get_valence_account_state(&account_id).await? {
+        println!("Account {} has {} approved libraries", 
+                 state.account_id, state.libraries.len());
+    }
+    
+    Ok(())
+}
+```
+
+### Working with Cross-Chain Messages
+
+Track cross-chain message processing:
+
+```rust
+use indexer_storage::{Storage, ValenceProcessorMessage, ValenceMessageStatus};
+
+async fn track_processor_message(
+    storage: &dyn Storage,
+    processor_id: &str,
+    source_chain: &str,
+    target_chain: &str
+) -> Result<()> {
+    let message = ValenceProcessorMessage {
+        id: "msg_123".to_string(),
+        processor_id: processor_id.to_string(),
+        source_chain_id: source_chain.to_string(),
+        target_chain_id: target_chain.to_string(),
+        sender_address: "0xsender123...".to_string(),
+        payload: "base64_encoded_payload".to_string(),
+        status: ValenceMessageStatus::Pending,
+        created_at_block: 12345,
+        created_at_tx: "0xsource_tx...".to_string(),
+        last_updated_block: 12345,
+        processed_at_block: None,
+        processed_at_tx: None,
+        retry_count: 0,
+        next_retry_block: None,
+        gas_used: None,
+        error: None,
     };
     
-    match state.almanac.get_events_by_address(&addr, options).await {
-        Ok(events) => Json(events),
-        Err(_) => Json(vec![]),
+    storage.store_valence_processor_message(message).await?;
+    
+    // Later, update message status
+    storage.update_valence_processor_message_status(
+        "msg_123",
+        ValenceMessageStatus::Completed,
+        Some(12350), // processed_block
+        Some("0xtarget_tx..."), // processed_tx
+        None, // retry_count
+        None, // next_retry_block
+        Some(21000), // gas_used
+        None, // error
+    ).await?;
+    
+    Ok(())
+}
+```
+
+## Using Chain Adapters
+
+Access blockchain-specific functionality through chain adapters:
+
+```rust
+use indexer_ethereum::EthereumClient;
+use indexer_cosmos::CosmosClientWrapper;
+use indexer_core::service::EventService;
+
+async fn setup_chain_clients() -> Result<()> {
+    // Ethereum client
+    let eth_client = EthereumClient::new(
+        "1".to_string(), // chain_id
+        "http://localhost:8545".to_string(), // rpc_url
+    ).await?;
+    
+    let latest_eth_block = eth_client.get_latest_block().await?;
+    println!("Latest Ethereum block: {}", latest_eth_block);
+    
+    // Cosmos client
+    let cosmos_client = CosmosClientWrapper::new(
+        "cosmoshub-4".to_string(), // chain_id
+        "http://localhost:9090".to_string(), // grpc_url
+        "abandon abandon abandon...".to_string(), // mnemonic
+    ).await?;
+    
+    let latest_cosmos_block = cosmos_client.get_latest_block().await?;
+    println!("Latest Cosmos block: {}", latest_cosmos_block);
+    
+    Ok(())
+}
+```
+
+## Using the Causality Indexer
+
+Work with content-addressed entities and causality relationships:
+
+```rust
+use indexer_causality::{
+    CausalityIndexer, CausalityIndexerConfig, 
+    MemorySmtBackend, MemoryCausalityStorage,
+    CausalityResource, CausalityEffect, EntityId, DomainId
+};
+
+async fn setup_causality_indexing() -> Result<()> {
+    // Create causality indexer
+    let config = CausalityIndexerConfig::default();
+    let storage = Box::new(MemoryCausalityStorage::new());
+    let smt_backend = MemorySmtBackend::new();
+    
+    let mut indexer = CausalityIndexer::new(config, storage, smt_backend)?;
+    
+    // Create a content-addressed resource
+    let resource = CausalityResource {
+        id: EntityId::new([0u8; 32]), // content hash
+        name: "Token Balance".to_string(),
+        domain_id: DomainId::new([1u8; 32]), // domain hash
+        resource_type: "token".to_string(),
+        quantity: 1000,
+        timestamp: std::time::SystemTime::now(),
+    };
+    
+    // Index the resource
+    indexer.index_resource(resource).await?;
+    
+    // Query entities by domain
+    let domain_entities = indexer.get_domain_entities(&DomainId::new([1u8; 32])).await?;
+    println!("Found {} entities in domain", domain_entities.len());
+    
+    Ok(())
+}
+```
+
+## Block Finality Support
+
+Work with different levels of block finality:
+
+```rust
+use indexer_core::BlockStatus;
+use indexer_storage::Storage;
+
+async fn query_by_finality(storage: &dyn Storage, chain: &str) -> Result<()> {
+    // Get latest finalized block
+    let finalized_block = storage
+        .get_latest_block_with_status(chain, BlockStatus::Finalized)
+        .await?;
+    
+    // Get events only from finalized blocks
+    let finalized_events = storage
+        .get_events_with_status(
+            chain, 
+            finalized_block.saturating_sub(100), 
+            finalized_block,
+            BlockStatus::Finalized
+        )
+        .await?;
+    
+    println!("Found {} finalized events in last 100 blocks", finalized_events.len());
+    
+    // Update block status
+    storage.update_block_status(chain, 12345, BlockStatus::Safe).await?;
+    
+    Ok(())
+}
+```
+
+## Error Handling
+
+Almanac provides comprehensive error handling:
+
+```rust
+use indexer_core::{Error, Result};
+
+async fn handle_indexer_errors(storage: &dyn Storage) {
+    match storage.get_latest_block("nonexistent_chain").await {
+        Ok(block) => println!("Latest block: {}", block),
+        Err(Error::NotFound(msg)) => println!("Chain not found: {}", msg),
+        Err(Error::Database(msg)) => println!("Database error: {}", msg),
+        Err(Error::Connection(msg)) => println!("Connection error: {}", msg),
+        Err(err) => println!("Other error: {}", err),
     }
 }
 ```
 
-## Best Practices for Library Usage
+## Configuration
 
-1. **Client Instantiation**
-   - Create a single client instance and reuse it throughout your application
-   - Use `Arc` for sharing the client between multiple async tasks
+Configure storage backends and chain connections:
 
-2. **Error Handling**
-   - Implement proper error handling for all API calls
-   - Consider using a retry mechanism for transient errors
+```rust
+use indexer_storage::{create_postgres_storage, create_rocks_storage};
 
-3. **Resource Management**
-   - Close subscription streams when they're no longer needed
-   - Limit concurrent requests to avoid overwhelming resources
+async fn setup_storage_with_config() -> Result<BoxedStorage> {
+    // PostgreSQL with custom configuration
+    let database_url = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "postgresql://postgres:postgres@localhost:5432/indexer".to_string());
+    
+    let storage = create_postgres_storage(&database_url).await?;
+    
+    // Or RocksDB with custom path
+    let rocksdb_path = std::env::var("ROCKSDB_PATH")
+        .unwrap_or_else(|_| "./data/rocksdb".to_string());
+    
+    let rocks_storage = create_rocks_storage(&rocksdb_path)?;
+    
+    Ok(storage)
+}
+```
 
-4. **Query Optimization**
-   - Set reasonable limits to avoid fetching too much data
-   - Use pagination (offset) for handling large result sets
+## Testing Support
 
-5. **Testing**
-   - Mock the EventStore and ChainReader traits for unit testing
-   - Consider using the AlmanacClient with a test database for integration tests
+Almanac provides testing utilities:
 
-## Conclusion
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use indexer_storage::MemoryCausalityStorage;
 
-The Almanac crate provides a powerful and consistent interface for accessing blockchain event data across different chains. By using the `EventStore` and `ChainReader` traits in your Rust applications, you can efficiently query and process event data for a wide range of use cases. 
+    #[tokio::test]
+    async fn test_valence_account_lifecycle() {
+        let storage = Box::new(MemoryCausalityStorage::new());
+        
+        // Test account creation and updates
+        // ... test implementation
+        
+        assert!(true); // Your assertions here
+    }
+}
+```
+
+## Performance Considerations
+
+- Use **RocksDB storage** for high-frequency read operations
+- Use **PostgreSQL storage** for complex queries and relationships
+- Leverage **block finality levels** appropriate for your security requirements
+- Batch operations when possible to improve throughput
+- Consider **causality indexing** for applications requiring cryptographic proofs 

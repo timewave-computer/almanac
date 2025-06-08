@@ -593,7 +593,6 @@ mod tests {
         // Just make sure it creates options without error
         // Note: get_max_write_buffer_number method may not be available in this rocksdb version
         // assert!(options.get_max_write_buffer_number() == config.max_write_buffer_number);
-        assert!(true); // Placeholder assertion
     }
     
     // Commented out due to missing tempfile dependency
