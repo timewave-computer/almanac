@@ -1,0 +1,88 @@
+[package]
+name = "indexer-api"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+description = "API interface for the indexer"
+
+[dependencies]
+# Internal crates
+indexer-core = { path = "../../infrastructure/core" }
+indexer-storage = { path = "../../infrastructure/storage", features = ["postgres"] }
+indexer-ethereum = { path = "../../chains/ethereum" }
+indexer-cosmos = { path = "../../chains/cosmos" }
+indexer-tools = { path = "../../development/tools" }
+
+# Async runtime
+tokio.workspace = true
+futures.workspace = true
+tokio-stream = { version = "0.1.14", features = ["sync"] }
+async-trait.workspace = true
+
+# Web frameworks
+axum = { version = "0.6.20", features = ["ws", "headers"] }
+tower = "0.4.13"
+tower-http = { version = "0.4.4", features = ["cors", "trace"] }
+
+# GraphQL
+async-graphql = { version = "6.0.11", features = ["chrono", "uuid"] }
+async-graphql-axum = "6.0.11"
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Base64 encoding for binary data
+base64.workspace = true
+
+# Date and time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Logging and error handling
+tracing.workspace = true
+tracing-subscriber.workspace = true
+thiserror.workspace = true
+anyhow = "1.0"
+uuid = { version = "1.6", features = ["v4", "serde"] }
+
+# Authentication and security
+jsonwebtoken = "8.3"
+bcrypt = "0.15"
+
+# System information
+num_cpus = "1.16"
+
+# CLI
+clap.workspace = true
+
+# Testing
+axum-test-helper = { version = "0.3.0", optional = true }
+
+[features]
+default = ["postgres"]
+postgres = []
+rocks = ["indexer-core/rocks"]
+test-utils = ["axum-test-helper"]
+
+[[bin]]
+name = "almanac"
+path = "src/bin/almanac.rs"
+
+# Remove the following binary definitions since the files don't exist yet:
+# [[bin]]
+# name = "almanac-migrate"
+# path = "src/bin/almanac-migrate.rs"
+# 
+# [[bin]]
+# name = "almanac-data"
+# path = "src/bin/almanac-data.rs"
+# 
+# [[bin]]
+# name = "almanac-monitor"
+# path = "src/bin/almanac-monitor.rs"
+# 
+# [[bin]]
+# name = "almanac-dev"
+# path = "src/bin/almanac-dev.rs" 

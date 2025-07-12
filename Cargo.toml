@@ -1,17 +1,32 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/core",
-    "crates/storage",
-    "crates/ethereum",
-    "crates/cosmos",
-    "crates/api",
-    "crates/tools",
-    "crates/benchmarks",
-    "crates/query",
-    "crates/causality",
+    # Infrastructure - Core system components
+    "crates/infrastructure/core",
+    "crates/infrastructure/storage",
+    "crates/infrastructure/causality",
+    
+    # Chains - Blockchain-specific integrations
+    "crates/chains/cosmos",
+    "crates/chains/ethereum",
+    
+    # Services - User-facing services
+    "crates/services/api",
+    "crates/services/query",
+    
+    # Development - Development and testing tools
+    "crates/development/benchmarks",
+    "crates/development/testing",
+    "crates/development/tools",
+    
+    # E2E tests
     "e2e",
 ]
+
+# Note: Workspace manifests don't support features.
+# Chain support features are defined in individual crates:
+# - cosmos: available in indexer-cosmos, indexer-core, indexer-storage
+# - ethereum: available in indexer-ethereum, indexer-core, indexer-storage
 
 
 
@@ -42,7 +57,6 @@ thiserror = "1.0.50"
 anyhow = "1.0"
 
 # Storage
-rocksdb = "0.21"
 sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "macros", "chrono", "uuid", "json"] }
 
 # API

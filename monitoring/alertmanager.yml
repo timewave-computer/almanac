@@ -1,0 +1,135 @@
+# Alertmanager configuration for Almanac
+
+global:
+  # The smarthost and SMTP sender used for mail notifications.
+  smtp_smarthost: 'smtp.example.com:587'
+  smtp_from: 'almanac-alerts@example.com'
+  smtp_auth_username: 'almanac-alerts@example.com'
+  smtp_auth_password_file: '/etc/alertmanager/smtp_password'
+  
+  # Slack webhook
+  slack_api_url_file: '/etc/alertmanager/slack_webhook'
+  
+  # Global timeout settings
+  resolve_timeout: 5m
+  
+  # PagerDuty
+  pagerduty_url: 'https://events.pagerduty.com/v2/enqueue'
+
+# Templates for alert messages
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'
+
+# The root route on which each incoming alert enters.
+route:
+  # Group alerts by these labels
+  group_by: ['alertname', 'cluster', 'service', 'severity']
+  
+  # Wait before sending the first notification
+  group_wait: 30s
+  
+  # Wait before sending notifications about new alerts in a group
+  group_interval: 5m
+  
+  # Wait before re-sending notifications
+  repeat_interval: 12h
+  
+  # Default receiver
+  receiver: 'default-receiver'
+  
+  # Child routes
+  routes:
+    # Critical alerts go to PagerDuty
+    - match:
+        severity: critical
+      receiver: pagerduty-critical
+      continue: true
+      
+    # Storage alerts go to storage team
+    - match_re:
+        component: (storage|fdb)
+      receiver: storage-team
+      group_by: ['alertname', 'cluster']
+      
+    # Chain-specific alerts
+    - match:
+        component: chain_sync
+      receiver: chain-team
+      group_by: ['alertname', 'chain']
+      
+    # API alerts
+    - match_re:
+        component: (api|graphql)
+      receiver: api-team
+      
+    # Development environment alerts (lower priority)
+    - match:
+        environment: development
+      receiver: dev-slack
+      repeat_interval: 24h
+
+# Inhibition rules to mute certain alerts
+inhibit_rules:
+  # Inhibit less severe alerts if critical alert is firing
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'cluster', 'service']
+    
+  # Inhibit component alerts if system is unhealthy
+  - source_match:
+      alertname: 'MultipleComponentsUnhealthy'
+    target_match_re:
+      alertname: 'Component.*'
+    equal: ['cluster']
+
+# Receivers
+receivers:
+  - name: 'default-receiver'
+    email_configs:
+      - to: 'almanac-oncall@example.com'
+        headers:
+          Subject: 'Almanac Alert: {{ .GroupLabels.alertname }}'
+        html: '{{ template "email.default.html" . }}'
+    slack_configs:
+      - channel: '#almanac-alerts'
+        title: 'Almanac Alert'
+        text: '{{ range .Alerts }}{{ .Annotations.summary }}\n{{ end }}'
+        send_resolved: true
+
+  - name: 'pagerduty-critical'
+    pagerduty_configs:
+      - service_key_file: '/etc/alertmanager/pagerduty_service_key'
+        description: '{{ .GroupLabels.alertname }}: {{ .CommonAnnotations.summary }}'
+        details:
+          firing: '{{ template "pagerduty.default.firing" . }}'
+          resolved: '{{ template "pagerduty.default.resolved" . }}'
+        severity: 'critical'
+        
+  - name: 'storage-team'
+    email_configs:
+      - to: 'storage-team@example.com'
+    slack_configs:
+      - channel: '#storage-alerts'
+        title: 'Storage Alert: {{ .GroupLabels.alertname }}'
+        
+  - name: 'chain-team'
+    email_configs:
+      - to: 'chain-team@example.com'
+    slack_configs:
+      - channel: '#chain-sync-alerts'
+        title: 'Chain Alert: {{ .GroupLabels.alertname }} ({{ .GroupLabels.chain }})'
+        
+  - name: 'api-team'
+    email_configs:
+      - to: 'api-team@example.com'
+    slack_configs:
+      - channel: '#api-alerts'
+        title: 'API Alert: {{ .GroupLabels.alertname }}'
+        
+  - name: 'dev-slack'
+    slack_configs:
+      - channel: '#almanac-dev'
+        title: 'Dev Alert: {{ .GroupLabels.alertname }}'
+        send_resolved: false

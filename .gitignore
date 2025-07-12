@@ -38,7 +38,8 @@ target/
 # Runtime data
 data/
 logs/
-# .sqlx/ # Keep sqlx offline data for verification
+.sqlx/ # Keep sqlx offline data for verification
+crates/storage/src/migrations/
 
 # Testing and logs
 *.log
@@ -105,3 +106,75 @@ Desktop.ini
 perf.data*
 flamegraph.svg
 callgrind.out.*
+
+# Generated code directories
+generated/
+e2e/generated/
+
+# Test artifacts and outputs
+test_outputs/
+test_data/
+fixtures/generated/
+**/test_*.db
+**/test_*.sqlite
+
+# Temporary test directories
+tmp/
+temp/
+**/tmp/
+**/temp/
+
+# Database temporary files
+pgsql_temp_*
+rocksdb_temp_*
+*.db-shm
+*.db-wal
+
+# Nix temporary files
+.nix-channels
+.nix-defexpr
+.nix-profile
+
+# Performance and profiling outputs
+*.heap
+*.perf
+*.pprof
+*.cpuprofile
+*.memprofile
+perf.data*
+massif.out.*
+
+# Lock files for temporary setups
+*.lock
+*.pid
+
+# Additional build artifacts
+build-info/
+dist/
+pkg/
+
+# IDE and editor temporary files
+.idea/
+*.iml
+.project
+.classpath
+.settings/
+*.code-workspace
+
+# OS-specific temporary files
+.Spotlight-V100
+.Trashes
+
+# Additional log files
+*.log.*
+log/
+
+# Backup files
+*.backup.*
+*~backup
+
+# Development database files
+*.development.db
+*.test.db
+dev.db
+test.db

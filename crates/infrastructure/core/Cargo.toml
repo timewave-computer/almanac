@@ -1,0 +1,127 @@
+[package]
+name = "indexer-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+description = "Core types and traits for the indexer"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.0", features = ["full"], optional = true }
+futures = { version = "0.3", optional = true }
+async-trait = { version = "0.1", optional = true }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"], optional = true }
+serde_json = { version = "1.0", optional = true }
+serde_bytes = { version = "0.11", optional = true }
+rmp-serde = { version = "1.1", optional = true }
+bytes = { version = "1.5", optional = true }
+
+# Text search
+regex = { version = "1.0", optional = true }
+
+# UUID generation
+uuid = { version = "1.0", features = ["v4", "serde"], optional = true }
+
+# Logging and error handling
+tracing = { version = "0.1", optional = true }
+thiserror = { version = "1.0", optional = true }
+anyhow = { version = "1.0", optional = true }
+log = { version = "0.4", optional = true }
+metrics = { version = "0.21", optional = true }
+
+# Database
+sqlx = { version = "0.7", features = [
+    "runtime-tokio-rustls",
+    "postgres",
+    "macros",
+    "chrono",
+    "uuid",
+    "json"
+], optional = true }
+# Remove rocksdb crate dependency, use direct FFI instead
+# rocksdb = { version = "0.21", optional = true }
+libc = { version = "0.2", optional = true }
+
+# Valence domain clients for proto integration
+valence-domain-clients = { git = "https://github.com/timewave-computer/valence-domain-clients", branch = "main", optional = true }
+
+redis = { version = "0.24", features = ["tokio-comp"], optional = true }
+
+md5 = { version = "0.7", optional = true }
+flate2 = { version = "1.0", optional = true }
+lz4_flex = { version = "0.11", optional = true }
+zstd = { version = "0.13", optional = true }
+xxhash-rust = { version = "0.8", features = ["xxh64"], optional = true }
+
+chrono = { version = "0.4", features = ["serde"], optional = true }
+
+# Additional dependencies for vault-indexer improvements
+rand = { version = "0.8", optional = true }
+notify = { version = "6.0", optional = true }
+toml = { version = "0.8", optional = true }
+sys-info = { version = "0.9", optional = true }
+
+# HTTP client (for networking feature)
+reqwest = { version = "0.11", optional = true }
+hyper = { version = "0.14", optional = true }
+
+# Prometheus metrics
+prometheus = { version = "0.13", optional = true }
+
+# Additional dependencies for distributed query optimizations
+dashmap = { version = "5.5", optional = true }
+lru = { version = "0.12", optional = true }
+tokio-stream = { version = "0.1", optional = true }
+
+# Traverse integration for storage proofs - REMOVED (external dependency not available)
+# traverse-core = { path = "../../../traverse/crates/core", optional = true }
+
+[features]
+# Include all dependencies used in the core crate
+default = ["basic", "advanced", "dev-utils", "text-search", "compression", "metrics"]
+
+# Core feature sets
+basic = ["error-handling", "types", "async"]
+full = ["basic", "postgres", "rocks", "networking", "advanced", "dev-utils", "cosmos", "ethereum"]
+
+# Chain support features
+cosmos = ["dep:valence-domain-clients"]
+ethereum = ["dep:valence-domain-clients"]
+
+# Granular features for selective compilation
+error-handling = ["dep:thiserror", "dep:anyhow"]
+types = ["dep:serde", "dep:serde_json", "dep:uuid", "dep:chrono", "dep:bytes"]
+async = ["dep:tokio", "dep:futures", "dep:async-trait", "dep:tokio-stream"]
+
+# Storage backends (optional)
+postgres = ["dep:sqlx"]
+rocks = ["dep:libc"]
+# fdb = ["dep:rand", "dep:uuid", "dep:dashmap", "dep:lru", "dep:rmp-serde", "dep:lz4_flex", "dep:zstd", "dep:xxhash-rust", "dep:redis", "dep:regex"]  # Disabled due to missing system dependencies
+
+# Storage proof verification - REMOVED (external dependency not available)
+# traverse = ["dep:traverse-core"]
+
+# Networking and API features
+networking = ["dep:reqwest", "dep:hyper"]
+advanced = ["text-search", "compression", "metrics", "dep:redis", "dep:dashmap", "dep:lru"]
+
+# Development features
+dev-utils = ["dep:tracing", "dep:uuid", "dep:log", "dep:rand", "dep:notify", "dep:toml", "dep:sys-info", "dep:md5"]
+
+# Optimization features
+optimized = ["compression", "simd"]
+text-search = ["dep:regex"]
+compression = ["dep:flate2"]
+metrics = ["dep:prometheus", "dep:metrics"]
+simd = []
+
+[dev-dependencies]
+tokio-test = "0.4"
+mockall = "0.11"
+tempfile = "3.5" 

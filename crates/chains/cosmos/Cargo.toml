@@ -1,0 +1,45 @@
+[package]
+name = "indexer-cosmos"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+description = "Cosmos client using valence-domain-clients Cosmos integration"
+
+[features]
+default = ["cosmos", "codegen"]
+# Chain support - cosmos is always enabled for this crate, but the dependency makes it optional at workspace level
+cosmos = ["dep:valence-domain-clients"]
+contracts = []
+codegen = ["serde_json", "handlebars", "cosmwasm-schema", "clap", "chrono", "convert_case", "cosmwasm-std", "thiserror"]
+
+[dependencies]
+# Core indexer dependencies (keep these for interface compatibility)
+indexer-core = { path = "../../infrastructure/core" }
+
+# Minimal async support
+async-trait.workspace = true
+tokio = { workspace = true, features = ["rt", "fs"] }
+
+# Error handling
+anyhow.workspace = true
+
+# Valence domain clients integration for Cosmos support
+valence-domain-clients = { git = "https://github.com/timewave-computer/valence-domain-clients", branch = "main", optional = true }
+
+# Code generation dependencies
+serde_json = { version = "1.0", optional = true }
+handlebars = { version = "4.0", optional = true }
+cosmwasm-schema = { version = "1.0", optional = true }
+clap = { version = "4.0", optional = true, features = ["derive"] }
+chrono = { version = "0.4", optional = true, features = ["serde"] }
+convert_case = { version = "0.6", optional = true }
+cosmwasm-std = { version = "1.0", optional = true }
+thiserror = { version = "1.0", optional = true }
+serde = { version = "1.0", features = ["derive"] }
+
+[dev-dependencies]
+tokio = { version = "1.0", features = ["full", "test-util"] }
+tempfile = "3.8"
+criterion = { version = "0.5", features = ["html_reports"] }

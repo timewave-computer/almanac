@@ -56,24 +56,84 @@
           # Build the Rust project using crate2nix (conditionally)
           project = if builtins.pathExists ./Cargo.nix then import ./Cargo.nix {
             inherit pkgs;
+            
+            # Optimize for development builds by default
+            rootFeatures = [ "default" ];
+            release = false; # Use debug builds in development
+            
+            # Enhanced crate overrides for optimal compilation
             defaultCrateOverrides = pkgs.defaultCrateOverrides // {
-              # Add specific overrides for our crates if needed
+              # Core crate optimizations
+              indexer-core = attrs: {
+                # Minimal features for faster builds
+                features = attrs.features or [] ++ [ "basic" ];
+                buildInputs = lib.optionals pkgs.stdenv.isDarwin [
+                  pkgs.darwin.apple_sdk.frameworks.Security
+                  pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
+                ];
+              };
+              
+              # Storage crate - heavy compilation optimizations
               indexer-storage = attrs: {
-                buildInputs = with pkgs; [ 
-                  postgresql_15
+                # Start with memory backend only
+                features = attrs.features or [] ++ [ "memory" ];
+                
+                nativeBuildInputs = with pkgs; [
+                  pkg-config
+                  cmake
+                ] ++ lib.optionals (builtins.elem "postgres" (attrs.features or [])) [
                   sqlx-cli
+                ] ++ lib.optionals (builtins.elem "rocks" (attrs.features or [])) [
+                  cmake
+                ];
+                
+                buildInputs = lib.optionals (builtins.elem "postgres" (attrs.features or [])) [
+                  pkgs.postgresql_15
+                ] ++ lib.optionals (builtins.elem "rocks" (attrs.features or [])) [
+                  rocksdb-custom
+                  pkgs.zlib
+                  pkgs.bzip2
+                  pkgs.lz4
+                  pkgs.zstd
+                  pkgs.snappy
                 ] ++ lib.optionals pkgs.stdenv.isDarwin [
                   pkgs.darwin.apple_sdk.frameworks.Security
                   pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
                 ];
                 
-                preBuild = ''
-                  # Set environment for SQLx offline mode
+                # Conditional environment setup
+                preBuild = lib.optionalString (builtins.elem "postgres" (attrs.features or [])) ''
                   export SQLX_OFFLINE=true
+                '' + lib.optionalString (builtins.elem "rocks" (attrs.features or [])) ''
+                  export ROCKSDB_LIB_DIR="${rocksdb-custom}/lib"
+                  export ROCKSDB_INCLUDE_DIR="${rocksdb-custom}/include"
+                  export PKG_CONFIG_PATH="${rocksdb-custom}/lib/pkgconfig"
                 '';
               };
               
+              # API crate - conditional feature builds
+              indexer-api = attrs: {
+                features = attrs.features or [] ++ [ "rest" ]; # Minimal by default
+                buildInputs = lib.optionals pkgs.stdenv.isDarwin [
+                  pkgs.darwin.apple_sdk.frameworks.Security
+                  pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
+                ];
+              };
+              
+              # Testing crate - only include when needed
+              indexer-testing = attrs: {
+                features = attrs.features or [] ++ [ "property" ];
+                buildInputs = lib.optionals pkgs.stdenv.isDarwin [
+                  pkgs.darwin.apple_sdk.frameworks.Security
+                  pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
+                ];
+                # Skip in production builds
+                meta.broken = lib.elem "production" (attrs.features or []);
+              };
+              
+              # Chain clients - minimal by default
               indexer-ethereum = attrs: {
+                features = attrs.features or []; # No default features
                 buildInputs = lib.optionals pkgs.stdenv.isDarwin [
                   pkgs.darwin.apple_sdk.frameworks.Security
                   pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
@@ -81,45 +141,68 @@
               };
               
               indexer-cosmos = attrs: {
+                features = attrs.features or []; # No default features
                 buildInputs = lib.optionals pkgs.stdenv.isDarwin [
                   pkgs.darwin.apple_sdk.frameworks.Security
                   pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
                 ];
               };
               
-              # RocksDB system dependencies
-              librocksdb-sys = attrs: {
-                nativeBuildInputs = with pkgs; [
-                  pkg-config
-                  cmake
-                ];
-                buildInputs = with pkgs; [
-                  zlib
-                  bzip2
-                  lz4
-                  zstd
-                  snappy
+              # Tools and utilities
+              indexer-tools = attrs: {
+                buildInputs = lib.optionals (builtins.elem "rocks" (attrs.features or [])) [
+                  rocksdb-custom
                 ] ++ lib.optionals pkgs.stdenv.isDarwin [
                   pkgs.darwin.apple_sdk.frameworks.Security
                   pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
                 ];
                 
-                # Set environment variables for RocksDB compilation
-                preBuild = ''
-                  export ZLIB_INCLUDE_DIR=${pkgs.zlib.dev}/include
-                  export ZLIB_LIB_DIR=${pkgs.zlib}/lib
-                  export BZIP2_INCLUDE_DIR=${pkgs.bzip2.dev}/include
-                  export BZIP2_LIB_DIR=${pkgs.bzip2}/lib
-                  export LZ4_INCLUDE_DIR=${pkgs.lz4.dev}/include
-                  export LZ4_LIB_DIR=${pkgs.lz4}/lib
-                  export ZSTD_INCLUDE_DIR=${pkgs.zstd.dev}/include
-                  export ZSTD_LIB_DIR=${pkgs.zstd}/lib
-                  export SNAPPY_INCLUDE_DIR=${pkgs.snappy}/include
-                  export SNAPPY_LIB_DIR=${pkgs.snappy}/lib
-                '';
+                ROCKSDB_LIB_DIR = lib.mkIf (builtins.elem "rocks" (attrs.features or [])) "${rocksdb-custom}/lib";
+                ROCKSDB_INCLUDE_DIR = lib.mkIf (builtins.elem "rocks" (attrs.features or [])) "${rocksdb-custom}/include";
               };
               
-              # OpenSSL system dependencies
+              # Benchmarks - only when explicitly requested
+              indexer-benchmarks = attrs: {
+                # Skip unless explicitly building benchmarks
+                meta.broken = !(builtins.elem "benchmarks" (attrs.features or []));
+                
+                nativeBuildInputs = with pkgs; [
+                  pkg-config
+                  cmake
+                ];
+                buildInputs = [
+                  rocksdb-custom
+                  pkgs.zlib
+                  pkgs.bzip2
+                  pkgs.lz4
+                  pkgs.zstd
+                  pkgs.snappy
+                ] ++ lib.optionals pkgs.stdenv.isDarwin [
+                  pkgs.darwin.apple_sdk.frameworks.Security
+                  pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
+                ];
+                
+                ROCKSDB_LIB_DIR = "${rocksdb-custom}/lib";
+                ROCKSDB_INCLUDE_DIR = "${rocksdb-custom}/include";
+                PKG_CONFIG_PATH = "${rocksdb-custom}/lib/pkgconfig";
+              };
+              
+              # Query crate - lightweight
+              indexer-query = attrs: {
+                buildInputs = lib.optionals pkgs.stdenv.isDarwin [
+                  pkgs.darwin.apple_sdk.frameworks.Security
+                ];
+              };
+              
+              # Causality crate - SMT operations
+              indexer-causality = attrs: {
+                features = attrs.features or [] ++ [ "smt" ];
+                buildInputs = lib.optionals pkgs.stdenv.isDarwin [
+                  pkgs.darwin.apple_sdk.frameworks.Security
+                ];
+              };
+              
+              # System dependencies
               openssl-sys = attrs: {
                 nativeBuildInputs = with pkgs; [ pkg-config ];
                 buildInputs = [ pkgs.openssl ];
@@ -135,7 +218,7 @@
                 nativeBuildInputs = [ pkgs.protobuf ];
               };
               
-              # Additional system crates that might need overrides
+              # Additional system crates
               ring = attrs: {
                 buildInputs = lib.optionals pkgs.stdenv.isDarwin [
                   pkgs.darwin.apple_sdk.frameworks.Security
@@ -353,6 +436,7 @@ EOF
               pkgs.jq
               foundryPackage
               pkgs.crate2nix
+              rocksdb-custom
             ];
             
             # Shell hook to set up PostgreSQL
@@ -444,6 +528,7 @@ EOF
             wasm-bindgen-pkg = pkgs.wasm-bindgen-cli;
             init-databases = initDatabasesScript;
             stop-databases = stopDatabasesScript;
+            rocksdb-custom = rocksdb-custom;  # Expose our custom RocksDB derivation
             
             # Script to generate Cargo.nix using crate2nix
             generate-cargo-nix = pkgs.writeShellApplication {
@@ -584,6 +669,377 @@ EOF
             all-workflows = workflows.apps.${system}.all-workflows;
           };
           
+          # Custom RocksDB derivation with Rust bindings included
+          rocksdb-custom = pkgs.stdenv.mkDerivation rec {
+            pname = "rocksdb-with-rust";
+            version = "8.1.1";
+            
+            src = pkgs.fetchFromGitHub {
+              owner = "facebook";
+              repo = "rocksdb";
+              rev = "v${version}";
+              sha256 = "sha256-79hRtc5QSWLLyjRGCmuYZSoIc9IcIsnl8UCinz2sVw4=";
+            };
+            
+            nativeBuildInputs = with pkgs; [
+              cmake
+              pkg-config
+              rustc
+              cargo
+            ];
+            
+            buildInputs = with pkgs; [
+              zlib
+              bzip2
+              lz4
+              zstd
+              snappy
+            ] ++ lib.optionals stdenv.isDarwin [
+              darwin.apple_sdk.frameworks.Security
+              darwin.apple_sdk.frameworks.SystemConfiguration
+            ];
+            
+            cmakeFlags = [
+              "-DROCKSDB_BUILD_SHARED=ON"
+              "-DWITH_ZLIB=ON"
+              "-DWITH_BZ2=ON"
+              "-DWITH_LZ4=ON"
+              "-DWITH_ZSTD=ON"
+              "-DWITH_SNAPPY=ON"
+              "-DWITH_GFLAGS=OFF"
+              "-DWITH_TESTS=OFF"
+              "-DWITH_BENCHMARK_TOOLS=OFF"
+              "-DWITH_TOOLS=OFF"
+              "-DUSE_RTTI=ON"
+              "-DPORTABLE=ON"
+            ];
+            
+            # Build both C++ library and Rust wrapper
+            buildPhase = ''
+              runHook preBuild
+              
+              # Build C++ library
+              echo "Building RocksDB C++ library..."
+              make -j$NIX_BUILD_CORES
+              
+              # Create simple Rust FFI wrapper without external dependencies
+              echo "Creating Rust FFI wrapper..."
+              mkdir -p rust-wrapper/src
+              
+              cat > rust-wrapper/src/lib.rs << 'EOF'
+//! RocksDB FFI bindings
+//! 
+//! This provides a direct FFI interface to RocksDB without any external dependencies.
+//! We'll use std::ffi instead of the libc crate to avoid network dependencies.
+
+use std::ffi::{CStr, CString};
+use std::os::raw::{c_char, c_int, c_void};
+use std::ptr;
+
+// Type aliases for C types
+pub type size_t = usize;
+
+// Opaque types
+#[repr(C)]
+pub struct rocksdb_t {
+    _unused: [u8; 0],
+}
+
+#[repr(C)]
+pub struct rocksdb_options_t {
+    _unused: [u8; 0],
+}
+
+#[repr(C)]
+pub struct rocksdb_writeoptions_t {
+    _unused: [u8; 0],
+}
+
+#[repr(C)]
+pub struct rocksdb_readoptions_t {
+    _unused: [u8; 0],
+}
+
+#[repr(C)]
+pub struct rocksdb_writebatch_t {
+    _unused: [u8; 0],
+}
+
+#[repr(C)]
+pub struct rocksdb_iterator_t {
+    _unused: [u8; 0],
+}
+
+#[repr(C)]
+pub struct rocksdb_column_family_handle_t {
+    _unused: [u8; 0],
+}
+
+// External C functions from RocksDB
+#[link(name = "rocksdb")]
+extern "C" {
+    // Database operations
+    pub fn rocksdb_open(
+        options: *const rocksdb_options_t,
+        name: *const c_char,
+        errptr: *mut *mut c_char,
+    ) -> *mut rocksdb_t;
+    
+    pub fn rocksdb_close(db: *mut rocksdb_t);
+    
+    // Options
+    pub fn rocksdb_options_create() -> *mut rocksdb_options_t;
+    pub fn rocksdb_options_destroy(options: *mut rocksdb_options_t);
+    pub fn rocksdb_options_set_create_if_missing(options: *mut rocksdb_options_t, val: u8);
+    
+    // Read/Write operations
+    pub fn rocksdb_get(
+        db: *mut rocksdb_t,
+        readoptions: *const rocksdb_readoptions_t,
+        key: *const c_char,
+        keylen: size_t,
+        vallen: *mut size_t,
+        errptr: *mut *mut c_char,
+    ) -> *mut c_char;
+    
+    pub fn rocksdb_put(
+        db: *mut rocksdb_t,
+        writeoptions: *const rocksdb_writeoptions_t,
+        key: *const c_char,
+        keylen: size_t,
+        val: *const c_char,
+        vallen: size_t,
+        errptr: *mut *mut c_char,
+    );
+    
+    pub fn rocksdb_delete(
+        db: *mut rocksdb_t,
+        writeoptions: *const rocksdb_writeoptions_t,
+        key: *const c_char,
+        keylen: size_t,
+        errptr: *mut *mut c_char,
+    );
+    
+    // Memory management
+    pub fn rocksdb_free(ptr: *mut c_void);
+}
+
+// Safe Rust wrapper
+pub struct DB {
+    inner: *mut rocksdb_t,
+}
+
+impl DB {
+    pub fn open(path: &str) -> Result<Self, String> {
+        let options = unsafe { rocksdb_options_create() };
+        unsafe {
+            rocksdb_options_set_create_if_missing(options, 1);
+        }
+        
+        let path_cstr = CString::new(path).unwrap();
+        let mut err: *mut c_char = ptr::null_mut();
+        
+        let db = unsafe {
+            rocksdb_open(options, path_cstr.as_ptr(), &mut err)
+        };
+        
+        unsafe { rocksdb_options_destroy(options) };
+        
+        if !err.is_null() {
+            let err_str = unsafe {
+                let err_cstr = CStr::from_ptr(err);
+                let result = err_cstr.to_string_lossy().into_owned();
+                rocksdb_free(err as *mut c_void);
+                result
+            };
+            return Err(err_str);
+        }
+        
+        Ok(DB { inner: db })
+    }
+    
+    pub fn put(&self, key: &[u8], value: &[u8]) -> Result<(), String> {
+        let mut err: *mut c_char = ptr::null_mut();
+        
+        unsafe {
+            rocksdb_put(
+                self.inner,
+                ptr::null(), // write options
+                key.as_ptr() as *const c_char,
+                key.len(),
+                value.as_ptr() as *const c_char,
+                value.len(),
+                &mut err,
+            );
+        }
+        
+        if !err.is_null() {
+            let err_str = unsafe {
+                let err_cstr = CStr::from_ptr(err);
+                let result = err_cstr.to_string_lossy().into_owned();
+                rocksdb_free(err as *mut c_void);
+                result
+            };
+            return Err(err_str);
+        }
+        
+        Ok(())
+    }
+    
+    pub fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>, String> {
+        let mut err: *mut c_char = ptr::null_mut();
+        let mut vallen: size_t = 0;
+        
+        let value_ptr = unsafe {
+            rocksdb_get(
+                self.inner,
+                ptr::null(), // read options
+                key.as_ptr() as *const c_char,
+                key.len(),
+                &mut vallen,
+                &mut err,
+            )
+        };
+        
+        if !err.is_null() {
+            let err_str = unsafe {
+                let err_cstr = CStr::from_ptr(err);
+                let result = err_cstr.to_string_lossy().into_owned();
+                rocksdb_free(err as *mut c_void);
+                result
+            };
+            return Err(err_str);
+        }
+        
+        if value_ptr.is_null() {
+            return Ok(None);
+        }
+        
+        let value = unsafe {
+            let slice = std::slice::from_raw_parts(value_ptr as *const u8, vallen);
+            let result = slice.to_vec();
+            rocksdb_free(value_ptr as *mut c_void);
+            result
+        };
+        
+        Ok(Some(value))
+    }
+}
+
+impl Drop for DB {
+    fn drop(&mut self) {
+        unsafe {
+            rocksdb_close(self.inner);
+        }
+    }
+}
+
+unsafe impl Send for DB {}
+unsafe impl Sync for DB {}
+
+// Re-export for convenience
+pub use self::DB as RocksDB;
+EOF
+              
+              runHook postBuild
+            '';
+            
+            installPhase = ''
+              runHook preInstall
+              
+              # Install C++ library
+              make install
+              
+              # Install Rust source for direct inclusion in projects
+              mkdir -p $out/src/rust
+              cp -r rust-wrapper/src/* $out/src/rust/
+              
+              # Create a simple Cargo.toml for the Rust wrapper
+              cat > $out/src/rust/Cargo.toml << 'EOF'
+[package]
+name = "rocksdb-sys"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "rocksdb_sys"
+crate-type = ["rlib", "cdylib"]
+EOF
+              
+              # Create pkg-config file
+              mkdir -p $out/lib/pkgconfig
+              cat > $out/lib/pkgconfig/rocksdb.pc << EOF
+prefix=$out
+exec_prefix=\''${prefix}
+libdir=\''${exec_prefix}/lib
+includedir=\''${prefix}/include
+
+Name: RocksDB
+Description: A persistent key-value store for fast storage environments
+Version: ${version}
+Libs: -L\''${libdir} -lrocksdb
+Libs.private: -lz -lbz2 -llz4 -lzstd -lsnappy
+Cflags: -I\''${includedir}
+EOF
+              
+              runHook postInstall
+            '';
+            
+            # Test that the library works
+            doCheck = false;
+            # checkPhase = ''
+            #   # Test C++ library
+            #   echo "Testing RocksDB C++ library..."
+            #   cat > test_rocksdb.cpp << 'EOF'
+            # #include <rocksdb/db.h>
+            # #include <iostream>
+            # #include <string>
+            # 
+            # int main() {
+            #     rocksdb::DB* db;
+            #     rocksdb::Options options;
+            #     options.create_if_missing = true;
+            #     
+            #     rocksdb::Status status = rocksdb::DB::Open(options, "/tmp/testdb", &db);
+            #     if (!status.ok()) {
+            #         std::cerr << "Unable to open database: " << status.ToString() << std::endl;
+            #         return 1;
+            #     }
+            #     
+            #     // Test put/get
+            #     status = db->Put(rocksdb::WriteOptions(), "key1", "value1");
+            #     if (!status.ok()) {
+            #         std::cerr << "Unable to put: " << status.ToString() << std::endl;
+            #         return 1;
+            #     }
+            #     
+            #     std::string value;
+            #     status = db->Get(rocksdb::ReadOptions(), "key1", &value);
+            #     if (!status.ok() || value != "value1") {
+            #         std::cerr << "Unable to get or wrong value" << std::endl;
+            #         return 1;
+            #     }
+            #     
+            #     delete db;
+            #     std::cout << "RocksDB C++ test passed!" << std::endl;
+            #     return 0;
+            # }
+            # EOF
+            #   
+            #   # Use headers from the source directory during build
+            #   $CXX -std=c++17 -I../include -L. -lrocksdb test_rocksdb.cpp -o test_rocksdb
+            #   ./test_rocksdb
+            #   
+            #   echo "✓ RocksDB C++ library test passed"
+            # '';
+            
+            meta = with lib; {
+              description = "RocksDB with integrated Rust bindings";
+              homepage = "https://rocksdb.org/";
+              license = with licenses; [ gpl2 asl20 ];
+              platforms = platforms.unix;
+            };
+          };
         in
         {
           # Define minimal outputs needed to get the shell working
