@@ -25,9 +25,14 @@
       url = "path:./nix/solana";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    
+    simulation = {
+      url = "path:./nix/simulation";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = inputs@{ self, nixpkgs, flake-utils, fdb, ethereum, cosmos, solana, ... }:
+  outputs = inputs@{ self, nixpkgs, flake-utils, fdb, ethereum, cosmos, solana, simulation, ... }:
     flake-utils.lib.eachSystem [ "aarch64-darwin" "x86_64-linux" ] (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
@@ -41,6 +46,7 @@
         ethereum-packages = ethereum.packages.${system};
         cosmos-packages = cosmos.packages.${system};
         solana-packages = solana.packages.${system};
+        simulation-packages = simulation.packages.${system};
         
         # Create a set of common environment variables
         commonEnv = {
@@ -179,6 +185,13 @@ EOFFDB
           solana-node = solana-packages.solana-node;
           anchor = solana-packages.anchor;
           
+          # Simulation packages
+          sim-cluster = simulation-packages.sim-cluster;
+          sim-config = simulation-packages.sim-config;
+          sim-ethereum = simulation-packages.sim-ethereum;
+          sim-cosmos = simulation-packages.sim-cosmos;
+          sim-solana = simulation-packages.sim-solana;
+          
           # Default package
           default = fdb-packages.foundationdb;
         };
@@ -192,6 +205,36 @@ EOFFDB
           ethereum = ethereum.devShells.${system}.default;
           cosmos = cosmos.devShells.${system}.default;
           solana = solana.devShells.${system}.default;
+          
+          # Simulation environment with all tools
+          simulation = pkgs.mkShell {
+            name = "almanac-simulation";
+            packages = [
+              simulation-packages.sim-cluster
+              simulation-packages.sim-config
+              fdb-packages.fdb-manage
+              ethereum-packages.forge
+              cosmos-packages.neutron
+            ] ++ lib.optionals (pkgs.stdenv.system != "aarch64-linux") [
+              solana-packages.solana-tools
+            ];
+            
+            shellHook = ''
+              echo "=== Almanac Simulation Environment ==="
+              echo "Available commands:"
+              echo "  sim-cluster init [chains]    # Initialize simulation"
+              echo "  sim-cluster start            # Start all services"
+              echo "  sim-cluster stop             # Stop all services"
+              echo "  sim-cluster status           # Check service status"
+              echo "  sim-cluster logs [service]   # Show service logs"
+              echo ""
+              echo "Example workflows:"
+              echo "  sim-cluster init ethereum,fdb"
+              echo "  sim-cluster start"
+              echo "  sim-cluster status"
+              echo ""
+            '';
+          };
         };
         
         # Apps for easy access
@@ -214,6 +257,11 @@ EOFFDB
           solana = {
             type = "app";
             program = "${solana-packages.solana-node}/bin/solana";
+          };
+          
+          sim-cluster = {
+            type = "app";
+            program = "${simulation-packages.sim-cluster}/bin/sim-cluster";
           };
         };
         
