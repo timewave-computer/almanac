@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use indexer_core::Result;
+use almanac_infrastructure_core::Result;
 
 /// Parsed Ethereum contract ABI
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -103,7 +103,7 @@ impl AbiParser {
     /// Parse ABI from JSON value
     fn parse_abi(&self, value: &Value) -> Result<EthereumAbi> {
         let abi_array = value.as_array()
-            .ok_or_else(|| indexer_core::Error::Config("ABI must be an array".to_string()))?;
+            .ok_or_else(|| almanac_infrastructure_core::Error::Config("ABI must be an array".to_string()))?;
 
         let mut constructor = None;
         let mut functions = Vec::new();
@@ -205,7 +205,7 @@ impl AbiParser {
     fn parse_event(&self, value: &Value) -> Result<AbiEvent> {
         let name = value.get("name")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| indexer_core::Error::Config("Event must have a name".to_string()))?
+            .ok_or_else(|| almanac_infrastructure_core::Error::Config("Event must have a name".to_string()))?
             .to_string();
 
         let inputs = value.get("inputs")
@@ -232,7 +232,7 @@ impl AbiParser {
     fn parse_error(&self, value: &Value) -> Result<AbiError> {
         let name = value.get("name")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| indexer_core::Error::Config("Error must have a name".to_string()))?
+            .ok_or_else(|| almanac_infrastructure_core::Error::Config("Error must have a name".to_string()))?
             .to_string();
 
         let inputs = value.get("inputs")
@@ -261,7 +261,7 @@ impl AbiParser {
 
             let param_type = param.get("type")
                 .and_then(|v| v.as_str())
-                .ok_or_else(|| indexer_core::Error::Config("Parameter must have a type".to_string()))?
+                .ok_or_else(|| almanac_infrastructure_core::Error::Config("Parameter must have a type".to_string()))?
                 .to_string();
 
             let internal_type = param.get("internalType")
@@ -301,7 +301,7 @@ impl AbiParser {
 
             let param_type = param.get("type")
                 .and_then(|v| v.as_str())
-                .ok_or_else(|| indexer_core::Error::Config("Parameter must have a type".to_string()))?
+                .ok_or_else(|| almanac_infrastructure_core::Error::Config("Parameter must have a type".to_string()))?
                 .to_string();
 
             let internal_type = param.get("internalType")

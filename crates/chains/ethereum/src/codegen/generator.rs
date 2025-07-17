@@ -3,8 +3,8 @@
 //! Generates Rust code for client interactions, storage models, APIs, and migrations
 //! from parsed Ethereum contract ABIs.
 
-use super::{EthereumCodegenConfig, parser::EthereumAbi};
-use indexer_core::Result;
+use super::{EthereumCodegenConfig, parser::{EthereumAbi, AbiFunction, AbiEvent}};
+use almanac_infrastructure_core::Result;
 use std::path::{Path, PathBuf};
 use convert_case::Casing;
 
@@ -25,7 +25,7 @@ impl EthereumContractCodegen {
         
         if !self.config.dry_run {
             tokio::fs::create_dir_all(output_dir).await
-                .map_err(|e| indexer_core::Error::Config(format!("Failed to create output directory: {}", e)))?;
+                .map_err(|e| almanac_infrastructure_core::Error::config(format!("Failed to create output directory: {}", e)))?;
         }
 
         for feature in &self.config.features {
@@ -50,7 +50,7 @@ impl EthereumContractCodegen {
         let client_dir = output_dir.join("client");
         if !self.config.dry_run {
             tokio::fs::create_dir_all(&client_dir).await
-                .map_err(|e| indexer_core::Error::Config(format!("Failed to create client directory: {}", e)))?;
+                .map_err(|e| almanac_infrastructure_core::Error::config(format!("Failed to create client directory: {}", e)))?;
         }
 
         // Generate client module
@@ -104,7 +104,7 @@ impl EthereumContractCodegen {
         let storage_dir = output_dir.join("storage");
         if !self.config.dry_run {
             tokio::fs::create_dir_all(&storage_dir).await
-                .map_err(|e| indexer_core::Error::Config(format!("Failed to create storage directory: {}", e)))?;
+                .map_err(|e| almanac_infrastructure_core::Error::config(format!("Failed to create storage directory: {}", e)))?;
         }
 
         // Generate storage module file
@@ -133,16 +133,14 @@ impl EthereumContractCodegen {
         let api_dir = output_dir.join("api");
         if !self.config.dry_run {
             tokio::fs::create_dir_all(&api_dir).await
-                .map_err(|e| indexer_core::Error::Config(format!("Failed to create api directory: {}", e)))?;
+                .map_err(|e| almanac_infrastructure_core::Error::config(format!("Failed to create api directory: {}", e)))?;
         }
 
         // Generate REST endpoints
         let rest_code = self.generate_rest_endpoints(abi)?;
         self.write_file(&api_dir.join("rest.rs"), &rest_code).await?;
 
-        // Generate GraphQL schema
-        let graphql_code = self.generate_graphql_schema(abi)?;
-        self.write_file(&api_dir.join("graphql.rs"), &graphql_code).await?;
+
 
         // Generate WebSocket handlers
         let websocket_code = self.generate_websocket_handlers(abi)?;
@@ -166,7 +164,7 @@ impl EthereumContractCodegen {
         let migrations_dir = output_dir.join("migrations");
         if !self.config.dry_run {
             tokio::fs::create_dir_all(&migrations_dir).await
-                .map_err(|e| indexer_core::Error::Config(format!("Failed to create migrations directory: {}", e)))?;
+                .map_err(|e| almanac_infrastructure_core::Error::config(format!("Failed to create migrations directory: {}", e)))?;
         }
 
         // Generate migration file
@@ -189,7 +187,7 @@ pub mod postgres_schema;
 pub mod rocksdb;
 pub mod traits;
 
-use indexer_core::Result;
+use almanac_infrastructure_core::Result;
 
 /// Storage layer for the {} contract
 pub struct {}Storage {{
@@ -225,7 +223,7 @@ pub mod types;
 pub mod abi_helpers;
 pub mod events;
 
-use indexer_core::Result;
+use almanac_infrastructure_core::Result;
 use indexer_ethereum::EthereumClient;
 
 /// Client for interacting with the {} contract
@@ -262,7 +260,7 @@ impl {}Client {{
         ))
     }
 
-    fn generate_view_methods(&self, functions: &[&super::parser::AbiFunction]) -> Result<String> {
+    fn generate_view_methods(&self, functions: &[&AbiFunction]) -> Result<String> {
         let mut methods = String::new();
         let client_name = self.sanitize_contract_name();
 
@@ -272,7 +270,7 @@ impl {}Client {{
 
 use super::types::*;
 use super::{}Client;
-use indexer_core::Result;
+use almanac_infrastructure_core::Result;
 use alloy_primitives::{{Address, U256, Bytes}};
 
 impl {}Client {{
@@ -415,7 +413,7 @@ impl {}Client {{
         }
     }
 
-    fn generate_transaction_methods(&self, functions: &[&super::parser::AbiFunction]) -> Result<String> {
+    fn generate_transaction_methods(&self, functions: &[&AbiFunction]) -> Result<String> {
         let mut methods = String::new();
         let client_name = self.sanitize_contract_name();
 
@@ -425,7 +423,7 @@ impl {}Client {{
 
 use super::types::*;
 use super::{}Client;
-use indexer_core::Result;
+use almanac_infrastructure_core::Result;
 use alloy_primitives::{{Address, U256, Bytes}};
 
 impl {}Client {{
@@ -521,7 +519,7 @@ impl {}Client {{
         Ok(methods)
     }
 
-    fn generate_deployment_method(&self, constructor: Option<&super::parser::AbiFunction>) -> Result<String> {
+    fn generate_deployment_method(&self, constructor: Option<&AbiFunction>) -> Result<String> {
         let client_name = self.sanitize_contract_name();
         let mut method = String::new();
 
@@ -531,7 +529,7 @@ impl {}Client {{
 
 use super::types::*;
 use super::{}Client;
-use indexer_core::Result;
+use almanac_infrastructure_core::Result;
 use alloy_primitives::{{Address, U256, Bytes}};
 
 impl {}Client {{
@@ -648,7 +646,7 @@ pub enum ContractError {{
     Serialization(#[from] serde_json::Error),
     
     #[error("Core indexer error: {{0}}")]
-    Core(#[from] indexer_core::Error),
+    Core(#[from] almanac_infrastructure_core::Error),
     
     #[error("Contract call failed: {{0}}")]
     CallFailed(String),
@@ -675,16 +673,16 @@ pub enum ContractError {{
     InvalidAddress(String),
 }}
 
-impl From<ContractError> for indexer_core::Error {{
+impl From<ContractError> for almanac_infrastructure_core::Error {{
     fn from(err: ContractError) -> Self {{
-        indexer_core::Error::generic(err.to_string())
+        almanac_infrastructure_core::Error::generic(err.to_string())
     }}
 }}
 
 /// ABI encoding/decoding utilities
 pub mod abi_types {{
     use super::*;
-    use indexer_core::Result;
+    use almanac_infrastructure_core::Result;
 
     /// Encode ABI parameters to bytes
     pub fn encode_abi_params(types: &[&str], values: &[serde_json::Value]) -> Result<Vec<u8>> {{
@@ -703,20 +701,20 @@ pub mod abi_types {{
     /// Convert Rust value to ABI-compatible JSON value
     pub fn to_abi_value<T: Serialize>(value: T) -> Result<serde_json::Value> {{
         serde_json::to_value(value)
-            .map_err(|e| indexer_core::Error::Serialization(format!("Failed to convert to ABI value: {{}}", e)))
+            .map_err(|e| almanac_infrastructure_core::Error::Serialization(format!("Failed to convert to ABI value: {{}}", e)))
     }}
 
     /// Convert ABI JSON value to Rust type
     pub fn from_abi_value<T: for<'de> Deserialize<'de>>(value: serde_json::Value) -> Result<T> {{
         serde_json::from_value(value)
-            .map_err(|e| indexer_core::Error::Serialization(format!("Failed to convert from ABI value: {{}}", e)))
+            .map_err(|e| almanac_infrastructure_core::Error::Serialization(format!("Failed to convert from ABI value: {{}}", e)))
     }}
 }}
 
 /// Gas estimation utilities
 pub mod gas_utils {{
     use super::*;
-    use indexer_core::Result;
+    use almanac_infrastructure_core::Result;
 
     /// Estimate gas with safety margin
     pub fn add_gas_margin(gas_estimate: U256, margin_percent: u32) -> U256 {{
@@ -965,7 +963,7 @@ CREATE TABLE IF NOT EXISTS {}_{}_events (
         Ok(format!(
             r#"//! Generated RocksDB schemas for contract: {}
 
-use indexer_core::Result;
+use almanac_infrastructure_core::Result;
 use rocksdb::{{DB, Options, ColumnFamily}};
 use serde::{{Serialize, Deserialize}};
 use std::path::Path;
@@ -1001,7 +999,7 @@ impl {}RocksDB {{
         ];
 
         let db = DB::open_cf(&opts, path, &column_families)
-            .map_err(|e| indexer_core::Error::Storage(format!("Failed to open RocksDB: {{}}", e)))?;
+            .map_err(|e| almanac_infrastructure_core::Error::Storage(format!("Failed to open RocksDB: {{}}", e)))?;
 
         Ok(Self {{ db }})
     }}
@@ -1009,19 +1007,19 @@ impl {}RocksDB {{
     /// Store contract state at specific block
     pub fn store_state(&self, contract_address: &Address, block_number: u64, state: &serde_json::Value) -> Result<()> {{
         let cf = self.db.cf_handle(Self::CF_STATE)
-            .ok_or_else(|| indexer_core::Error::Storage("State column family not found".to_string()))?;
+            .ok_or_else(|| almanac_infrastructure_core::Error::Storage("State column family not found".to_string()))?;
 
         let key = format!("{{}}:{{:020}}", contract_address, block_number);
         let value = serde_json::to_vec(state)
-            .map_err(|e| indexer_core::Error::Serialization(format!("Failed to serialize state: {{}}", e)))?;
+            .map_err(|e| almanac_infrastructure_core::Error::Serialization(format!("Failed to serialize state: {{}}", e)))?;
 
         self.db.put_cf(cf, key.as_bytes(), &value)
-            .map_err(|e| indexer_core::Error::Storage(format!("Failed to store state: {{}}", e)))?;
+            .map_err(|e| almanac_infrastructure_core::Error::Storage(format!("Failed to store state: {{}}", e)))?;
 
         // Update latest state pointer
         let latest_key = format!("{{}}_latest", contract_address);
         self.db.put_cf(cf, latest_key.as_bytes(), &value)
-            .map_err(|e| indexer_core::Error::Storage(format!("Failed to update latest state: {{}}", e)))?;
+            .map_err(|e| almanac_infrastructure_core::Error::Storage(format!("Failed to update latest state: {{}}", e)))?;
 
         Ok(())
     }}
@@ -1029,7 +1027,7 @@ impl {}RocksDB {{
     /// Get contract state at specific block (or latest)
     pub fn get_state(&self, contract_address: &Address, block_number: Option<u64>) -> Result<Option<serde_json::Value>> {{
         let cf = self.db.cf_handle(Self::CF_STATE)
-            .ok_or_else(|| indexer_core::Error::Storage("State column family not found".to_string()))?;
+            .ok_or_else(|| almanac_infrastructure_core::Error::Storage("State column family not found".to_string()))?;
 
         let key = match block_number {{
             Some(height) => format!("{{}}:{{:020}}", contract_address, height),
@@ -1039,34 +1037,34 @@ impl {}RocksDB {{
         match self.db.get_cf(cf, key.as_bytes()) {{
             Ok(Some(data)) => {{
                 let state = serde_json::from_slice(&data)
-                    .map_err(|e| indexer_core::Error::Serialization(format!("Failed to deserialize state: {{}}", e)))?;
+                    .map_err(|e| almanac_infrastructure_core::Error::Serialization(format!("Failed to deserialize state: {{}}", e)))?;
                 Ok(Some(state))
             }},
             Ok(None) => Ok(None),
-            Err(e) => Err(indexer_core::Error::Storage(format!("Failed to get state: {{}}", e)))
+            Err(e) => Err(almanac_infrastructure_core::Error::Storage(format!("Failed to get state: {{}}", e)))
         }}
     }}
 
     /// Store transaction data
     pub fn store_transaction(&self, tx_hash: &str, tx_data: &TransactionData) -> Result<()> {{
         let cf = self.db.cf_handle(Self::CF_TRANSACTIONS)
-            .ok_or_else(|| indexer_core::Error::Storage("Transactions column family not found".to_string()))?;
+            .ok_or_else(|| almanac_infrastructure_core::Error::Storage("Transactions column family not found".to_string()))?;
 
         let value = serde_json::to_vec(tx_data)
-            .map_err(|e| indexer_core::Error::Serialization(format!("Failed to serialize transaction: {{}}", e)))?;
+            .map_err(|e| almanac_infrastructure_core::Error::Serialization(format!("Failed to serialize transaction: {{}}", e)))?;
 
         self.db.put_cf(cf, tx_hash.as_bytes(), &value)
-            .map_err(|e| indexer_core::Error::Storage(format!("Failed to store transaction: {{}}", e)))?;
+            .map_err(|e| almanac_infrastructure_core::Error::Storage(format!("Failed to store transaction: {{}}", e)))?;
 
         // Create block number index
         let block_key = format!("block:{{:020}}:{{}}", tx_data.block_number, tx_hash);
         self.db.put_cf(cf, block_key.as_bytes(), tx_hash.as_bytes())
-            .map_err(|e| indexer_core::Error::Storage(format!("Failed to store block index: {{}}", e)))?;
+            .map_err(|e| almanac_infrastructure_core::Error::Storage(format!("Failed to store block index: {{}}", e)))?;
 
         // Create contract address index
         let contract_key = format!("contract:{{}}:{{}}", tx_data.contract_address, tx_hash);
         self.db.put_cf(cf, contract_key.as_bytes(), tx_hash.as_bytes())
-            .map_err(|e| indexer_core::Error::Storage(format!("Failed to store contract index: {{}}", e)))?;
+            .map_err(|e| almanac_infrastructure_core::Error::Storage(format!("Failed to store contract index: {{}}", e)))?;
 
         Ok(())
     }}
@@ -1074,27 +1072,27 @@ impl {}RocksDB {{
     /// Store event data with multiple indexes
     pub fn store_event(&self, event_id: &str, event_data: &EventData) -> Result<()> {{
         let cf = self.db.cf_handle(Self::CF_EVENTS)
-            .ok_or_else(|| indexer_core::Error::Storage("Events column family not found".to_string()))?;
+            .ok_or_else(|| almanac_infrastructure_core::Error::Storage("Events column family not found".to_string()))?;
 
         let value = serde_json::to_vec(event_data)
-            .map_err(|e| indexer_core::Error::Serialization(format!("Failed to serialize event: {{}}", e)))?;
+            .map_err(|e| almanac_infrastructure_core::Error::Serialization(format!("Failed to serialize event: {{}}", e)))?;
 
         // Primary key: event_id
         self.db.put_cf(cf, event_id.as_bytes(), &value)
-            .map_err(|e| indexer_core::Error::Storage(format!("Failed to store event: {{}}", e)))?;
+            .map_err(|e| almanac_infrastructure_core::Error::Storage(format!("Failed to store event: {{}}", e)))?;
 
         // Secondary indexes for efficient queries
         let contract_key = format!("contract:{{}}:{{:020}}:{{}}", event_data.contract_address, event_data.block_number, event_id);
         self.db.put_cf(cf, contract_key.as_bytes(), event_id.as_bytes())
-            .map_err(|e| indexer_core::Error::Storage(format!("Failed to store contract index: {{}}", e)))?;
+            .map_err(|e| almanac_infrastructure_core::Error::Storage(format!("Failed to store contract index: {{}}", e)))?;
 
         let block_key = format!("block:{{:020}}:{{}}", event_data.block_number, event_id);
         self.db.put_cf(cf, block_key.as_bytes(), event_id.as_bytes())
-            .map_err(|e| indexer_core::Error::Storage(format!("Failed to store block index: {{}}", e)))?;
+            .map_err(|e| almanac_infrastructure_core::Error::Storage(format!("Failed to store block index: {{}}", e)))?;
 
         let event_type_key = format!("event_type:{{}}:{{}}", event_data.event_name, event_id);
         self.db.put_cf(cf, event_type_key.as_bytes(), event_id.as_bytes())
-            .map_err(|e| indexer_core::Error::Storage(format!("Failed to store event type index: {{}}", e)))?;
+            .map_err(|e| almanac_infrastructure_core::Error::Storage(format!("Failed to store event type index: {{}}", e)))?;
 
         Ok(())
     }}
@@ -1102,18 +1100,18 @@ impl {}RocksDB {{
     /// Store function call data
     pub fn store_call(&self, call_id: &str, call_data: &CallData) -> Result<()> {{
         let cf = self.db.cf_handle(Self::CF_CALLS)
-            .ok_or_else(|| indexer_core::Error::Storage("Calls column family not found".to_string()))?;
+            .ok_or_else(|| almanac_infrastructure_core::Error::Storage("Calls column family not found".to_string()))?;
 
         let value = serde_json::to_vec(call_data)
-            .map_err(|e| indexer_core::Error::Serialization(format!("Failed to serialize call: {{}}", e)))?;
+            .map_err(|e| almanac_infrastructure_core::Error::Serialization(format!("Failed to serialize call: {{}}", e)))?;
 
         self.db.put_cf(cf, call_id.as_bytes(), &value)
-            .map_err(|e| indexer_core::Error::Storage(format!("Failed to store call: {{}}", e)))?;
+            .map_err(|e| almanac_infrastructure_core::Error::Storage(format!("Failed to store call: {{}}", e)))?;
 
         // Function name index
         let function_key = format!("function:{{}}:{{}}", call_data.function_name, call_id);
         self.db.put_cf(cf, function_key.as_bytes(), call_id.as_bytes())
-            .map_err(|e| indexer_core::Error::Storage(format!("Failed to store function index: {{}}", e)))?;
+            .map_err(|e| almanac_infrastructure_core::Error::Storage(format!("Failed to store function index: {{}}", e)))?;
 
         Ok(())
     }}
@@ -1121,18 +1119,18 @@ impl {}RocksDB {{
     /// Store contract deployment data
     pub fn store_deployment(&self, contract_address: &Address, deployment_data: &DeploymentData) -> Result<()> {{
         let cf = self.db.cf_handle(Self::CF_DEPLOYMENTS)
-            .ok_or_else(|| indexer_core::Error::Storage("Deployments column family not found".to_string()))?;
+            .ok_or_else(|| almanac_infrastructure_core::Error::Storage("Deployments column family not found".to_string()))?;
 
         let value = serde_json::to_vec(deployment_data)
-            .map_err(|e| indexer_core::Error::Serialization(format!("Failed to serialize deployment: {{}}", e)))?;
+            .map_err(|e| almanac_infrastructure_core::Error::Serialization(format!("Failed to serialize deployment: {{}}", e)))?;
 
         self.db.put_cf(cf, contract_address.to_string().as_bytes(), &value)
-            .map_err(|e| indexer_core::Error::Storage(format!("Failed to store deployment: {{}}", e)))?;
+            .map_err(|e| almanac_infrastructure_core::Error::Storage(format!("Failed to store deployment: {{}}", e)))?;
 
         // Deployer index
         let deployer_key = format!("deployer:{{}}:{{}}", deployment_data.deployer_address, contract_address);
         self.db.put_cf(cf, deployer_key.as_bytes(), contract_address.to_string().as_bytes())
-            .map_err(|e| indexer_core::Error::Storage(format!("Failed to store deployer index: {{}}", e)))?;
+            .map_err(|e| almanac_infrastructure_core::Error::Storage(format!("Failed to store deployer index: {{}}", e)))?;
 
         Ok(())
     }}
@@ -1140,7 +1138,7 @@ impl {}RocksDB {{
     /// Get events for a contract within block range
     pub fn get_contract_events(&self, contract_address: &Address, from_block: u64, to_block: u64) -> Result<Vec<EventData>> {{
         let cf = self.db.cf_handle(Self::CF_EVENTS)
-            .ok_or_else(|| indexer_core::Error::Storage("Events column family not found".to_string()))?;
+            .ok_or_else(|| almanac_infrastructure_core::Error::Storage("Events column family not found".to_string()))?;
 
         let mut events = Vec::new();
         
@@ -1152,7 +1150,7 @@ impl {}RocksDB {{
             let iterator = self.db.iterator_cf(cf, rocksdb::IteratorMode::From(start_key.as_bytes(), rocksdb::Direction::Forward));
 
             for item in iterator {{
-                let (key, value) = item.map_err(|e| indexer_core::Error::Storage(format!("Iterator error: {{}}", e)))?;
+                let (key, value) = item.map_err(|e| almanac_infrastructure_core::Error::Storage(format!("Iterator error: {{}}", e)))?;
                 
                 if key > end_key.as_bytes() {{
                     break;
@@ -1180,7 +1178,7 @@ impl {}RocksDB {{
     /// Get transactions for a contract within block range
     pub fn get_contract_transactions(&self, contract_address: &Address, from_block: u64, to_block: u64) -> Result<Vec<TransactionData>> {{
         let cf = self.db.cf_handle(Self::CF_TRANSACTIONS)
-            .ok_or_else(|| indexer_core::Error::Storage("Transactions column family not found".to_string()))?;
+            .ok_or_else(|| almanac_infrastructure_core::Error::Storage("Transactions column family not found".to_string()))?;
 
         let mut transactions = Vec::new();
         let start_key = format!("contract:{{}}:", contract_address);
@@ -1189,7 +1187,7 @@ impl {}RocksDB {{
         let iterator = self.db.iterator_cf(cf, rocksdb::IteratorMode::From(start_key.as_bytes(), rocksdb::Direction::Forward));
 
         for item in iterator {{
-            let (key, value) = item.map_err(|e| indexer_core::Error::Storage(format!("Iterator error: {{}}", e)))?;
+            let (key, value) = item.map_err(|e| almanac_infrastructure_core::Error::Storage(format!("Iterator error: {{}}", e)))?;
             
             if !key.starts_with(start_key.as_bytes()) {{
                 break;
@@ -1281,7 +1279,7 @@ pub struct DeploymentData {{
         Ok(format!(
             r#"//! Generated storage traits for contract: {}
 
-use indexer_core::Result;
+use almanac_infrastructure_core::Result;
 use async_trait::async_trait;
 
 #[async_trait]
@@ -1312,7 +1310,7 @@ use axum::{{
 use serde::{{Deserialize, Serialize}};
 use serde_json::Value;
 use std::collections::HashMap;
-use indexer_core::Result;
+use almanac_infrastructure_core::Result;
 use super::types::*;
 use super::{}Client;
 
@@ -1658,12 +1656,12 @@ pub struct LogData {
 }
 
 /// Error handling for API endpoints
-impl From<indexer_core::Error> for StatusCode {
-    fn from(err: indexer_core::Error) -> Self {
+impl From<almanac_infrastructure_core::Error> for StatusCode {
+    fn from(err: almanac_infrastructure_core::Error) -> Self {
         match err {
-            indexer_core::Error::NotFound(_) => StatusCode::NOT_FOUND,
-            indexer_core::Error::Validation(_) => StatusCode::BAD_REQUEST,
-            indexer_core::Error::Unauthorized(_) => StatusCode::UNAUTHORIZED,
+            almanac_infrastructure_core::Error::NotFound(_) => StatusCode::NOT_FOUND,
+            almanac_infrastructure_core::Error::Validation(_) => StatusCode::BAD_REQUEST,
+            almanac_infrastructure_core::Error::Unauthorized(_) => StatusCode::UNAUTHORIZED,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -1704,15 +1702,15 @@ impl From<indexer_core::Error> for StatusCode {
         } else {
             if let Some(parent) = path.parent() {
                 tokio::fs::create_dir_all(parent).await
-                    .map_err(|e| indexer_core::Error::Config(format!("Failed to create directory: {}", e)))?;
+                    .map_err(|e| almanac_infrastructure_core::Error::config(format!("Failed to create directory: {}", e)))?;
             }
             tokio::fs::write(path, content).await
-                .map_err(|e| indexer_core::Error::Config(format!("Failed to write file {}: {}", path.display(), e)))?;
+                .map_err(|e| almanac_infrastructure_core::Error::config(format!("Failed to write file {}: {}", path.display(), e)))?;
         }
         Ok(())
     }
 
-    fn generate_abi_helpers(&self, _abi: &super::parser::EthereumAbi) -> Result<String> {
+    fn generate_abi_helpers(&self, _abi: &EthereumAbi) -> Result<String> {
         let client_name = self.sanitize_contract_name();
         
         Ok(format!(
@@ -1720,7 +1718,7 @@ impl From<indexer_core::Error> for StatusCode {
 
 use super::types::*;
 use super::{}Client;
-use indexer_core::Result;
+use almanac_infrastructure_core::Result;
 use alloy_primitives::{{Address, U256, Bytes}};
 use serde_json::Value;
 
@@ -1827,7 +1825,7 @@ pub mod abi_utils {{
         ))
     }
 
-    fn generate_event_methods(&self, events: &[super::parser::AbiEvent]) -> Result<String> {
+    fn generate_event_methods(&self, events: &[AbiEvent]) -> Result<String> {
         let mut methods = String::new();
         let client_name = self.sanitize_contract_name();
 
@@ -1837,7 +1835,7 @@ pub mod abi_utils {{
 
 use super::types::*;
 use super::{}Client;
-use indexer_core::Result;
+use almanac_infrastructure_core::Result;
 use alloy_primitives::{{Address, U256, Bytes}};
 use serde_json::Value;
 
@@ -1872,7 +1870,7 @@ impl {}Client {{
     pub fn {}(&self, topics: &[String], data: &[u8]) -> Result<()> {{
         // Verify this is the correct event type
         if topics.is_empty() {{
-            return Err(indexer_core::Error::generic("Missing event topic"));
+            return Err(almanac_infrastructure_core::Error::generic("Missing event topic"));
         }}
         
         // TODO: Verify event signature matches {}
@@ -1891,178 +1889,7 @@ impl {}Client {{
         Ok(methods)
     }
 
-    /// Generate GraphQL schema for Ethereum contracts
-    fn generate_graphql_schema(&self, abi: &EthereumAbi) -> Result<String> {
-        let contract_name = self.sanitize_contract_name();
-        let mut graphql_code = String::new();
 
-        graphql_code.push_str(&format!(
-            r#"//! Generated GraphQL schema for contract: {}
-
-use async_graphql::{{
-    Context, Object, Result as GqlResult, Schema, Subscription, Union,
-    SimpleObject, Enum, InputObject, ID, FieldResult,
-}};
-use serde_json::Value;
-use std::collections::HashMap;
-use tokio_stream::Stream;
-use super::types::*;
-use super::{}Client;
-
-/// Root Query type for {} contract
-pub struct {}Query;
-
-#[Object]
-impl {}Query {{
-    /// Get contract information
-    async fn contract_info(&self, ctx: &Context<'_>) -> GqlResult<ContractInfo> {{
-        let client = ctx.data::<{}Client>()?;
-        Ok(ContractInfo {{
-            address: client.contract_address().to_string(),
-            chain_id: "{}".to_string(),
-            contract_type: "Ethereum".to_string(),
-        }})
-    }}
-
-    /// Get current contract state
-    async fn contract_state(
-        &self,
-        ctx: &Context<'_>,
-        block_number: Option<u64>,
-    ) -> GqlResult<Option<Value>> {{
-        let _client = ctx.data::<{}Client>()?;
-        // TODO: Implement actual state retrieval
-        Ok(Some(serde_json::json!({{
-            "message": "Contract state retrieval not yet implemented",
-            "block_number": block_number
-        }})))
-    }}
-
-    /// Get contract transactions
-    async fn transactions(
-        &self,
-        ctx: &Context<'_>,
-        from_block: Option<u64>,
-        to_block: Option<u64>,
-        limit: Option<u32>,
-        offset: Option<u32>,
-    ) -> GqlResult<Vec<TransactionData>> {{
-        let _client = ctx.data::<{}Client>()?;
-        // TODO: Implement actual transaction retrieval
-        Ok(Vec::new())
-    }}
-
-    /// Get contract events
-    async fn events(
-        &self,
-        ctx: &Context<'_>,
-        from_block: Option<u64>,
-        to_block: Option<u64>,
-        event_name: Option<String>,
-        limit: Option<u32>,
-        offset: Option<u32>,
-    ) -> GqlResult<Vec<EventData>> {{
-        let _client = ctx.data::<{}Client>()?;
-        // TODO: Implement actual event retrieval
-        Ok(Vec::new())
-    }}
-"#,
-            self.config.contract_address,
-            contract_name,
-            self.config.contract_address,
-            contract_name,
-            contract_name,
-            contract_name,
-            self.config.chain_id,
-            contract_name,
-            contract_name,
-            contract_name
-        ));
-
-        // Generate view function resolvers
-        for function in &abi.functions {
-            if function.state_mutability == "view" || function.state_mutability == "pure" {
-                let field_name = function.name.to_lowercase();
-                graphql_code.push_str(&format!(
-                    r#"
-    /// Call {} view function
-    async fn {}(
-        &self,
-        ctx: &Context<'_>,
-"#,
-                    function.name,
-                    field_name
-                ));
-
-                // Add parameters
-                for input in &function.inputs {
-                    let gql_type = self.convert_abi_type_to_graphql(&input.param_type);
-                    graphql_code.push_str(&format!("        {}: {},\n", input.name, gql_type));
-                }
-
-                graphql_code.push_str(&format!(
-                    r#"    ) -> GqlResult<Option<Value>> {{
-        let client = ctx.data::<{}Client>()?;
-        // TODO: Call actual view function
-        // let result = client.call_{}(...).await?;
-        Ok(Some(serde_json::json!({{
-            "function_name": "{}",
-            "message": "Function call not yet implemented"
-        }})))
-    }}
-"#,
-                    contract_name,
-                    field_name,
-                    function.name
-                ));
-            }
-        }
-
-        graphql_code.push_str("}\n\n");
-
-        // Generate schema builder
-        graphql_code.push_str(&format!(
-            r#"/// Ethereum contract GraphQL schema
-pub type {}Schema = Schema<{}Query, async_graphql::EmptyMutation, async_graphql::EmptySubscription>;
-
-/// Build the GraphQL schema
-pub fn build_schema() -> {}Schema {{
-    Schema::build({}Query, async_graphql::EmptyMutation, async_graphql::EmptySubscription)
-        .finish()
-}}
-
-/// Build the GraphQL schema with client context
-pub fn build_schema_with_client(client: {}Client) -> {}Schema {{
-    Schema::build({}Query, async_graphql::EmptyMutation, async_graphql::EmptySubscription)
-        .data(client)
-        .finish()
-}}
-"#,
-            contract_name,
-            contract_name,
-            contract_name,
-            contract_name,
-            contract_name,
-            contract_name,
-            contract_name
-        ));
-
-        Ok(graphql_code)
-    }
-
-    /// Convert Ethereum ABI type to GraphQL type
-    fn convert_abi_type_to_graphql(&self, abi_type: &str) -> String {
-        match abi_type {
-            "address" => "String".to_string(),
-            "bool" => "bool".to_string(),
-            "string" => "String".to_string(),
-            "bytes" => "String".to_string(),
-            t if t.starts_with("uint") || t.starts_with("int") => "String".to_string(), // Use String for big integers
-            t if t.starts_with("bytes") => "String".to_string(),
-            t if t.contains("[") => "Vec<String>".to_string(), // Arrays as strings for simplicity
-            _ => "String".to_string(),
-        }
-    }
 
     /// Generate WebSocket handlers for Ethereum contracts
     fn generate_websocket_handlers(&self, _abi: &EthereumAbi) -> Result<String> {

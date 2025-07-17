@@ -6,9 +6,11 @@ use std::sync::Arc;
 use valence_domain_clients::clients::noble::NobleClient;
 use valence_domain_clients::cosmos::base_client::BaseClient;
 
-use indexer_core::types::{Event, UnifiedEvent};
-use indexer_core::service::{EventService, EventSubscription};
-use indexer_core::types::{ChainId, EventFilter};
+use almanac_infrastructure_core::Result;
+use almanac_infrastructure_core::Error;
+use almanac_infrastructure_core::BlockStatus;
+use almanac_infrastructure_core::types::Event;
+use almanac_infrastructure_core::service::{EventService, EventSubscription};
 
 use std::time::SystemTime;
 use std::any::Any;
@@ -97,14 +99,23 @@ impl CosmosChainConfig {
     }
 }
 
-/// Cosmos client using valence-domain-clients Cosmos integration
+/// Cosmos client wrapper that provides Almanac integration
 pub struct CosmosClientWrapper {
     /// Internal valence Cosmos client (using Noble as example)
     valence_client: Arc<NobleClient>,
     /// Chain configuration
     config: CosmosChainConfig,
     /// Legacy chain_id for compatibility
-    chain_id: ChainId,
+    chain_id: almanac_infrastructure_core::types::ChainId,
+}
+
+impl std::fmt::Debug for CosmosClientWrapper {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CosmosClientWrapper")
+            .field("config", &self.config)
+            .field("chain_id", &self.chain_id)
+            .finish()
+    }
 }
 
 impl CosmosClientWrapper {
@@ -138,13 +149,13 @@ impl CosmosClientWrapper {
         
         Ok(Self {
             valence_client: Arc::new(valence_client),
-            chain_id: ChainId(config.chain_id.clone()),
+            chain_id: almanac_infrastructure_core::types::ChainId(config.chain_id.clone()),
             config,
         })
     }
     
     /// Get the chain ID for this client
-    pub fn chain_id(&self) -> &ChainId {
+    pub fn chain_id(&self) -> &almanac_infrastructure_core::types::ChainId {
         &self.chain_id
     }
     
@@ -161,29 +172,29 @@ impl CosmosClientWrapper {
 
 #[async_trait]
 impl EventService for CosmosClientWrapper {
-    type EventType = UnifiedEvent;
+    type EventType = almanac_infrastructure_core::types::UnifiedEvent;
     
-    fn chain_id(&self) -> &ChainId {
+    fn chain_id(&self) -> &almanac_infrastructure_core::types::ChainId {
         &self.chain_id
     }
     
-    async fn get_events(&self, _filters: Vec<EventFilter>) -> indexer_core::Result<Vec<Box<dyn Event>>> {
-        // TODO: Convert EventFilter to valence domain client filters
+    async fn get_events(&self, _filters: Vec<almanac_infrastructure_core::types::EventFilter>) -> Result<Vec<Box<dyn Event>>> {
+        // TODO: Implement actual Cosmos event querying
         Ok(Vec::new())
     }
     
-    async fn get_latest_block(&self) -> indexer_core::Result<u64> {
+    async fn get_latest_block(&self) -> Result<u64> {
         let header = self.valence_client.latest_block_header().await
-            .map_err(|e| indexer_core::Error::generic(format!("Failed to get latest block: {}", e)))?;
+            .map_err(|e| Error::generic(format!("Failed to get latest block: {}", e)))?;
             
         Ok(header.height as u64)
     }
     
-    async fn get_latest_block_with_status(&self, _chain: &str, _status: indexer_core::BlockStatus) -> indexer_core::Result<u64> {
+    async fn get_latest_block_with_status(&self, _chain: &str, _status: BlockStatus) -> Result<u64> {
         self.get_latest_block().await
     }
     
-    async fn subscribe(&self) -> indexer_core::Result<Box<dyn EventSubscription>> {
+    async fn subscribe(&self) -> Result<Box<dyn EventSubscription>> {
         let subscription = CosmosEventSubscription::new(
             self.valence_client.clone(),
             self.chain_id.clone(),
@@ -196,19 +207,30 @@ impl EventService for CosmosClientWrapper {
 /// Real Cosmos event subscription implementation
 pub struct CosmosEventSubscription {
     valence_client: Arc<NobleClient>,
-    chain_id: ChainId,
+    chain_id: almanac_infrastructure_core::types::ChainId,
     current_height: u64,
     retry_count: u32,
     max_retries: u32,
 }
 
+impl std::fmt::Debug for CosmosEventSubscription {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CosmosEventSubscription")
+            .field("chain_id", &self.chain_id)
+            .field("current_height", &self.current_height)
+            .field("retry_count", &self.retry_count)
+            .field("max_retries", &self.max_retries)
+            .finish()
+    }
+}
+
 impl CosmosEventSubscription {
     pub async fn new(
         valence_client: Arc<NobleClient>,
-        chain_id: ChainId,
-    ) -> indexer_core::Result<Self> {
+        chain_id: almanac_infrastructure_core::types::ChainId,
+    ) -> Result<Self> {
         let current_height = valence_client.latest_block_header().await
-            .map_err(|e| indexer_core::Error::generic(format!("Failed to get latest block: {}", e)))?
+            .map_err(|e| Error::generic(format!("Failed to get latest block: {}", e)))?
             .height as u64;
         
         Ok(Self {
@@ -220,9 +242,9 @@ impl CosmosEventSubscription {
         })
     }
     
-    async fn poll_for_events(&mut self) -> indexer_core::Result<Option<Box<dyn Event>>> {
+    async fn poll_for_events(&mut self) -> Result<Option<Box<dyn Event>>> {
         let latest_header = self.valence_client.latest_block_header().await
-            .map_err(|e| indexer_core::Error::generic(format!("Failed to get latest block: {}", e)))?;
+            .map_err(|e| Error::generic(format!("Failed to get latest block: {}", e)))?;
         
         let latest_height = latest_header.height as u64;
         
@@ -251,25 +273,24 @@ impl EventSubscription for CosmosEventSubscription {
             match self.poll_for_events().await {
                 Ok(Some(event)) => return Some(event),
                 Ok(None) => {
-                    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
-                    continue;
-                },
+                    // No new events, wait a bit
+                    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                }
                 Err(e) => {
                     self.retry_count += 1;
                     if self.retry_count >= self.max_retries {
-                        eprintln!("Failed to poll for events after {} retries: {}", self.max_retries, e);
+                        eprintln!("Max retries reached for Cosmos event subscription: {}", e);
                         return None;
                     }
-                    
-                    let delay = 1000 * (1 << self.retry_count);
-                    tokio::time::sleep(tokio::time::Duration::from_millis(delay)).await;
-                    continue;
+                    // Exponential backoff
+                    let delay = std::time::Duration::from_millis(1000 * 2_u64.pow(self.retry_count));
+                    tokio::time::sleep(delay).await;
                 }
             }
         }
     }
     
-    async fn close(&mut self) -> indexer_core::Result<()> {
+    async fn close(&mut self) -> Result<()> {
         Ok(())
     }
 }
@@ -287,35 +308,37 @@ impl Event for CosmosBlockEvent {
     fn id(&self) -> &str {
         &self.block_hash
     }
-    
+
     fn chain(&self) -> &str {
         &self.chain_id
     }
-    
+
     fn block_number(&self) -> u64 {
         self.block_height
     }
-    
+
     fn block_hash(&self) -> &str {
         &self.block_hash
     }
-    
+
     fn tx_hash(&self) -> &str {
-        &self.block_hash
+        // Block events don't have transaction hashes
+        ""
     }
-    
+
     fn timestamp(&self) -> SystemTime {
         self.timestamp
     }
-    
+
     fn event_type(&self) -> &str {
         "cosmos_block"
     }
-    
+
     fn raw_data(&self) -> &[u8] {
+        // Return empty for now, would contain block data in real implementation
         &[]
     }
-    
+
     fn as_any(&self) -> &dyn Any {
         self
     }

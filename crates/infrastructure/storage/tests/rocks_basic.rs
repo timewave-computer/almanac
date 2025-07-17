@@ -1,7 +1,7 @@
-use indexer_storage::rocks::{RocksStorage, RocksConfig, CompressionType};
-use indexer_storage::Storage;
-use indexer_core::{Result, BlockStatus};
-use indexer_core::types::{Event, EventFilter};
+use almanac_infrastructure_storage::rocks::{RocksStorage, RocksConfig, CompressionType};
+use almanac_infrastructure_storage::Storage;
+use almanac_infrastructure_core::{Result, BlockStatus};
+use almanac_infrastructure_core::types::{Event, EventFilter};
 use std::any::Any;
 use std::time::{SystemTime, UNIX_EPOCH};
 

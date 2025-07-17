@@ -1,10 +1,10 @@
 use async_trait::async_trait;
 use foundationdb::{Database, FdbResult, KeySelector, RangeOption, Transaction};
 use futures::TryStreamExt;
-use indexer_core::distributed_correlation::{
+use almanac_infrastructure_core::distributed_correlation::{
     EventCorrelation, EventCorrelationService, EventReference, CorrelationStats,
 };
-use indexer_core::{Event, Result};
+use almanac_infrastructure_core::{Event, Result};
 use serde_json;
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -101,7 +101,7 @@ impl EventCorrelationService for FdbEventCorrelationService {
                 })
             })
             .await
-            .map_err(|e| indexer_core::Error::Generic(format!("FDB error: {}", e)))?;
+            .map_err(|e| almanac_infrastructure_core::Error::Generic(format!("FDB error: {}", e)))?;
 
         let mut correlations = Vec::new();
         for correlation_id in correlation_ids {
@@ -110,9 +110,9 @@ impl EventCorrelationService for FdbEventCorrelationService {
             let result = self
                 .transact(|trx| Ok(trx.get(&key, false)))
                 .await
-                .map_err(|e| indexer_core::Error::Generic(format!("FDB error: {}", e)))?
+                .map_err(|e| almanac_infrastructure_core::Error::Generic(format!("FDB error: {}", e)))?
                 .await
-                .map_err(|e| indexer_core::Error::Generic(format!("FDB error: {}", e)))?;
+                .map_err(|e| almanac_infrastructure_core::Error::Generic(format!("FDB error: {}", e)))?;
                 
             if let Some(value) = result {
                 if let Ok(correlation) = serde_json::from_slice::<EventCorrelation>(&value) {
@@ -127,7 +127,7 @@ impl EventCorrelationService for FdbEventCorrelationService {
     async fn store_correlation(&self, correlation: EventCorrelation) -> Result<()> {
         let correlation_key = self.correlation_key(&correlation.correlation_id);
         let correlation_value = serde_json::to_vec(&correlation)
-            .map_err(|e| indexer_core::Error::Serialization(e.to_string()))?;
+            .map_err(|e| almanac_infrastructure_core::Error::Serialization(e.to_string()))?;
 
         self.transact(|mut trx| {
             // Store the correlation
@@ -183,7 +183,7 @@ impl EventCorrelationService for FdbEventCorrelationService {
             Ok(())
         })
         .await
-        .map_err(|e| indexer_core::Error::Generic(format!("FDB error: {}", e)))?;
+        .map_err(|e| almanac_infrastructure_core::Error::Generic(format!("FDB error: {}", e)))?;
 
         info!(
             "Stored correlation {} with {} target events",
@@ -200,14 +200,14 @@ impl EventCorrelationService for FdbEventCorrelationService {
         let result = self
             .transact(|trx| Ok(trx.get(&key, false)))
             .await
-            .map_err(|e| indexer_core::Error::Generic(format!("FDB error: {}", e)))?
+            .map_err(|e| almanac_infrastructure_core::Error::Generic(format!("FDB error: {}", e)))?
             .await
-            .map_err(|e| indexer_core::Error::Generic(format!("FDB error: {}", e)))?;
+            .map_err(|e| almanac_infrastructure_core::Error::Generic(format!("FDB error: {}", e)))?;
             
         match result {
             Some(value) => {
                 let correlation = serde_json::from_slice(&value)
-                    .map_err(|e| indexer_core::Error::Serialization(e.to_string()))?;
+                    .map_err(|e| almanac_infrastructure_core::Error::Serialization(e.to_string()))?;
                 Ok(vec![correlation])
             }
             None => Ok(Vec::new()),
@@ -243,7 +243,7 @@ impl EventCorrelationService for FdbEventCorrelationService {
                 Ok(correlations)
             })
             .await
-            .map_err(|e| indexer_core::Error::Generic(format!("FDB error: {}", e)))?;
+            .map_err(|e| almanac_infrastructure_core::Error::Generic(format!("FDB error: {}", e)))?;
 
         let total_correlations = correlations.len() as u64;
         let mut correlations_by_type = HashMap::new();
@@ -286,8 +286,8 @@ impl EventCorrelationService for FdbEventCorrelationService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use indexer_core::distributed_correlation::{CorrelationType, EventCorrelation};
-    use indexer_core::{EventType, UnifiedEvent};
+    use almanac_infrastructure_core::distributed_correlation::{CorrelationType, EventCorrelation};
+    use almanac_infrastructure_core::{EventType, UnifiedEvent};
 
     #[tokio::test]
     async fn test_event_correlation_basic_operations() {

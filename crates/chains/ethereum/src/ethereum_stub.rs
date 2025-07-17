@@ -1,13 +1,11 @@
-//! Stub ethereum implementation when ethereum feature is disabled
+//! Stub implementation for Ethereum chain when ethereum feature is not enabled
 
-use std::sync::Arc;
-use async_trait::async_trait;
 use std::any::Any;
 use std::time::SystemTime;
-use indexer_core::{Result, Error};
-use indexer_core::types::{Event, UnifiedEvent};
-use indexer_core::service::{EventService, EventSubscription};
-use indexer_core::types::{ChainId, EventFilter};
+use almanac_infrastructure_core::Result;
+use almanac_infrastructure_core::Error;
+use almanac_infrastructure_core::types::{Event, ChainId};
+// use almanac_infrastructure_core::service::EventService; // Not needed for stub
 
 /// Stub EVM chain configuration (no valence-domain-clients dependency)
 #[derive(Debug, Clone)]
@@ -71,12 +69,12 @@ impl EvmChainConfig {
 }
 
 /// Stub Ethereum client that returns an error when ethereum feature is disabled
-pub struct EthereumClient {
+pub struct EthereumStubService {
     chain_id: ChainId,
     config: EvmChainConfig,
 }
 
-impl EthereumClient {
+impl EthereumStubService {
     /// Create a new stub Ethereum client - returns error about missing feature
     pub async fn new(_chain_id: String, rpc_url: String) -> Result<Self> {
         Err(Error::generic(format!(
@@ -93,14 +91,6 @@ impl EthereumClient {
         )))
     }
     
-    /// Create a new stub Ethereum client with private key - returns error about missing feature
-    pub async fn new_with_private_key(_chain_id: String, rpc_url: String, _private_key: [u8; 32]) -> Result<Self> {
-        Err(Error::generic(format!(
-            "Ethereum functionality disabled: enable 'ethereum' feature to use EthereumClient. URL was: {}", 
-            rpc_url
-        )))
-    }
-    
     /// Get the chain ID for this client
     pub fn chain_id(&self) -> &ChainId {
         &self.chain_id
@@ -109,53 +99,6 @@ impl EthereumClient {
     /// Get the chain configuration
     pub fn config(&self) -> &EvmChainConfig {
         &self.config
-    }
-}
-
-#[async_trait]
-impl EventService for EthereumClient {
-    type EventType = UnifiedEvent;
-    
-    fn chain_id(&self) -> &ChainId {
-        &self.chain_id
-    }
-    
-    async fn get_events(&self, _filters: Vec<EventFilter>) -> indexer_core::Result<Vec<Box<dyn Event>>> {
-        Err(Error::generic("Ethereum functionality disabled: enable 'ethereum' feature"))
-    }
-    
-    async fn get_latest_block(&self) -> indexer_core::Result<u64> {
-        Err(Error::generic("Ethereum functionality disabled: enable 'ethereum' feature"))
-    }
-    
-    async fn get_latest_block_with_status(&self, _chain: &str, _status: indexer_core::BlockStatus) -> indexer_core::Result<u64> {
-        Err(Error::generic("Ethereum functionality disabled: enable 'ethereum' feature"))
-    }
-    
-    async fn subscribe(&self) -> indexer_core::Result<Box<dyn EventSubscription>> {
-        Err(Error::generic("Ethereum functionality disabled: enable 'ethereum' feature"))
-    }
-}
-
-/// Stub Ethereum event subscription
-pub struct EthereumEventSubscription {
-    chain_id: ChainId,
-}
-
-impl EthereumEventSubscription {
-    pub async fn new(_chain_id: ChainId) -> indexer_core::Result<Self> {
-        Err(Error::generic("Ethereum functionality disabled: enable 'ethereum' feature"))
-    }
-}
-
-#[async_trait]
-impl EventSubscription for EthereumEventSubscription {
-    async fn next(&mut self) -> Option<Box<dyn Event>> {
-        None // No events available when feature is disabled
-    }
-    
-    async fn close(&mut self) -> indexer_core::Result<()> {
-        Ok(())
     }
 }
 

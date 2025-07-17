@@ -9,8 +9,12 @@ description = "API interface for the indexer"
 
 [dependencies]
 # Internal crates
-indexer-core = { path = "../../infrastructure/core" }
-indexer-storage = { path = "../../infrastructure/storage", features = ["postgres"] }
+almanac-infrastructure-core = { path = "../../infrastructure/core", features = ["axum"] }
+almanac-infrastructure-storage = { path = "../../infrastructure/storage", features = ["postgres"] }
+almanac-infrastructure-query = { path = "../../infrastructure/query" }
+almanac-infrastructure-monitoring = { path = "../../infrastructure/monitoring" }
+almanac-infrastructure-caching = { path = "../../infrastructure/caching" }
+almanac-infrastructure-coordination = { path = "../../infrastructure/coordination" }
 indexer-ethereum = { path = "../../chains/ethereum" }
 indexer-cosmos = { path = "../../chains/cosmos" }
 indexer-tools = { path = "../../development/tools" }
@@ -22,13 +26,11 @@ tokio-stream = { version = "0.1.14", features = ["sync"] }
 async-trait.workspace = true
 
 # Web frameworks
-axum = { version = "0.6.20", features = ["ws", "headers"] }
-tower = "0.4.13"
-tower-http = { version = "0.4.4", features = ["cors", "trace"] }
+axum = { version = "0.7", features = ["ws"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace"] }
 
-# GraphQL
-async-graphql = { version = "6.0.11", features = ["chrono", "uuid"] }
-async-graphql-axum = "6.0.11"
+# GraphQL - removed in favor of REST-only API
 
 # Serialization
 serde.workspace = true
@@ -36,6 +38,10 @@ serde_json.workspace = true
 
 # Base64 encoding for binary data
 base64.workspace = true
+bytes.workspace = true
+
+# GraphQL dependencies
+
 
 # Date and time
 chrono = { version = "0.4", features = ["serde"] }
@@ -57,14 +63,12 @@ num_cpus = "1.16"
 # CLI
 clap.workspace = true
 
-# Testing
-axum-test-helper = { version = "0.3.0", optional = true }
+# Testing - removed unused dependency
 
 [features]
 default = ["postgres"]
 postgres = []
-rocks = ["indexer-core/rocks"]
-test-utils = ["axum-test-helper"]
+rocks = []
 
 [[bin]]
 name = "almanac"

@@ -1,10 +1,10 @@
 use std::time::Duration;
 use tokio::time::sleep;
-use indexer_core::Result;
+use almanac_infrastructure_core::Result;
 
 // Import the Ethereum adapter when it's available
 // use indexer_adapters::ethereum::EthereumAdapter;
-// use indexer_storage::Storage;
+// use almanac_infrastructure_storage::Storage;
 
 #[tokio::main]
 async fn main() -> Result<()> {

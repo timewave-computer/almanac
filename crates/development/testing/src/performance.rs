@@ -10,12 +10,12 @@ use std::sync::atomic::{AtomicU64, AtomicBool, Ordering};
 use tokio::sync::Semaphore;
 use futures::future::join_all;
 use reqwest::Client;
-use serde_json::json;
+
 
 #[cfg(feature = "performance")]
-use memory_stats::memory_stats;
 
-use crate::{PerformanceTestConfig, fixtures};
+
+use crate::PerformanceTestConfig;
 
 /// Performance test results
 #[derive(Debug, Clone)]
@@ -81,7 +81,7 @@ async fn simulate_user_requests(request_count: usize, delay_ms: u64) -> Result<(
 
 /// Run load test with gradual ramp-up
 pub async fn run_load_test(config: &PerformanceTestConfig) -> Result<PerformanceResults> {
-    let request_delay_ms = 100u64; // Default delay since field is missing
+    let _request_delay_ms = 100u64; // Default delay since field is missing
     
     let load_config = LoadTestConfig {
         concurrent_users: config.concurrent_connections,
@@ -198,13 +198,13 @@ async fn execute_load_test(config: &LoadTestConfig) -> Result<PerformanceResults
 /// Execute ramp up phase
 async fn execute_ramp_up_phase(
     config: &LoadTestConfig,
-    client: &Arc<Client>,
-    semaphore: &Arc<Semaphore>,
-    total_requests: &Arc<AtomicU64>,
-    successful_requests: &Arc<AtomicU64>,
-    failed_requests: &Arc<AtomicU64>,
-    response_times: &Arc<std::sync::Mutex<Vec<f64>>>,
-    errors: &Arc<std::sync::Mutex<Vec<String>>>,
+    _client: &Arc<Client>,
+    _semaphore: &Arc<Semaphore>,
+    _total_requests: &Arc<AtomicU64>,
+    _successful_requests: &Arc<AtomicU64>,
+    _failed_requests: &Arc<AtomicU64>,
+    _response_times: &Arc<std::sync::Mutex<Vec<f64>>>,
+    _errors: &Arc<std::sync::Mutex<Vec<String>>>,
 ) -> Result<()> {
     let ramp_up_steps = 10u32;
     let users_per_step = config.concurrent_users / ramp_up_steps as usize;
@@ -253,7 +253,7 @@ async fn execute_steady_state_phase(
     errors: &Arc<std::sync::Mutex<Vec<String>>>,
     peak_memory: &Arc<std::sync::Mutex<f64>>,
 ) -> Result<()> {
-    let start_time = Instant::now();
+    let _start_time = Instant::now();
     let memory_monitor = start_memory_monitoring(peak_memory.clone());
     
     // Launch all concurrent users
@@ -498,7 +498,7 @@ async fn execute_memory_leak_test(config: &MemoryLeakTestConfig) -> Result<Perfo
     let start_time = Instant::now();
     let initial_memory = get_memory_usage();
     
-    let mut memory_measurements = Vec::new();
+
     let mut operations_count = 0u64;
     
     // Start memory monitoring
@@ -531,10 +531,8 @@ async fn execute_memory_leak_test(config: &MemoryLeakTestConfig) -> Result<Perfo
     stop_monitoring.store(true, Ordering::Relaxed);
     monitor_task.await?;
     
-    memory_measurements = memory_measurements_arc.lock().unwrap().clone();
-    
     let final_memory = get_memory_usage();
-    let peak_memory = memory_measurements.iter()
+    let peak_memory = memory_measurements_arc.lock().unwrap().iter()
         .map(|(_, memory)| *memory)
         .fold(initial_memory, f64::max);
     
@@ -621,7 +619,7 @@ fn calculate_performance_results(
     response_times: Vec<f64>,
     initial_memory: f64,
     peak_memory: f64,
-    final_memory: f64,
+    _final_memory: f64,
     errors: Vec<String>,
 ) -> PerformanceResults {
     let requests_per_second = total_requests as f64 / duration.as_secs_f64();

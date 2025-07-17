@@ -4,8 +4,8 @@
 use std::time::{Duration, Instant};
 use sqlx::{Pool, Postgres, postgres::PgPoolOptions};
 
-use indexer_core::{Result, BlockStatus, Error};
-use indexer_core::types::Event;
+use almanac_infrastructure_core::{Result, BlockStatus, Error};
+use almanac_infrastructure_core::types::Event;
 
 use crate::postgres::{PostgresStorage, PostgresConfig};
 use crate::EventFilter;

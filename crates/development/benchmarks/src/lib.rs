@@ -9,7 +9,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 use chrono::Utc;
 use serde::{Serialize, Deserialize};
-use indexer_core::Error;
+use almanac_infrastructure_core::Error;
 use std::fs::File;
 
 // Benchmark modules

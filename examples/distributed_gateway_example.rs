@@ -85,7 +85,7 @@ async fn main() -> Result<()> {
                 supported_chains: vec!["ethereum".to_string(), "polygon".to_string()],
                 max_throughput: 10000,
                 storage_backends: vec!["postgres".to_string(), "rocksdb".to_string()],
-                api_endpoints: vec!["rest".to_string(), "graphql".to_string(), "websocket".to_string()],
+                api_endpoints: vec!["rest".to_string(), "websocket".to_string()],
             },
             status: NodeStatus::Active,
             last_heartbeat: std::time::SystemTime::now()
@@ -101,7 +101,7 @@ async fn main() -> Result<()> {
                 supported_chains: vec!["ethereum".to_string(), "arbitrum".to_string()],
                 max_throughput: 15000,
                 storage_backends: vec!["postgres".to_string()],
-                api_endpoints: vec!["rest".to_string(), "graphql".to_string()],
+                api_endpoints: vec!["rest".to_string()],
             },
             status: NodeStatus::Active,
             last_heartbeat: std::time::SystemTime::now()

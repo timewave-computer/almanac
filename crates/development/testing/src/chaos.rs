@@ -6,13 +6,10 @@
 
 use anyhow::Result;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
-use tokio::time::{sleep, timeout};
 use tokio::sync::Semaphore;
-use futures::future::join_all;
-use rand::Rng;
-use tracing::{info, warn};
+use tracing::info;
 use memory_stats::memory_stats;
 
 use crate::{ChaosTestConfig, fixtures::{ChaosScenario, create_chaos_scenarios as fixture_create_chaos_scenarios}};
@@ -214,7 +211,7 @@ async fn simulate_network_latency(config: &ChaosTestConfig) -> Result<String> {
           latency_factor, operation_count);
     
     let mut total_latency = Duration::from_secs(0);
-    let start_time = Instant::now();
+    let _start_time = Instant::now();
     
     for _ in 0..operation_count {
         let base_latency = Duration::from_millis(10);
@@ -263,7 +260,7 @@ pub async fn test_database_failures(config: ChaosTestConfig) -> Result<String> {
 }
 
 /// Simulate connection pool exhaustion
-async fn simulate_connection_pool_exhaustion(config: &ChaosTestConfig) -> Result<String> {
+async fn simulate_connection_pool_exhaustion(_config: &ChaosTestConfig) -> Result<String> {
     let max_connections = 20;
     let concurrent_requests = 50;
     
@@ -275,7 +272,7 @@ async fn simulate_connection_pool_exhaustion(config: &ChaosTestConfig) -> Result
     let successful_ops = Arc::new(AtomicU64::new(0));
     let failed_ops = Arc::new(AtomicU64::new(0));
     
-    for i in 0..concurrent_requests {
+    for _i in 0..concurrent_requests {
         let sem = semaphore.clone();
         let success_counter = successful_ops.clone();
         let failure_counter = failed_ops.clone();
@@ -393,7 +390,7 @@ async fn simulate_deadlock_scenarios(config: &ChaosTestConfig) -> Result<String>
     let deadlock_count = Arc::new(AtomicU64::new(0));
     let success_count = Arc::new(AtomicU64::new(0));
     
-    for i in 0..concurrent_transactions {
+    for _i in 0..concurrent_transactions {
         let deadlock_counter = deadlock_count.clone();
         let success_counter = success_count.clone();
         
@@ -430,7 +427,7 @@ async fn simulate_deadlock_scenarios(config: &ChaosTestConfig) -> Result<String>
 }
 
 /// Simulate database unavailability
-async fn simulate_database_unavailability(config: &ChaosTestConfig) -> Result<String> {
+async fn simulate_database_unavailability(_config: &ChaosTestConfig) -> Result<String> {
     let unavailable_duration = Duration::from_secs(30);
     let operation_count = 100;
     
@@ -633,7 +630,7 @@ async fn simulate_fd_exhaustion() -> Result<String> {
     let mut fd_count = 0;
     
     // Open files until we hit a reasonable limit
-    for i in 0..1000 {
+    for _i in 0..1000 {
         let temp_file = tempfile::NamedTempFile::new();
         match temp_file {
             Ok(file) => {
@@ -670,7 +667,7 @@ async fn simulate_thread_pool_exhaustion() -> Result<String> {
     let mut tasks = Vec::new();
     let active_tasks = Arc::new(AtomicU64::new(0));
     
-    for i in 0..max_threads {
+    for _i in 0..max_threads {
         let task_counter = active_tasks.clone();
         
         let task = tokio::spawn(async move {

@@ -8,11 +8,11 @@ use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, Semaphore};
 use tokio::task::JoinSet;
 use governor;
-use indexer_storage::{
+use almanac_infrastructure_storage::{
     postgres::PostgresStorage,
     rocks::RocksStorage,
 };
-use indexer_core::Error;
+use almanac_infrastructure_core::Error;
 use super::{Measurement};
 use rand::{Rng, distributions::Alphanumeric};
 

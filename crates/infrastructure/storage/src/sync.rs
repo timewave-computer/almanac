@@ -3,11 +3,11 @@
 // Purpose: Provides utilities for coordinating storage operations across
 // different storage backends and handling concurrent access patterns.
 
-use indexer_core::{Error, Result, types::Event};
+use almanac_infrastructure_core::{Error, Result, types::Event};
 use crate::Storage;
 
 // Need to re-add the other imports that were removed
-use indexer_core::{BlockStatus, types::ChainId};
+use almanac_infrastructure_core::{BlockStatus, types::ChainId};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn, error};

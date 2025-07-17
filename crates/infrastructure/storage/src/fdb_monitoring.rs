@@ -1,10 +1,10 @@
 use async_trait::async_trait;
 use foundationdb::{Database, FdbResult, KeySelector, RangeOption, Transaction};
 use futures::TryStreamExt;
-use indexer_core::distributed_monitoring::{
+use almanac_infrastructure_core::distributed_monitoring::{
     Alert, ClusterMetrics, DistributedMonitoringService, NodeHealth, NodeMetrics,
 };
-use indexer_core::Result;
+use almanac_infrastructure_core::Result;
 use serde_json;
 use std::time::Duration;
 use tracing::{debug, info};
@@ -65,14 +65,14 @@ impl DistributedMonitoringService for FdbMonitoringService {
     async fn report_metrics(&self, metrics: NodeMetrics) -> Result<()> {
         let key = self.metrics_key(&metrics.node_id, metrics.timestamp);
         let value = serde_json::to_vec(&metrics)
-            .map_err(|e| indexer_core::Error::Serialization(e.to_string()))?;
+            .map_err(|e| almanac_infrastructure_core::Error::Serialization(e.to_string()))?;
 
         self.transact(|mut trx| {
             trx.set(&key, &value);
             Ok(())
         })
         .await
-        .map_err(|e| indexer_core::Error::Generic(format!("FDB error: {}", e)))?;
+        .map_err(|e| almanac_infrastructure_core::Error::Generic(format!("FDB error: {}", e)))?;
 
         debug!(
             "Reported metrics for node {} at timestamp {}",
@@ -112,7 +112,7 @@ impl DistributedMonitoringService for FdbMonitoringService {
                 Ok(results)
             })
             .await
-            .map_err(|e| indexer_core::Error::Generic(format!("FDB error: {}", e)))?;
+            .map_err(|e| almanac_infrastructure_core::Error::Generic(format!("FDB error: {}", e)))?;
 
         let mut metrics = Vec::new();
         for kv in results {
@@ -155,7 +155,7 @@ impl DistributedMonitoringService for FdbMonitoringService {
                 Ok(results)
             })
             .await
-            .map_err(|e| indexer_core::Error::Generic(format!("FDB error: {}", e)))?;
+            .map_err(|e| almanac_infrastructure_core::Error::Generic(format!("FDB error: {}", e)))?;
 
         let mut all_metrics = Vec::new();
         for kv in results {
@@ -209,14 +209,14 @@ impl DistributedMonitoringService for FdbMonitoringService {
     async fn report_health(&self, health: NodeHealth) -> Result<()> {
         let key = self.health_key(&health.node_id);
         let value = serde_json::to_vec(&health)
-            .map_err(|e| indexer_core::Error::Serialization(e.to_string()))?;
+            .map_err(|e| almanac_infrastructure_core::Error::Serialization(e.to_string()))?;
 
         self.transact(|mut trx| {
             trx.set(&key, &value);
             Ok(())
         })
         .await
-        .map_err(|e| indexer_core::Error::Generic(format!("FDB error: {}", e)))?;
+        .map_err(|e| almanac_infrastructure_core::Error::Generic(format!("FDB error: {}", e)))?;
 
         info!(
             "Reported health for node {}: {:?}",
@@ -253,7 +253,7 @@ impl DistributedMonitoringService for FdbMonitoringService {
                 Ok(results)
             })
             .await
-            .map_err(|e| indexer_core::Error::Generic(format!("FDB error: {}", e)))?;
+            .map_err(|e| almanac_infrastructure_core::Error::Generic(format!("FDB error: {}", e)))?;
 
         let mut health_statuses = Vec::new();
         for kv in results {
@@ -268,14 +268,14 @@ impl DistributedMonitoringService for FdbMonitoringService {
     async fn set_alert(&self, alert: Alert) -> Result<()> {
         let key = self.alert_key(&alert.alert_id);
         let value = serde_json::to_vec(&alert)
-            .map_err(|e| indexer_core::Error::Serialization(e.to_string()))?;
+            .map_err(|e| almanac_infrastructure_core::Error::Serialization(e.to_string()))?;
 
         self.transact(|mut trx| {
             trx.set(&key, &value);
             Ok(())
         })
         .await
-        .map_err(|e| indexer_core::Error::Generic(format!("FDB error: {}", e)))?;
+        .map_err(|e| almanac_infrastructure_core::Error::Generic(format!("FDB error: {}", e)))?;
 
         info!(
             "Set alert {}: {:?} - {}",
@@ -312,7 +312,7 @@ impl DistributedMonitoringService for FdbMonitoringService {
                 Ok(results)
             })
             .await
-            .map_err(|e| indexer_core::Error::Generic(format!("FDB error: {}", e)))?;
+            .map_err(|e| almanac_infrastructure_core::Error::Generic(format!("FDB error: {}", e)))?;
 
         let mut alerts = Vec::new();
         for kv in results {
@@ -341,7 +341,7 @@ fn calculate_percentile(values: &mut [f64], percentile: u8) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use indexer_core::distributed_monitoring::{HealthStatus, AlertType, IssueSeverity};
+    use almanac_infrastructure_core::distributed_monitoring::{HealthStatus, AlertType, IssueSeverity};
     use uuid::Uuid;
 
     #[tokio::test]

@@ -3,7 +3,7 @@
 // Purpose: Provides caching, query routing, and pagination mechanisms
 // to improve query performance and user experience
 
-use indexer_core::Error;
+use almanac_infrastructure_core::Error;
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};

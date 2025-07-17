@@ -3,8 +3,8 @@
 // Purpose: Provides aggregation capabilities for data analysis including
 // counting, grouping, and statistical operations.
 
-use indexer_core::Error;
-use indexer_storage::BoxedStorage;
+use almanac_infrastructure_core::Error;
+use almanac_infrastructure_storage::BoxedStorage;
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 use crate::{QueryFilter, Pagination, Sorting, BaseQuery, Queryable, QueryExecutor};

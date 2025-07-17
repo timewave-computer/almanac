@@ -7,10 +7,14 @@ This document provides a complete command-line interface reference for the Alman
 Install the Almanac CLI with full blockchain support:
 
 ```bash
-# Install from source
+# Install from source using Nix (recommended)
 git clone https://github.com/timewave-computer/almanac.git
 cd almanac
-cargo install --path . --features ethereum,cosmos
+nix develop
+cargo build --release
+
+# Or install directly with cargo
+cargo install --path crates/services/api --features ethereum,cosmos
 
 # Or use pre-built binary
 wget https://releases.almanac.com/latest/almanac-linux-x64
@@ -39,6 +43,9 @@ almanac start [OPTIONS]
 **Options:**
 - `--config <FILE>`: Configuration file path (default: `config.toml`)
 - `--env <ENV>`: Environment to run in (development, staging, production, test)
+- `--port <PORT>`: Override API port from configuration
+- `--enable-graphql`: Enable GraphQL API endpoint
+- `--enable-websockets`: Enable WebSocket subscriptions
 
 **Examples:**
 ```bash
@@ -47,6 +54,9 @@ almanac start
 
 # Start with specific environment
 almanac start --env production --config prod_config.toml
+
+# Start with custom port and GraphQL enabled
+almanac start --port 9090 --enable-graphql
 ```
 
 ### Service Control
@@ -58,6 +68,9 @@ almanac stop
 # Check indexer status
 almanac status
 
+# Restart the service
+almanac restart
+
 # Validate configuration
 almanac validate-config --config config.toml
 ```
@@ -66,13 +79,16 @@ almanac validate-config --config config.toml
 
 ```bash
 # Initialize database schema
-almanac init-db --database-url postgresql://localhost/indexer
+almanac db init --database-url postgresql://localhost/indexer
 
 # Run database migrations
 almanac db migrate
 
+# Check migration status
+almanac db status
+
 # Reset database (WARNING: Deletes all data)
-almanac db reset
+almanac db reset --confirm
 ```
 
 ## Contract Code Generation
@@ -174,6 +190,156 @@ almanac cosmos generate-contract cw721_schema.json \
   --features client,storage,api,migrations
 ```
 
+## Chain Management
+
+### Add Blockchain Networks
+
+```bash
+# Add Ethereum network
+almanac chains add ethereum \
+  --rpc-url https://mainnet.infura.io/v3/YOUR_API_KEY \
+  --chain-id 1 \
+  --start-block 18000000
+
+# Add Cosmos network
+almanac chains add cosmos \
+  --grpc-url https://rpc.cosmos.network:443 \
+  --chain-id cosmoshub-4 \
+  --start-block 1000000
+
+# Add Polygon network
+almanac chains add polygon \
+  --rpc-url https://polygon-rpc.com \
+  --chain-id 137
+```
+
+### Monitor Chain Status
+
+```bash
+# List all configured chains
+almanac chains list
+
+# View specific chain status
+almanac chains status ethereum
+almanac chains status cosmos
+
+# View detailed chain information
+almanac chains info ethereum --verbose
+
+# Pause/resume chain indexing
+almanac chains pause ethereum
+almanac chains resume ethereum
+
+# Remove chain configuration
+almanac chains remove ethereum --confirm
+```
+
+## Event Querying
+
+### Query by Address
+
+```bash
+almanac events address <CHAIN> <ADDRESS> [OPTIONS]
+```
+
+**Options:**
+- `--limit <N>`: Maximum number of events (default: 100)
+- `--from-block <N>`: Start block number
+- `--to-block <N>`: End block number
+- `--event-type <TYPE>`: Filter by event type
+- `--output <FORMAT>`: Output format (json, csv, table)
+
+**Examples:**
+```bash
+# Query Ethereum contract events
+almanac events address ethereum 0x1234567890abcdef1234567890abcdef12345678 \
+  --limit 10 --event-type Transfer
+
+# Query Cosmos contract events
+almanac events address cosmos cosmos1abc123... \
+  --from-block 15000000 --limit 50 --output json
+
+# Query with time range
+almanac events address ethereum 0x1234... \
+  --from-block 18000000 --to-block 18100000 \
+  --output csv
+```
+
+### Query by Chain
+
+```bash
+almanac events chain <CHAIN> [OPTIONS]
+```
+
+**Examples:**
+```bash
+# Query Ethereum events in block range
+almanac events chain ethereum \
+  --from-block 18000000 \
+  --to-block 18001000 \
+  --limit 100
+
+# Query recent Cosmos events
+almanac events chain cosmos \
+  --limit 50 \
+  --event-type wasm
+
+# Query with finality filter
+almanac events chain ethereum \
+  --finality finalized \
+  --limit 20
+```
+
+### Custom Event Filters
+
+```bash
+almanac events filter [OPTIONS]
+```
+
+**Options:**
+- `--chain <CHAIN>`: Blockchain network
+- `--type <TYPE>`: Event type filter
+- `--contract <ADDRESS>`: Contract address filter
+- `--from-block <N>`: Start block
+- `--to-block <N>`: End block
+- `--limit <N>`: Maximum results
+- `--finality <LEVEL>`: Finality level (confirmed, safe, justified, finalized)
+
+**Example:**
+```bash
+almanac events filter \
+  --chain ethereum \
+  --type Transfer \
+  --from-block 18000000 \
+  --finality finalized \
+  --limit 20
+```
+
+### Export Events
+
+```bash
+almanac events export [OPTIONS]
+```
+
+**Options:**
+- `--chain <CHAIN>`: Blockchain network
+- `--output <FILE>`: Output file path
+- `--format <FORMAT>`: Export format (json, csv, parquet)
+- `--from-block <N>`: Start block
+- `--to-block <N>`: End block
+- `--compress`: Compress output file
+
+**Example:**
+```bash
+almanac events export \
+  --chain ethereum \
+  --from-block 18000000 \
+  --to-block 18100000 \
+  --output events.json \
+  --format json \
+  --compress
+```
+
 ## Validation Commands
 
 ### Validate ABI Files (Ethereum)
@@ -207,13 +373,70 @@ almanac cosmos validate-schema <SCHEMA_FILE> [OPTIONS]
 almanac cosmos validate-schema cw20_schema.json --strict
 ```
 
-## Utility Commands
+## Configuration Management
 
-### Fetch Contract ABI (Ethereum)
-
-Download contract ABI from blockchain explorers:
+### Configuration Commands
 
 ```bash
+# Initialize configuration
+almanac config init [--interactive] [--template <TEMPLATE>]
+
+# Validate configuration
+almanac config validate --config config.toml
+
+# Show current configuration
+almanac config show [--section <SECTION>]
+
+# Update configuration values
+almanac config update --key api.port --value 9090
+
+# Generate configuration template
+almanac config generate-template --output config.toml
+
+# Merge configuration files
+almanac config merge base.toml override.toml --output merged.toml
+```
+
+## Utility Commands
+
+### Health and Status
+
+```bash
+# Check overall system health
+almanac health
+
+# Check specific component health
+almanac health --component database
+almanac health --component storage
+almanac health --component api
+
+# Get system metrics
+almanac metrics [--format json]
+
+# Get version information
+almanac version --verbose
+```
+
+### Database Operations
+
+```bash
+# Backup database
+almanac db backup --output backup.sql
+
+# Restore database
+almanac db restore --input backup.sql
+
+# Optimize database
+almanac db optimize
+
+# Check database connectivity
+almanac db ping
+```
+
+### Fetch Contract Information
+
+```bash
+# Fetch contract ABI from blockchain explorers
 almanac ethereum fetch-abi <ADDRESS> [OPTIONS]
 ```
 
@@ -231,154 +454,52 @@ almanac ethereum fetch-abi 0xA0b86a33E6dc39C9c6D7C7CcF9C2e5C2c8C0b0 \
   --api-key YOUR_ETHERSCAN_KEY
 ```
 
-### List Templates
-
-View available code generation templates:
+### Template Management
 
 ```bash
-# List Ethereum templates
-almanac ethereum list-templates [--detailed] [--format json]
+# List available templates
+almanac templates list [--type <TYPE>]
 
-# List Cosmos templates  
-almanac cosmos list-templates [--category client] [--format table]
+# Show template details
+almanac templates show <TEMPLATE_NAME>
+
+# Validate template
+almanac templates validate <TEMPLATE_FILE>
 ```
 
-### Initialize Configuration
+## Environment Variables
 
-Create configuration files for projects:
+Override configuration with environment variables:
 
-```bash
-# Initialize Ethereum configuration
-almanac ethereum init-config [--interactive] [--template defi]
+### Database Configuration
+- `DATABASE_URL`: PostgreSQL connection string
+- `ROCKSDB_PATH`: RocksDB data directory
 
-# Initialize Cosmos configuration
-almanac cosmos init-config [--output config.toml] [--template minimal]
-```
+### Network Configuration
+- `ETHEREUM_PROVIDER_URL`: Ethereum node provider URL
+- `ETHEREUM_CHAIN_ID`: Default Ethereum chain ID
+- `COSMOS_GRPC_URL`: Cosmos gRPC endpoint
+- `COSMOS_CHAIN_ID`: Default Cosmos chain ID
 
-## Chain Management
+### API Configuration
+- `API_HOST`: API server host
+- `API_PORT`: API server port
+- `ENABLE_GRAPHQL`: Enable GraphQL endpoint
+- `ENABLE_WEBSOCKETS`: Enable WebSocket subscriptions
 
-### Add Blockchain Networks
+### Explorer Configuration
+- `ETHERSCAN_API_KEY`: Etherscan API key
+- `POLYGONSCAN_API_KEY`: PolygonScan API key
+- `BSCSCAN_API_KEY`: BscScan API key
 
-```bash
-# Add Ethereum network
-almanac chains add ethereum \
-  --rpc-url https://mainnet.infura.io/v3/YOUR_API_KEY \
-  --chain-id 1
+### Development Configuration
+- `RUST_LOG`: Rust logging configuration
+- `ALMANAC_VERBOSE`: Enable verbose logging
+- `ALMANAC_DRY_RUN`: Default to dry-run mode
 
-# Add Cosmos network
-almanac chains add cosmos \
-  --grpc-url https://rpc.cosmos.network:443 \
-  --chain-id cosmoshub-4
-```
+## Global Configuration
 
-### Monitor Chain Status
-
-```bash
-# List all configured chains
-almanac chains list
-
-# View specific chain status
-almanac chains status ethereum
-almanac chains status cosmos
-
-# Pause/resume chain indexing
-almanac chains pause ethereum
-almanac chains resume ethereum
-```
-
-## Event Querying
-
-### Query by Address
-
-```bash
-almanac events address <CHAIN> <ADDRESS> [OPTIONS]
-```
-
-**Options:**
-- `--limit <N>`: Maximum number of events (default: 100)
-- `--from-block <N>`: Start block number
-- `--to-block <N>`: End block number
-- `--event-type <TYPE>`: Filter by event type
-
-**Examples:**
-```bash
-# Query Ethereum contract events
-almanac events address ethereum 0x1234567890abcdef1234567890abcdef12345678 \
-  --limit 10 --event-type Transfer
-
-# Query Cosmos contract events
-almanac events address cosmos cosmos1abc123... \
-  --from-block 15000000 --limit 50
-```
-
-### Query by Chain
-
-```bash
-almanac events chain <CHAIN> [OPTIONS]
-```
-
-**Examples:**
-```bash
-# Query Ethereum events in block range
-almanac events chain ethereum \
-  --from-block 18000000 \
-  --to-block 18001000 \
-  --limit 100
-
-# Query recent Cosmos events
-almanac events chain cosmos \
-  --limit 50 \
-  --event-type wasm
-```
-
-### Custom Event Filters
-
-```bash
-almanac events filter [OPTIONS]
-```
-
-**Options:**
-- `--chain <CHAIN>`: Blockchain network
-- `--type <TYPE>`: Event type filter
-- `--contract <ADDRESS>`: Contract address filter
-- `--from-block <N>`: Start block
-- `--to-block <N>`: End block
-- `--limit <N>`: Maximum results
-
-**Example:**
-```bash
-almanac events filter \
-  --chain ethereum \
-  --type Transfer \
-  --from-block 18000000 \
-  --limit 20
-```
-
-### Export Events
-
-```bash
-almanac events export [OPTIONS]
-```
-
-**Options:**
-- `--chain <CHAIN>`: Blockchain network
-- `--output <FILE>`: Output file path
-- `--format <FORMAT>`: Export format (json, csv)
-- `--from-block <N>`: Start block
-- `--to-block <N>`: End block
-
-**Example:**
-```bash
-almanac events export \
-  --chain ethereum \
-  --from-block 18000000 \
-  --output events.json \
-  --format json
-```
-
-## Configuration
-
-### Global Configuration
+### Global Configuration File
 
 Create configuration at `~/.config/almanac/config.toml`:
 
@@ -397,6 +518,8 @@ chain_id = "cosmoshub-4"
 [api]
 host = "0.0.0.0"
 port = 8080
+enable_graphql = true
+enable_websockets = true
 
 [logging]
 level = "info"
@@ -421,50 +544,19 @@ abi_path = "./abis/usdc.json"
 features = ["client", "storage", "api"]
 ```
 
-## Environment Variables
-
-Override configuration with environment variables:
-
-### Database Configuration
-- `DATABASE_URL`: PostgreSQL connection string
-- `ROCKSDB_PATH`: RocksDB data directory
-
-### Network Configuration
-- `ETHEREUM_PROVIDER_URL`: Ethereum node provider URL
-- `ETHEREUM_CHAIN_ID`: Default Ethereum chain ID
-- `COSMOS_GRPC_URL`: Cosmos gRPC endpoint
-- `COSMOS_CHAIN_ID`: Default Cosmos chain ID
-
-### API Configuration
-- `API_HOST`: API server host
-- `API_PORT`: API server port
-
-### Explorer Configuration
-- `ETHERSCAN_API_KEY`: Etherscan API key
-- `POLYGONSCAN_API_KEY`: PolygonScan API key
-
-### Development Configuration
-- `RUST_LOG`: Rust logging configuration
-- `ALMANAC_VERBOSE`: Enable verbose logging
-- `ALMANAC_DRY_RUN`: Default to dry-run mode
-
 ## Advanced Usage
 
-### Batch Contract Generation
-
-Process multiple contracts using configuration files:
+### Batch Operations
 
 ```bash
-# Generate all contracts from config file
-almanac generate-contracts --config multi_contract_config.toml
+# Batch contract generation
+almanac generate-contracts --config contracts.toml
 
-# Or use shell script
-for contract in usdc weth dai; do
-  almanac ethereum generate-contract "./abis/${contract}.json" \
-    --address "$(cat ./addresses/${contract}.txt)" \
-    --chain 1 \
-    --output-dir "./generated/${contract}"
-done
+# Batch event export
+almanac events export-batch --config export.toml
+
+# Batch chain operations
+almanac chains update-batch --config chains.toml
 ```
 
 ### Integration with Build Systems
@@ -550,16 +642,6 @@ almanac ethereum validate-abi contract.json --strict
 # - Verify contract address format
 ```
 
-### Known Issues
-
-⚠️ **CURRENT LIMITATIONS** ⚠️
-
-- **Configuration Validation**: Some configuration validation may be incomplete
-- **Error Messages**: Error messages may not always be user-friendly
-- **Auto-completion**: CLI auto-completion may not work for all shells
-- **Service Management**: Service restart functionality may be limited
-- **Database Commands**: Some database management commands may require manual intervention
-
 ### Debug Mode
 
 Enable debug logging for detailed information:
@@ -581,6 +663,8 @@ almanac ethereum generate-contract contract.json \
 - `4`: File system error (permissions, disk space)
 - `5`: Network error
 - `6`: Template or generation error
+- `7`: Database error
+- `8`: Chain connection error
 
 ## Getting Help
 

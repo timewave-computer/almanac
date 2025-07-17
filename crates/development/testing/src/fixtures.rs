@@ -9,7 +9,7 @@ use std::time::{Duration, SystemTime};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use indexer_core::types::Event;
+use almanac_infrastructure_core::types::Event;
 
 /// Mock event implementation for testing
 #[derive(Debug, Clone, Serialize, Deserialize)]

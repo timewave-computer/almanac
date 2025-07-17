@@ -14,7 +14,7 @@ mod tests;
 pub use parser::AbiParser;
 pub use generator::EthereumContractCodegen;
 
-use indexer_core::Result;
+use almanac_infrastructure_core::Result;
 
 /// Configuration for ethereum contract code generation
 #[derive(Debug, Clone)]

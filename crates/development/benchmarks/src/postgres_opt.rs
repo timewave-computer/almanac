@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 use sqlx::{Pool, Postgres, postgres::PgPoolOptions};
 use super::{Measurement};
-use indexer_core::Error;
+use almanac_infrastructure_core::Error;
 
 /// Index type for PostgreSQL
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

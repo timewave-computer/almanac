@@ -83,7 +83,7 @@ async fn sample_implementation() -> Result<(), Box<dyn std::error::Error>> {
     let api_config = ApiConfig {
         host: "127.0.0.1".to_string(),
         port: 8080,
-        enable_graphql: true,
+
         enable_http: true,
     };
     

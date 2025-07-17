@@ -8,7 +8,7 @@ use std::io::Write;
 use std::path::Path;
 use chrono::{DateTime, Utc};
 use serde::{Serialize, Deserialize};
-use indexer_core::Error;
+use almanac_infrastructure_core::Error;
 use super::BenchmarkReport;
 
 /// A comparison between benchmark runs

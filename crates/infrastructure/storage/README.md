@@ -1,9 +1,23 @@
-# Storage Crate
+# Almanac Storage Infrastructure
 
-This crate provides storage implementations for the indexer, including:
+This crate provides flexible storage backends for the Almanac indexer with support for PostgreSQL, RocksDB, and hybrid configurations.
 
-- **RocksDB** for high-performance key-value storage
-- **PostgreSQL** for rich querying capabilities and analysis
+## Overview
+
+The storage infrastructure now supports multiple backend configurations:
+
+- **PostgreSQL Only** (default): Best for complex queries and moderate workloads
+- **RocksDB Only** (optional): Best for high-throughput write workloads  
+- **Hybrid Mode** (optional): Combines RocksDB for hot data with PostgreSQL for cold data
+- **Memory** (default): In-memory storage for testing
+
+### Key Features
+
+- **Flexible Backend Selection**: Choose the right storage for your workload
+- **Optional RocksDB**: RocksDB is now optional, simplifying deployment
+- **Hybrid Storage**: Combine backends for optimal performance
+- **Automatic Backend Selection**: Let the system recommend based on workload characteristics
+- **Configuration from JSON/Environment**: Easy deployment configuration
 
 ## PostgreSQL Storage
 
@@ -107,4 +121,129 @@ cargo test -p indexer-storage
 cargo test -p indexer-storage -- --ignored test_postgres_storage_full
 ```
 
-Note: PostgreSQL tests require a running PostgreSQL server. The tests will use the `DATABASE_URL` environment variable if set, or fall back to default test connections. 
+Note: PostgreSQL tests require a running PostgreSQL server. The tests will use the `DATABASE_URL` environment variable if set, or fall back to default test connections.
+
+## Quick Start Guide
+
+### Using PostgreSQL Only (Default)
+
+```rust
+use almanac_infrastructure_storage::{StorageBackend, StorageFactory};
+
+// Simple PostgreSQL configuration
+let storage = StorageFactory::create(
+    StorageBackend::PostgresOnly {
+        config: Default::default(),
+    }
+).await?;
+```
+
+### Enabling RocksDB Support
+
+Add the `rocks` feature to your `Cargo.toml`:
+
+```toml
+[dependencies]
+almanac-infrastructure-storage = { 
+    path = "../storage", 
+    features = ["rocks"] 
+}
+```
+
+Then use RocksDB backend:
+
+```rust
+let storage = StorageFactory::create(
+    StorageBackend::RocksOnly {
+        config: RocksBackendConfig {
+            path: "./data/rocksdb".to_string(),
+            cache_size: 1024 * 1024 * 1024, // 1GB
+            ..Default::default()
+        },
+    }
+).await?;
+```
+
+### Using Hybrid Storage
+
+Enable both backends and configure hybrid mode:
+
+```rust
+let storage = StorageFactory::create(
+    StorageBackend::Hybrid {
+        hot: RocksBackendConfig::default(),
+        cold: PostgresBackendConfig::default(),
+        hybrid_config: HybridConfig {
+            hot_blocks: 1000,
+            auto_migrate: true,
+            query_routing: QueryRouting::Smart,
+            ..Default::default()
+        },
+    }
+).await?;
+```
+
+### Automatic Backend Selection
+
+Let the system choose based on your workload:
+
+```rust
+use almanac_infrastructure_storage::{
+    BackendSelector, WorkloadCharacteristics, DataVolume
+};
+
+let workload = WorkloadCharacteristics {
+    write_heavy: true,
+    complex_queries: false,
+    data_volume: DataVolume::Large,
+    real_time: true,
+    analytics: false,
+};
+
+let recommended = BackendSelector::recommend_backend(&workload);
+let storage = StorageFactory::create(recommended).await?;
+```
+
+## Feature Flags
+
+| Feature | Description | Default |
+|---------|-------------|---------|
+| `postgres` | PostgreSQL backend support | ✓ |
+| `memory` | In-memory backend for testing | ✓ |
+| `rocks` | RocksDB backend support | ✗ |
+| `production` | Production config (PostgreSQL + memory) | ✗ |
+| `performance` | High-performance (includes RocksDB) | ✗ |
+| `full` | All features enabled | ✗ |
+
+## Migration Guide
+
+### From RocksDB-Required to Optional
+
+1. **No action needed** if you only use PostgreSQL
+2. **Add `rocks` feature** if you currently use RocksDB:
+   ```toml
+   almanac-infrastructure-storage = { path = "../storage", features = ["rocks"] }
+   ```
+3. **Update instantiation** to use `StorageFactory`:
+   ```rust
+   // Old way
+   let storage = RocksStorage::new(config)?;
+   
+   // New way
+   let storage = StorageFactory::create(
+       StorageBackend::RocksOnly { config }
+   ).await?;
+   ```
+
+## Performance Comparison
+
+| Backend | Write Speed | Query Complexity | Storage Efficiency | Operational Complexity |
+|---------|-------------|------------------|-------------------|----------------------|
+| PostgreSQL | Medium | High | Medium | Low |
+| RocksDB | High | Low | High | Medium |
+| Hybrid | High | High | High | High |
+
+## Documentation
+
+- [Storage Backend Guide](../../../docs/storage-backend-guide.md) - Detailed configuration guide
+- [Example Usage](../../../examples/storage_backend_selection.rs) - Working examples 

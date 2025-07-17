@@ -1051,62 +1051,66 @@ async fn benchmark_indexing_performance() {
 
 ## Deployment
 
-### Docker Configuration
+### Nix Configuration
 
-```dockerfile
-# Dockerfile
-FROM rust:1.75 as builder
+Add to your `flake.nix`:
 
-WORKDIR /app
-COPY . .
-RUN cargo build --release
+```nix
+{
+  packages.valence-account-indexer = pkgs.rustPlatform.buildRustPackage {
+    pname = "valence-account-indexer";
+    version = "0.1.0";
+    src = ./.;
+    cargoLock.lockFile = ./Cargo.lock;
+  };
 
-FROM debian:bookworm-slim
+  devShells.default = pkgs.mkShell {
+    buildInputs = with pkgs; [
+      postgresql_15
+      cargo
+      rustc
+      rustfmt
+      clippy
+    ];
+    
+    shellHook = ''
+      export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/almanac_valence"
+      echo "Starting PostgreSQL..."
+      pg_ctl -D $PWD/pgdata -l logfile start || pg_ctl -D $PWD/pgdata -l logfile restart
+      echo "PostgreSQL started. Run 'valence-account-indexer' to start the indexer."
+    '';
+  };
 
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    libssl3 \
-    && rm -rf /var/lib/apt/lists/*
+  nixosModules.valence-account-indexer = { config, lib, pkgs, ... }: {
+    options.services.valence-account-indexer = {
+      enable = lib.mkEnableOption "Valence account indexer";
+      databaseUrl = lib.mkOption {
+        type = lib.types.str;
+        description = "PostgreSQL connection string";
+      };
+      cosmosRpcUrl = lib.mkOption {
+        type = lib.types.str;
+        description = "Cosmos RPC endpoint URL";
+      };
+    };
 
-COPY --from=builder /app/target/release/valence-account-indexer /usr/local/bin/
-
-EXPOSE 3000 9090
-
-CMD ["valence-account-indexer"]
-```
-
-```yaml
-# docker-compose.yml
-version: '3.8'
-
-services:
-  postgres:
-    image: postgres:15
-    environment:
-      POSTGRES_DB: almanac_valence
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-  valence-indexer:
-    build: .
-    ports:
-      - "3000:3000"
-      - "9090:9090"
-    environment:
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/almanac_valence
-      COSMOS_RPC_URL: https://cosmos-rpc.quickapi.com:443
-      VALENCE_ACCOUNT_ADDRESS: cosmos1valencebaseaccountexample123456789
-      RUST_LOG: info
-    depends_on:
-      - postgres
-    restart: unless-stopped
-
-volumes:
-  postgres_data:
-```
+    config = lib.mkIf config.services.valence-account-indexer.enable {
+      systemd.services.valence-account-indexer = {
+        description = "Valence Account Indexer";
+        wantedBy = [ "multi-user.target" ];
+        environment = {
+          DATABASE_URL = config.services.valence-account-indexer.databaseUrl;
+          COSMOS_RPC_URL = config.services.valence-account-indexer.cosmosRpcUrl;
+          RUST_LOG = "info";
+        };
+        serviceConfig = {
+          ExecStart = "${pkgs.valence-account-indexer}/bin/valence-account-indexer";
+          Restart = "always";
+          DynamicUser = true;
+        };
+      };
+    };
+  };
+}
 
 This example demonstrates a complete, production-ready Valence Base Account integration using the Cosmos codegen system, including real-time indexing of library management events, ownership tracking, and comprehensive monitoring capabilities. 

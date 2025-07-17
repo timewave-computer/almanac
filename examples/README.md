@@ -14,15 +14,6 @@ This example demonstrates:
 - Processing events from multiple chains
 - Basic querying and data retrieval
 
-### Causality Indexing Examples
-
-The causality crate includes several examples demonstrating advanced features:
-
-- `basic_indexing.rs` - Basic entity indexing and querying
-- `cross_chain.rs` - Cross-chain causality tracking
-- `proof_generation.rs` - SMT proof generation and verification
-- `domain_queries.rs` - Domain-based entity queries
-
 ## Running Examples
 
 All examples can be run directly using cargo:
@@ -30,12 +21,6 @@ All examples can be run directly using cargo:
 ```bash
 # Run the basic indexer example
 cargo run --example basic_indexer
-
-# Run causality examples
-cargo run --package indexer-causality --example basic_indexing
-cargo run --package indexer-causality --example cross_chain
-cargo run --package indexer-causality --example proof_generation
-cargo run --package indexer-causality --example domain_queries
 ```
 
 ## Storage Options

@@ -6,7 +6,7 @@
 use std::time::Duration;
 use std::sync::Arc;
 use serde::{Serialize, Deserialize};
-use indexer_core::Error;
+use almanac_infrastructure_core::Error;
 use super::Measurement;
 
 /// CPU usage information

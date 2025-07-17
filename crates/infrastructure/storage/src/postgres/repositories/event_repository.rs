@@ -4,8 +4,8 @@ use std::any::Any;
 use async_trait::async_trait;
 use sqlx::{Pool, Postgres};
 
-use indexer_core::types::Event;
-use indexer_core::Result;
+use almanac_infrastructure_core::types::Event;
+use almanac_infrastructure_core::Result;
 
 use crate::EventFilter;
 

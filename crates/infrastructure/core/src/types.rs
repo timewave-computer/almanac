@@ -4,9 +4,74 @@ use regex::Regex;
 use std::time::SystemTime;
 use std::any::Any;
 
+/// Type alias for finality level (same as BlockStatus)
+pub type FinalityLevel = crate::BlockStatus;
+
 /// Chain identifier
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct ChainId(pub String);
+
+impl ChainId {
+    /// Create a new ChainId from a string
+    pub fn new<S: Into<String>>(s: S) -> Self {
+        ChainId(s.into())
+    }
+    
+    /// Get the chain ID as a string slice
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// Block number type
+pub type BlockNumber = u64;
+
+/// Event identifier
+pub type EventId = String;
+
+/// Block representation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Block {
+    /// Block number
+    pub number: BlockNumber,
+    
+    /// Block hash
+    pub hash: String,
+    
+    /// Parent block hash
+    pub parent_hash: String,
+    
+    /// Timestamp
+    pub timestamp: SystemTime,
+    
+    /// Chain identifier
+    pub chain_id: ChainId,
+}
+
+/// Transaction representation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Transaction {
+    /// Transaction hash
+    pub hash: String,
+    
+    /// Block number
+    pub block_number: BlockNumber,
+    
+    /// Block hash
+    pub block_hash: String,
+    
+    /// From address
+    pub from: String,
+    
+    /// To address
+    pub to: Option<String>,
+    
+    /// Chain identifier
+    pub chain_id: ChainId,
+    
+    /// Timestamp
+    pub timestamp: SystemTime,
+}
 
 /// Core event trait that all blockchain events must implement
 pub trait Event: Send + Sync + std::fmt::Debug {
@@ -36,6 +101,40 @@ pub trait Event: Send + Sync + std::fmt::Debug {
     
     /// Get the event as Any for downcasting
     fn as_any(&self) -> &dyn Any;
+    
+    /// Convenience methods for API compatibility
+    
+    /// Chain ID (alias for chain)
+    fn chain_id(&self) -> &str {
+        self.chain()
+    }
+    
+    /// Transaction hash (alias for tx_hash)
+    fn transaction_hash(&self) -> &str {
+        self.tx_hash()
+    }
+    
+    /// Block height (alias for block_number)
+    fn block_height(&self) -> u64 {
+        self.block_number()
+    }
+    
+    /// Event data (alias for raw_data)
+    fn data(&self) -> &[u8] {
+        self.raw_data()
+    }
+    
+    /// Contract address - default implementation returns empty string
+    /// Override this in specific event implementations that have contract addresses
+    fn contract_address(&self) -> &str {
+        ""
+    }
+    
+    /// Event attributes - default implementation returns empty map
+    /// Override this in specific event implementations that have structured attributes
+    fn attributes(&self) -> std::collections::HashMap<String, serde_json::Value> {
+        std::collections::HashMap::new()
+    }
 }
 
 /// Event source type
@@ -109,6 +208,26 @@ impl Event for UnifiedEvent {
     
     fn as_any(&self) -> &dyn Any {
         self
+    }
+    
+    /// Override contract_address to return the actual contract address
+    fn contract_address(&self) -> &str {
+        &self.contract_address
+    }
+    
+    /// Override attributes to return the event data as attributes
+    fn attributes(&self) -> std::collections::HashMap<String, serde_json::Value> {
+        let mut attrs = std::collections::HashMap::new();
+        
+        // Add the event_data as a "data" attribute
+        attrs.insert("data".to_string(), self.event_data.clone());
+        
+        // Add other relevant fields as attributes
+        attrs.insert("event_name".to_string(), serde_json::Value::String(self.event_name.clone()));
+        attrs.insert("log_index".to_string(), serde_json::Value::Number(serde_json::Number::from(self.log_index)));
+        attrs.insert("finality_status".to_string(), serde_json::Value::String(self.finality_status.clone()));
+        
+        attrs
     }
 }
 
@@ -794,9 +913,6 @@ pub struct ApiConfig {
     
     /// Port to listen on
     pub port: u16,
-    
-    /// Enable GraphQL API
-    pub enable_graphql: bool,
     
     /// Enable REST API
     pub enable_rest: bool,

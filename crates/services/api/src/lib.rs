@@ -1,14 +1,13 @@
-/// The API crate provides HTTP and GraphQL API endpoints for the indexer service
+/// The API crate provides HTTP API endpoints for the indexer service
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::collections::HashMap;
 
-use indexer_core::{Error as CoreError};
-use indexer_core::service::BoxedEventService;
-use indexer_core::types::ApiConfig;
+use almanac_infrastructure_core::{Error as CoreError};
+use almanac_infrastructure_core::types::ApiConfig;
 use tracing::{info, error};
 use tokio::sync::RwLock;
-use async_graphql::SimpleObject;
+
 use axum::response::{Response, IntoResponse};
 use axum::http::StatusCode;
 
@@ -16,19 +15,20 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-// HTTP and WebSocket modules
-pub mod http;
-pub mod http_enhanced;
-pub mod websocket;
-pub mod graphql;
-pub mod auth;
-pub mod storage_proof_api;
-pub mod distributed_query_api;
-pub mod distributed_gateway;
-pub mod streaming_query_api;
+// Organized modules
 pub mod cli;
-pub mod health;
-pub mod prometheus_exporter;
+pub mod http;
+pub mod api;
+pub mod auth;
+pub mod gateway;
+pub mod monitoring;
+pub mod core;
+
+// Re-export commonly used types from submodules
+pub use http::{HttpState, EventResponse, EventsResponse, PaginationInfo};
+pub use cli::{DebugInterface, DebugCommand, DebugResponse};
+pub use auth::AuthState;
+pub use core::*;
 
 /// API-specific errors
 #[derive(Error, Debug)]
@@ -80,6 +80,11 @@ impl IntoResponse for ApiError {
     }
 }
 
+/// Helper function to create validation errors in the expected format
+pub fn validation_error(message: impl Into<String>) -> almanac_infrastructure_core::Error {
+    almanac_infrastructure_core::Error::InvalidData(message.into())
+}
+
 /// Contract schema registry trait
 #[async_trait]
 pub trait ContractSchemaRegistry: Send + Sync {
@@ -100,7 +105,7 @@ pub trait ContractSchemaRegistry: Send + Sync {
 }
 
 /// Contract schema with version information
-#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContractSchemaVersion {
     /// Version string (e.g. "1.0.0")
     pub version: String,
@@ -109,7 +114,7 @@ pub struct ContractSchemaVersion {
 }
 
 /// Contract schema definition
-#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContractSchema {
     /// Chain ID (e.g. "ethereum", "polygon")
     pub chain: String,
@@ -124,7 +129,7 @@ pub struct ContractSchema {
 }
 
 /// Event schema definition
-#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventSchema {
     /// Event name
     pub name: String,
@@ -133,7 +138,7 @@ pub struct EventSchema {
 }
 
 /// Function schema definition
-#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FunctionSchema {
     /// Function name
     pub name: String,
@@ -144,7 +149,7 @@ pub struct FunctionSchema {
 }
 
 /// Field schema definition
-#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FieldSchema {
     /// Field name
     pub name: String,
@@ -238,29 +243,14 @@ impl Default for InMemorySchemaRegistry {
     }
 }
 
-/// Simple authentication state placeholder
-#[derive(Clone)]
-pub struct AuthState {
-    // JWT secret removed as it's not actually used
-}
-
-impl AuthState {
-    pub fn new(_secret: &[u8]) -> Self {
-        Self {
-        }
-    }
-}
+// AuthState is now provided by the auth module
 
 /// API server configuration
 pub struct ApiServerConfig {
     /// HTTP server address
     pub http_addr: SocketAddr,
-    /// GraphQL server address
-    pub graphql_addr: SocketAddr,
     /// WebSocket server address
     pub ws_addr: Option<SocketAddr>,
-    /// Enable GraphQL playground
-    pub enable_playground: bool,
 }
 
 /// API server
@@ -303,15 +293,9 @@ impl ApiServer {
             .parse()
             .map_err(|e| ApiError::Config(format!("Invalid HTTP address: {}", e)))?;
         
-        // Create GraphQL address
-        let graphql_port = port + 1;
-        let graphql_addr = format!("{}:{}", host, graphql_port)
-            .parse()
-            .map_err(|e| ApiError::Config(format!("Invalid GraphQL address: {}", e)))?;
-        
         // Create WebSocket address if enabled
         let ws_addr = if true {  // Simplified - assume WebSocket always enabled
-            let ws_port = port + 2;
+            let ws_port = port + 1;
             let addr = format!("{}:{}", host, ws_port)
                 .parse()
                 .map_err(|e| ApiError::Config(format!("Invalid WebSocket address: {}", e)))?;
@@ -323,9 +307,7 @@ impl ApiServer {
         // Create server config
         let server_config = ApiServerConfig {
             http_addr,
-            graphql_addr,
             ws_addr,
-            enable_playground: true, // Always enable for development
         };
         
         // Create API server
@@ -344,7 +326,7 @@ impl ApiServer {
         // TODO: Implement actual server startup logic
         // For now, just log that we would start servers
         info!("HTTP server would start on: {}", self.config.http_addr);
-        info!("GraphQL server would start on: {}", self.config.graphql_addr);
+
         if let Some(ws_addr) = self.config.ws_addr {
             info!("WebSocket server would start on: {}", ws_addr);
         }
@@ -411,17 +393,13 @@ mod tests {
     #[test]
     fn test_api_server_config() {
         let http_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
-        let graphql_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8081);
         
         let config = ApiServerConfig {
             http_addr,
-            graphql_addr,
             ws_addr: None,
-            enable_playground: true,
         };
         
         assert_eq!(config.http_addr.port(), 8080);
-        assert_eq!(config.graphql_addr.port(), 8081);
-        assert!(config.enable_playground);
+        assert!(config.ws_addr.is_none());
     }
 } 

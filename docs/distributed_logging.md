@@ -119,9 +119,9 @@ let health = inspector.get_health().await;
 
 ```rust
 pub struct CorrelationId {
-    pub request_id: String,      // Unique ID for the request
-    pub origin_node: String,      // Node where request originated
-    pub current_node: String,     // Current processing node
+    pub request_id: String,        // Unique ID for the request
+    pub origin_node: String,       // Node where request originated
+    pub current_node: String,      // Current processing node
     pub parent_id: Option<String>, // Parent correlation for nested requests
     pub created_at: SystemTime,    // When correlation was created
     pub metadata: HashMap<String, String>, // Additional context

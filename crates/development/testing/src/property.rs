@@ -4,17 +4,14 @@
 // to verify system invariants across randomized inputs
 
 use anyhow::Result;
-use async_trait::async_trait;
 use proptest::prelude::*;
 use proptest::test_runner::{Config, TestRunner};
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime};
-use uuid::Uuid;
-use indexer_core::types::{Event, EventFilter, ChainId};
-use tokio::time::sleep;
+use std::time::{Duration, SystemTime};
+use almanac_infrastructure_core::types::{Event, EventFilter};
+
 
 use crate::fixtures::{MockEvent};
 
@@ -250,7 +247,7 @@ async fn test_event_filtering_properties(config: &PropertyTestConfig) -> Result<
     let cases_tested = Arc::new(AtomicU64::new(0));
     let cases_tested_clone = cases_tested.clone();
 
-    let test_result = runner.run(&strategy, |(event_specs, filter_chain, filter_block, filter_type)| {
+    let test_result = runner.run(&strategy, |(event_specs, filter_chain, _filter_block, _filter_type)| {
         cases_tested_clone.fetch_add(1, Ordering::SeqCst);
         
         let mut events = Vec::new();
@@ -457,7 +454,7 @@ async fn test_storage_consistency_properties(config: &PropertyTestConfig) -> Res
     let cases_tested = Arc::new(AtomicU64::new(0));
     let cases_tested_clone = cases_tested.clone();
 
-    let test_result = runner.run(&strategy, |event_specs| {
+    let test_result = runner.run(&strategy, |_event_specs| {
         cases_tested_clone.fetch_add(1, Ordering::SeqCst);
         
         // Test storage consistency properties

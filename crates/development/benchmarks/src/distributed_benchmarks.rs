@@ -1,7 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
-use indexer_core::distributed_query_planner::{DistributedQueryPlanner, QueryPlan};
-use indexer_core::coordination::{NodeInfo, NodeCapability, NodeStatus};
-use indexer_core::types::{ChainId, EventFilter};
+use almanac_infrastructure_core::distributed_query_planner::{DistributedQueryPlanner, QueryPlan};
+use almanac_infrastructure_core::coordination::{NodeInfo, NodeCapability, NodeStatus};
+use almanac_infrastructure_core::types::{ChainId, EventFilter};
 use std::sync::Arc;
 use tokio::runtime::Runtime;
 
@@ -152,7 +152,7 @@ fn benchmark_query_caching(c: &mut Criterion) {
 }
 
 fn benchmark_aggregation_strategies(c: &mut Criterion) {
-    use indexer_core::distributed_query_planner::AggregationStrategy;
+    use almanac_infrastructure_core::distributed_query_planner::AggregationStrategy;
     
     let mut group = c.benchmark_group("aggregation");
     

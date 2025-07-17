@@ -252,13 +252,3 @@ groups:
           description: "P99 response time is {{ $value }}s (threshold: 2s)"
           runbook_url: "https://almanac.docs/runbooks/api-latency"
 
-      - alert: GraphQLQuerySlow
-        expr: histogram_quantile(0.99, rate(almanac_graphql_query_duration_seconds_bucket[5m])) > 5
-        for: 5m
-        labels:
-          severity: warning
-          component: graphql
-        annotations:
-          summary: "GraphQL queries are slow"
-          description: "P99 query time is {{ $value }}s (threshold: 5s)"
-          runbook_url: "https://almanac.docs/runbooks/graphql-latency"

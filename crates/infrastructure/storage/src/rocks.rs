@@ -5,24 +5,24 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::any::Any;
 
 use async_trait::async_trait;
-use indexer_core::{BlockStatus, Error, Result};
-use indexer_core::types::{Event, EventFilter};
+use almanac_infrastructure_core::{BlockStatus, Error, Result};
+use almanac_infrastructure_core::types::{Event, EventFilter};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn, info};
 
 use crate::{
-    Storage, ValenceAccountExecution, ValenceAccountInfo,
-    ValenceAccountLibrary, ValenceAccountState, ValenceAuthorizationDecision,
-    ValenceAuthorizationGrant, ValenceAuthorizationInfo, ValenceAuthorizationPolicy,
-    ValenceAuthorizationRequest, ValenceLibraryApproval,
-    ValenceLibraryInfo, ValenceLibraryUsage, ValenceLibraryVersion, ValenceLibraryState,
-    ValenceMessageStatus, ValenceProcessorConfig, ValenceProcessorInfo,
-    ValenceProcessorMessage, ValenceProcessorState,
-    ValenceLibraryApprovalRequest, ValenceLibraryRemovalRequest, ValenceOwnershipUpdateRequest,
-    ValenceProcessorConfigUpdateRequest, ValenceProcessorMessageStatusRequest,
-    ValenceAuthorizationPolicyUpdateRequest, ValenceAuthorizationGrantRevocationRequest,
+    Storage, ValenceAccountExecution, ValenceAccountInfo, ValenceAccountLibrary, 
+    ValenceAccountState, ValenceAuthorizationGrant, 
+    ValenceLibraryInfo, ValenceLibraryUsage, ValenceLibraryVersion, 
+    ValenceProcessorInfo, ValenceProcessorMessage, ValenceProcessorState,
+    ValenceLibraryApprovalRequest, ValenceLibraryRemovalRequest,
+    ValenceOwnershipUpdateRequest, ValenceProcessorConfigUpdateRequest,
+    ValenceProcessorMessageStatusRequest, ValenceAuthorizationInfo,
+    ValenceAuthorizationPolicy, ValenceAuthorizationPolicyUpdateRequest,
+    ValenceAuthorizationGrantRevocationRequest, ValenceAuthorizationRequest,
     ValenceAuthorizationRequestDecisionRequest, ValenceLibraryVersionUpdateRequest,
-    ValenceLibraryApprovalRevocationRequest,
+    ValenceLibraryApprovalRevocationRequest, ValenceLibraryState,
+    ValenceLibraryApproval,
 };
 
 // Compression types for compatibility
@@ -108,10 +108,13 @@ impl Default for ColumnFamilies {
     }
 }
 
+/// Type alias for RocksDB data storage
+pub type RocksDbData = Arc<RwLock<HashMap<String, HashMap<String, Vec<u8>>>>>;
+
 /// Memory-based storage implementation for testing (simulates RocksDB)
 pub struct RocksStorage {
     /// In-memory key-value store organized by column families
-    data: Arc<RwLock<HashMap<String, HashMap<String, Vec<u8>>>>>,
+    data: RocksDbData,
     
     /// Configuration
     config: RocksConfig,
@@ -240,27 +243,6 @@ impl RocksStorage {
         
         // Sort by block number for consistent ordering
         events.sort_by_key(|e| (e.block_number, e.id.clone()));
-        Ok(events)
-    }
-    
-    /// Get all events for a specific chain using memory scan
-    fn get_chain_events(&self, chain: &str) -> Result<Vec<EventData>> {
-        let data = self.data.read().unwrap();
-        let cf_name = if self.config.use_column_families { &self.column_families.events } else { "default" };
-        
-        let mut events = Vec::new();
-        if let Some(cf) = data.get(cf_name) {
-            let chain_prefix = format!("events:{}:", chain);
-            
-            for (key, value) in cf.iter() {
-                if key.starts_with(&chain_prefix) {
-                    if let Ok(event_data) = serde_json::from_slice::<EventData>(value) {
-                        events.push(event_data);
-                    }
-                }
-            }
-        }
-        
         Ok(events)
     }
     

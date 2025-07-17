@@ -665,6 +665,7 @@ async fn benchmark_multi_chain_indexing(config: &BenchmarkConfig) -> Result<Benc
 // Helper types and functions
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 enum QueryType {
     ByChain(String),
     ByBlockRange(u64, u64),
@@ -689,7 +690,7 @@ struct LatencyStatistics {
 }
 
 /// Simulate storage insertion operation
-async fn simulate_storage_insertion(event: &dyn indexer_core::types::Event) -> OperationResult {
+async fn simulate_storage_insertion(event: &dyn almanac_infrastructure_core::types::Event) -> OperationResult {
     // Simulate storage latency
     tokio::time::sleep(Duration::from_millis(2)).await;
     
@@ -711,7 +712,7 @@ async fn simulate_storage_query(_query_type: &QueryType) -> OperationResult {
 }
 
 /// Simulate batch storage operation
-async fn simulate_batch_storage_operation(events: &[Box<dyn indexer_core::types::Event>]) -> OperationResult {
+async fn simulate_batch_storage_operation(events: &[Box<dyn almanac_infrastructure_core::types::Event>]) -> OperationResult {
     // Simulate batch processing latency
     let batch_latency = Duration::from_millis(events.len() as u64 / 10);
     tokio::time::sleep(batch_latency).await;
@@ -757,8 +758,8 @@ async fn simulate_websocket_message(_message_type: &str) -> OperationResult {
 
 /// Simulate cross-chain correlation
 async fn simulate_cross_chain_correlation(
-    _eth_event: &dyn indexer_core::types::Event,
-    _cosmos_event: &dyn indexer_core::types::Event,
+    _eth_event: &dyn almanac_infrastructure_core::types::Event,
+    _cosmos_event: &dyn almanac_infrastructure_core::types::Event,
 ) -> OperationResult {
     // Simulate correlation processing latency
     tokio::time::sleep(Duration::from_millis(10)).await;

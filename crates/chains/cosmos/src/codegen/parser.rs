@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
-use indexer_core::Result;
+use almanac_infrastructure_core::Result;
 
 /// Parsed CosmWasm contract schema
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -364,7 +364,7 @@ impl CosmWasmMsgParser {
     fn parse_event_schema(&self, value: &Value) -> Result<EventSchema> {
         let name = value.get("name")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| indexer_core::Error::Config("Event must have a name".to_string()))?
+            .ok_or_else(|| almanac_infrastructure_core::Error::Config("Event must have a name".to_string()))?
             .to_string();
 
         let description = value.get("description")

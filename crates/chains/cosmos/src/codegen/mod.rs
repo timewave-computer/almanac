@@ -14,7 +14,7 @@ mod tests;
 pub use parser::CosmWasmMsgParser;
 pub use generator::CosmosContractCodegen;
 
-use indexer_core::Result;
+use almanac_infrastructure_core::Result;
 
 /// Configuration for cosmos contract code generation
 #[derive(Debug, Clone)]

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Purpose: Make all simulation scripts executable
+# Purpose: Make all scripts in the scripts directory executable
 
 set -e
 
@@ -10,55 +10,39 @@ RED='\033[0;31m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}=== Making Simulation Scripts Executable ===${NC}"
+echo -e "${BLUE}=== Making Scripts Executable ===${NC}"
 
-# Check if we're in the root directory of the project
-if [ ! -d "simulation" ]; then
-    echo -e "${RED}Error: Must run from the root directory of the project${NC}"
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Check if we're in the scripts directory
+if [ ! -d "$SCRIPT_DIR" ]; then
+    echo -e "${RED}Error: Cannot find scripts directory${NC}"
     exit 1
 fi
 
-# Database scripts
-echo -e "${BLUE}Making database scripts executable...${NC}"
-chmod +x simulation/databases/setup-postgres.sh
-chmod +x simulation/databases/create-postgres-tables.sh
-chmod +x simulation/databases/setup-rocksdb.sh
-chmod +x simulation/databases/reset-databases.sh
-chmod +x simulation/databases/populate-rocksdb.sh
-echo -e "${GREEN}✓ Database scripts made executable${NC}"
+cd "$SCRIPT_DIR"
 
-# Ethereum scripts
-echo -e "${BLUE}Making Ethereum scripts executable...${NC}"
-chmod +x simulation/ethereum/setup-anvil.sh
-chmod +x simulation/ethereum/setup-reth.sh
-chmod +x simulation/ethereum/deploy-valence-contracts-anvil.sh
-chmod +x simulation/ethereum/deploy-valence-contracts-reth.sh
-echo -e "${GREEN}✓ Ethereum scripts made executable${NC}"
+# Make all .sh files executable
+echo -e "${BLUE}Finding all shell scripts...${NC}"
+count=0
 
-# Cosmos scripts
-echo -e "${BLUE}Making Cosmos scripts executable...${NC}"
-chmod +x simulation/cosmos/setup-wasmd.sh
-chmod +x simulation/cosmos/deploy-valence-contracts-wasmd.sh
-echo -e "${GREEN}✓ Cosmos scripts made executable${NC}"
+find . -name "*.sh" -type f | while read -r script; do
+    if [ ! -x "$script" ]; then
+        chmod +x "$script"
+        echo -e "${GREEN}✓${NC} Made executable: $script"
+        ((count++))
+    fi
+done
 
-# Almanac scripts
-echo -e "${BLUE}Making Almanac scripts executable...${NC}"
-chmod +x simulation/almanac/index-ethereum-anvil.sh
-chmod +x simulation/almanac/index-ethereum-reth.sh
-chmod +x simulation/almanac/index-cosmwasm.sh
-echo -e "${GREEN}✓ Almanac scripts made executable${NC}"
+# Also check for scripts without .sh extension
+for script in $(find . -type f -exec grep -l '^#!/' {} \; 2>/dev/null | grep -v ".sh$"); do
+    if [ ! -x "$script" ]; then
+        chmod +x "$script"
+        echo -e "${GREEN}✓${NC} Made executable: $script"
+        ((count++))
+    fi
+done
 
-# Test scripts
-echo -e "${BLUE}Making test scripts executable...${NC}"
-chmod +x simulation/tests/run-e2e-test.sh
-echo -e "${GREEN}✓ Test scripts made executable${NC}"
-
-# Main scripts
-echo -e "${BLUE}Making main scripts executable...${NC}"
-chmod +x simulation/start-all.sh
-chmod +x simulation/stop-all.sh
-chmod +x simulation/make-scripts-executable.sh
-echo -e "${GREEN}✓ Main scripts made executable${NC}"
-
-echo -e "${GREEN}✓ All simulation scripts are now executable${NC}"
-echo -e "${BLUE}You can now run any script using ./simulation/script-name.sh${NC}" 
+echo -e "${GREEN}✓ All scripts are now executable${NC}"
+echo -e "${BLUE}You can run scripts from the project root using ./scripts/script-name.sh${NC}"

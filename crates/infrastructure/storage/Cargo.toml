@@ -1,5 +1,5 @@
 [package]
-name = "indexer-storage"
+name = "almanac-infrastructure-storage"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -43,8 +43,8 @@ hex.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 anyhow.workspace = true
-# Remove the problematic rocksdb crate dependency and add FFI dependencies
-# rocksdb = { workspace = true, optional = true }
+# RocksDB dependency
+rocksdb = { workspace = true, optional = true }
 libc = { version = "0.2", optional = true }
 bincode.workspace = true
 tokio.workspace = true
@@ -54,13 +54,14 @@ bytes.workspace = true
 base64.workspace = true
 
 # Internal crates
-indexer-core = { path = "../core" }
+almanac-infrastructure-core = { path = "../core", features = [] }
 
 # Explicit versioned dependencies (Only those NOT in workspace)
 rand = "0.8.5"
 tempfile = "3.9.0"
 redis = { version = "0.24", features = ["tokio-comp"], optional = true }
 valence-domain-clients = { git = "https://github.com/timewave-computer/valence-domain-clients", branch = "main", optional = true }
+md5 = "0.7.0"
 # foundationdb = { version = "0.8", optional = true }  # Disabled due to missing system dependencies
 
 [dev-dependencies]
@@ -73,25 +74,30 @@ testcontainers = "0.22.0"
 dockertest = "0.5.0"
 
 [features]
-# Include dependencies used in the storage crate
-default = ["memory", "advanced"]
+# Default features - PostgreSQL only for simplicity
+default = ["postgres", "memory"]
 
 # Chain support features
-cosmos = ["indexer-core/cosmos", "dep:valence-domain-clients"]
-ethereum = ["indexer-core/ethereum", "dep:valence-domain-clients"]
+cosmos = ["dep:valence-domain-clients"]
+ethereum = ["dep:valence-domain-clients"]
 
 # Storage backends
 memory = []
-postgres = ["indexer-core/postgres", "sqlx"]
-rocks = ["indexer-core/rocks", "dep:libc"]
-# fdb = ["dep:foundationdb", "indexer-core/fdb"]  # Disabled due to missing system dependencies
+postgres = ["dep:sqlx", "almanac-infrastructure-core/postgres"]
+rocks = ["dep:libc"]  # Optional - enable for high-performance scenarios
+# fdb = ["dep:foundationdb"]  # Disabled due to missing system dependencies
 
-# Full feature set
+# Full feature set (includes optional RocksDB)
 full = ["memory", "postgres", "rocks", "advanced", "cosmos", "ethereum"]
 
+# Production configuration (PostgreSQL + memory, no RocksDB by default)
+production = ["postgres", "memory", "advanced"]
+
+# High-performance configuration (includes RocksDB)
+performance = ["postgres", "rocks", "memory", "advanced"]
+
 # Additional features
-advanced = ["dep:redis", "compression"]
-compression = ["indexer-core/compression"]
+advanced = ["dep:redis"]
 
 # Development features  
 dev-fixtures = []

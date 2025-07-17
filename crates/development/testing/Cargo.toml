@@ -9,8 +9,8 @@ description = "Comprehensive testing framework for the indexer"
 
 [dependencies]
 # Internal crates
-indexer-core = { path = "../../infrastructure/core" }
-indexer-storage = { path = "../../infrastructure/storage" }
+almanac-infrastructure-core = { path = "../../infrastructure/core" }
+almanac-infrastructure-storage = { path = "../../infrastructure/storage" }
 
 # FoundationDB for distributed testing
 # foundationdb = { version = "0.8", optional = true }  # Disabled due to missing system dependencies

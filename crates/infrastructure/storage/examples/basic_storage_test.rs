@@ -1,9 +1,9 @@
 // Purpose: Basic example to test PostgreSQL storage functionality
 
-use indexer_storage::postgres::{PostgresConfig, PostgresStorage};
-use indexer_storage::Storage;
-use indexer_core::{BlockStatus, Result};
-use indexer_core::types::Event;
+use almanac_infrastructure_storage::postgres::{PostgresConfig, PostgresStorage};
+use almanac_infrastructure_storage::Storage;
+use almanac_infrastructure_core::{BlockStatus, Result};
+use almanac_infrastructure_core::types::Event;
 use std::any::Any;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -100,7 +100,7 @@ async fn main() -> Result<()> {
     
     // Get events
     println!("Getting events...");
-    let filter = indexer_core::types::EventFilter {
+    let filter = almanac_infrastructure_core::types::EventFilter {
         chain: Some("ethereum".to_string()),
         block_range: Some((12300, 12400)),
         ..Default::default()

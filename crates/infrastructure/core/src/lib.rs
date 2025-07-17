@@ -1,13 +1,14 @@
-/// Indexer core types and utilities
+/// Core types, traits, and utilities for Almanac infrastructure
 ///
-/// This crate contains the core types, traits, and utilities for the Almanac indexer,
-/// including error handling, result types, and service abstractions.
+/// This crate contains only the essential types that other infrastructure
+/// crates depend on. All specialized functionality has been moved to
+/// dedicated submodules.
 use thiserror::Error;
 
-/// Result type for indexer operations
+/// Result type for infrastructure operations
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Error type for indexer operations
+/// Core error type for infrastructure operations
 #[derive(Error, Debug, Clone)]
 pub enum Error {
     /// Generic error with message
@@ -109,91 +110,127 @@ impl Error {
         Error::InvalidData(msg.into())
     }
     
-    /// Create a new chain error
-    pub fn chain<S1: Into<String>, S2: Into<String>>(chain: S1, message: S2) -> Self {
-        Error::Chain {
-            chain: chain.into(),
-            message: message.into(),
-        }
+    /// Create a new IO error
+    pub fn io<S: Into<String>>(msg: S) -> Self {
+        Error::IO(msg.into())
     }
     
-    /// Create a new connection error
-    pub fn connection<S: Into<String>>(msg: S) -> Self {
-        Error::Connection(msg.into())
+    /// Create a new serialization error
+    pub fn serialization<S: Into<String>>(msg: S) -> Self {
+        Error::Serialization(msg.into())
     }
     
-    /// Create a new authentication error
-    pub fn authentication<S: Into<String>>(msg: S) -> Self {
-        Error::Authentication(msg.into())
-    }
-    
-    /// Create a new authorization error
-    pub fn authorization<S: Into<String>>(msg: S) -> Self {
-        Error::Authorization(msg.into())
+    /// Create a new deserialization error
+    pub fn deserialization<S: Into<String>>(msg: S) -> Self {
+        Error::Deserialization(msg.into())
     }
     
     /// Create a new configuration error
     pub fn config<S: Into<String>>(msg: S) -> Self {
         Error::Config(msg.into())
     }
-    
-    /// Create a new API error
-    pub fn api<S: Into<String>>(msg: S) -> Self {
-        Error::Api(msg.into())
-    }
-    
-    /// Create a new invalid event error
-    pub fn invalid_event<S: Into<String>>(msg: S) -> Self {
-        Error::InvalidEvent(msg.into())
-    }
 }
 
-// Implement error conversions for database errors
+// From trait implementations for automatic error conversion
 #[cfg(feature = "postgres")]
 impl From<sqlx::Error> for Error {
     fn from(err: sqlx::Error) -> Self {
-        Error::Database(format!("Database error: {}", err))
+        Error::Database(err.to_string())
     }
 }
 
 #[cfg(feature = "postgres")]
 impl From<sqlx::migrate::MigrateError> for Error {
     fn from(err: sqlx::migrate::MigrateError) -> Self {
-        Error::Database(format!("Migration error: {}", err))
+        Error::Database(err.to_string())
     }
 }
 
-// Removed rocksdb::Error conversion since we now use custom FFI wrapper with String errors
-
 impl From<std::io::Error> for Error {
     fn from(err: std::io::Error) -> Self {
-        Error::IO(format!("IO error: {}", err))
+        Error::IO(err.to_string())
     }
 }
 
 impl From<serde_json::Error> for Error {
     fn from(err: serde_json::Error) -> Self {
-        Error::Serialization(format!("JSON error: {}", err))
+        Error::Serialization(err.to_string())
     }
 }
 
-/// Block processing status
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+impl From<toml::de::Error> for Error {
+    fn from(err: toml::de::Error) -> Self {
+        Error::Config(err.to_string())
+    }
+}
+
+impl From<toml::ser::Error> for Error {
+    fn from(err: toml::ser::Error) -> Self {
+        Error::Config(err.to_string())
+    }
+}
+
+impl From<notify::Error> for Error {
+    fn from(err: notify::Error) -> Self {
+        Error::IO(err.to_string())
+    }
+}
+
+impl From<regex::Error> for Error {
+    fn from(err: regex::Error) -> Self {
+        Error::Generic(err.to_string())
+    }
+}
+
+#[cfg(feature = "axum")]
+impl axum::response::IntoResponse for Error {
+    fn into_response(self) -> axum::response::Response {
+        use axum::http::StatusCode;
+        
+        let (status, message) = match self {
+            Error::Generic(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
+            Error::Database(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
+            Error::Storage(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
+            Error::MissingService(msg) => (StatusCode::SERVICE_UNAVAILABLE, msg),
+            Error::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
+            Error::InvalidData(msg) => (StatusCode::BAD_REQUEST, msg),
+            Error::IO(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
+            Error::Serialization(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
+            Error::Deserialization(msg) => (StatusCode::BAD_REQUEST, msg),
+            Error::Chain { message, .. } => (StatusCode::BAD_REQUEST, message),
+            Error::Connection(msg) => (StatusCode::SERVICE_UNAVAILABLE, msg),
+            Error::Authentication(msg) => (StatusCode::UNAUTHORIZED, msg),
+            Error::Authorization(msg) => (StatusCode::FORBIDDEN, msg),
+            Error::Config(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
+            Error::Api(msg) => (StatusCode::BAD_REQUEST, msg),
+            Error::InvalidEvent(msg) => (StatusCode::BAD_REQUEST, msg),
+        };
+
+        let json = serde_json::json!({
+            "error": message,
+        });
+
+        (status, axum::Json(json)).into_response()
+    }
+}
+
+/// Block finality status for different chains
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BlockStatus {
-    /// Block is confirmed (included in the chain)
+    /// Block is confirmed but not yet safe
     Confirmed,
-    /// Block is safe (unlikely to be orphaned)
+    /// Block is safe from reorgs (chain-specific criteria)
     Safe,
-    /// Block is justified (voted by validators)
+    /// Block is justified (Ethereum-specific)
     Justified,
-    /// Block is finalized (irreversible)
+    /// Block is finalized and cannot be reverted
     Finalized,
-    /// Block is latest (not yet finalized)
+    /// Latest block (may be unsafe)
     Latest,
 }
 
 impl BlockStatus {
-    /// Convert to string representation
+    /// Get string representation
     pub fn as_str(&self) -> &'static str {
         match self {
             BlockStatus::Confirmed => "confirmed",
@@ -220,114 +257,38 @@ impl std::str::FromStr for BlockStatus {
     }
 }
 
-// Re-export pipeline types and traits
-pub mod pipeline;
-
-pub mod event_ordering;
-pub mod finality_processor;
-pub mod ingestion_queue;
+// Core modules with essential types only
 pub mod types;
-pub mod service;
-
-// Proto module is only available when cosmos or ethereum features are enabled
-#[cfg(any(feature = "cosmos", feature = "ethereum"))]
-pub mod proto;
-
 pub mod config;
 pub mod health;
+pub mod event_bus;
+pub mod di;
+pub mod service;
 pub mod security;
-pub mod text_search;
-pub mod aggregation;
-pub mod correlation;
-pub mod indexing;
-pub mod caching;
-pub mod pool;
-pub mod migrations;
-pub mod cross_chain;
-pub mod validation;
-pub mod sync_tracker;
-pub mod reorg_handler;
-pub mod data_export;
-pub mod backup_restore;
-pub mod archival;
-pub mod compression;
-
-// Storage proof verification - Alternative implementation
-pub mod semantic_validation;
-
-// Distributed coordination
-pub mod coordination;
-
-// Distributed event correlation
-pub mod distributed_correlation;
-
-// Distributed monitoring and observability
-pub mod distributed_monitoring;
-
-// Distributed event processing
-pub mod distributed_event_service;
-
-// Distributed query planning
-pub mod distributed_query_planner;
-
-// Performance optimizations for distributed queries
-// #[cfg(feature = "fdb")]
-// pub mod streaming_query_executor;
-// #[cfg(feature = "fdb")]
-// pub mod optimized_serialization;
-pub mod distributed_cache;
-
-pub mod batch_processor;
-pub mod error_recovery;
-pub mod metrics;
-pub mod observability;
-
-// Distributed logging and debugging
-pub mod logging;
 pub mod cluster_state;
-pub mod debug_commands;
+
+// Re-export commonly used types
+pub use types::{Event, Block, Transaction, ChainId, BlockNumber, EventId, ApiConfig};
+pub use config::Config;
+pub use health::{HealthCheck, HealthStatus};
+pub use service::BoxedEventService;
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_block_status_string_conversion() {
-        assert_eq!(BlockStatus::Confirmed.as_str(), "confirmed");
-        assert_eq!(BlockStatus::Safe.as_str(), "safe");
-        assert_eq!(BlockStatus::Justified.as_str(), "justified");
-        assert_eq!(BlockStatus::Finalized.as_str(), "finalized");
-        assert_eq!(BlockStatus::Latest.as_str(), "latest");
-
-        assert_eq!("confirmed".parse::<BlockStatus>(), Ok(BlockStatus::Confirmed));
-        assert_eq!("safe".parse::<BlockStatus>(), Ok(BlockStatus::Safe));
-        assert_eq!("justified".parse::<BlockStatus>(), Ok(BlockStatus::Justified));
-        assert_eq!("finalized".parse::<BlockStatus>(), Ok(BlockStatus::Finalized));
-        assert_eq!("latest".parse::<BlockStatus>(), Ok(BlockStatus::Latest));
-        assert_eq!("unknown".parse::<BlockStatus>(), Err(()));
+    fn test_error_creation() {
+        let err = Error::generic("test error");
+        assert_eq!(err.to_string(), "Error: test error");
+        
+        let err = Error::database("connection failed");
+        assert_eq!(err.to_string(), "Database error: connection failed");
     }
-
+    
     #[test]
-    fn test_error_creation_methods() {
-        let generic_err = Error::generic("test error");
-        match generic_err {
-            Error::Generic(msg) => assert_eq!(msg, "test error"),
-            _ => panic!("Wrong error type"),
-        }
-
-        let db_err = Error::database("db error");
-        match db_err {
-            Error::Database(msg) => assert_eq!(msg, "db error"),
-            _ => panic!("Wrong error type"),
-        }
-
-        let chain_err = Error::chain("ethereum", "tx failed");
-        match chain_err {
-            Error::Chain { chain, message } => {
-                assert_eq!(chain, "ethereum");
-                assert_eq!(message, "tx failed");
-            },
-            _ => panic!("Wrong error type"),
-        }
+    fn test_block_status() {
+        assert_eq!(BlockStatus::Finalized.as_str(), "finalized");
+        assert_eq!("finalized".parse::<BlockStatus>().unwrap(), BlockStatus::Finalized);
     }
-} 
+}

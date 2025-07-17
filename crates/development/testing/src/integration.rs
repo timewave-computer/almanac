@@ -4,8 +4,7 @@
 // different components of the system including databases, APIs, and blockchains
 
 use async_trait::async_trait;
-use indexer_core::{Error as CoreError, types::Event};
-use indexer_storage::{Storage, BoxedStorage};
+use almanac_infrastructure_core::types::Event;
 use tracing::info;
 use std::time::Duration;
 use anyhow::Result;
@@ -101,7 +100,7 @@ pub async fn test_database_integration(config: &TestDatabaseConfig) -> Result<St
 }
 
 /// Test PostgreSQL integration
-async fn test_postgres_integration(postgres_url: &str) -> Result<String> {
+async fn test_postgres_integration(_postgres_url: &str) -> Result<String> {
     // Use testcontainers for isolated PostgreSQL testing
     // let docker = Cli::default();
     // Testcontainers temporarily disabled
@@ -185,7 +184,7 @@ async fn test_postgres_concurrency(storage: &MockStorage) -> Result<()> {
     let concurrent_tasks = 10;
     let events_per_task = 5;
     
-    let initial_count = storage.get_event_count().await?;
+    let _initial_count = storage.get_event_count().await?;
     
     // Create concurrent tasks that store events
     let mut handles = Vec::new();
@@ -253,7 +252,7 @@ async fn test_rocksdb_integration(rocks_path: &str) -> Result<String> {
 }
 
 /// Test RocksDB key-value operations
-async fn test_rocksdb_key_value_operations(test_dir: &str) -> Result<()> {
+async fn test_rocksdb_key_value_operations(_test_dir: &str) -> Result<()> {
     // This would test basic RocksDB operations
     // For now, we'll simulate the test
     let _test_keys = vec!["key1", "key2", "key3"];
@@ -266,7 +265,7 @@ async fn test_rocksdb_key_value_operations(test_dir: &str) -> Result<()> {
 }
 
 /// Test RocksDB bulk operations
-async fn test_rocksdb_bulk_operations(test_dir: &str) -> Result<()> {
+async fn test_rocksdb_bulk_operations(_test_dir: &str) -> Result<()> {
     // Test bulk insert and retrieval
     let batch_size = 1000;
     
@@ -289,7 +288,7 @@ async fn test_rocksdb_iteration(_test_dir: &str) -> Result<()> {
 }
 
 /// Test cross-database operations
-async fn test_cross_database_operations(config: &TestDatabaseConfig) -> Result<String> {
+async fn test_cross_database_operations(_config: &TestDatabaseConfig) -> Result<String> {
     // Test data consistency between PostgreSQL and RocksDB
     let test_events = fixtures::create_test_events(15);
     
@@ -539,9 +538,9 @@ async fn test_rest_health_endpoint(client: &Client, base_url: &str, config: &Tes
 }
 
 /// Test REST event endpoints
-async fn test_rest_event_endpoints(client: &Client, base_url: &str, config: &TestApiConfig) -> Result<()> {
+async fn test_rest_event_endpoints(_client: &Client, base_url: &str, _config: &TestApiConfig) -> Result<()> {
     // Test event listing
-    let events_url = format!("{}/api/v1/events/chain/ethereum", base_url);
+    let _events_url = format!("{}/api/v1/events/chain/ethereum", base_url);
     
     Mock::given(method("GET"))
         .and(path("/api/v1/events/chain/ethereum"))
@@ -684,7 +683,7 @@ async fn test_ethereum_integration(config: &crate::EthereumTestConfig) -> Result
 }
 
 /// Test Ethereum RPC connection
-async fn test_ethereum_rpc_connection(rpc_url: &str) -> Result<()> {
+async fn test_ethereum_rpc_connection(_rpc_url: &str) -> Result<()> {
     // This would test actual Ethereum RPC calls
     // For now, we'll simulate the connection test
     let _client = Client::new();

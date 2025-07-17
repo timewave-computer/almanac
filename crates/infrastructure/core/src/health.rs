@@ -63,6 +63,9 @@ pub struct HealthCheckResult {
     pub metadata: HashMap<String, serde_json::Value>,
 }
 
+/// Type alias for HealthCheck
+pub type HealthCheck = HealthCheckResult;
+
 /// Health check configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HealthCheckConfig {

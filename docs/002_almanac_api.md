@@ -14,16 +14,16 @@ Almanac provides a unified way to access blockchain events and state across mult
 
 ## API Interfaces
 
-Almanac provides three main ways to access indexed data:
+Almanac provides multiple ways to access indexed data:
 
 ### 1. HTTP REST API
-RESTful endpoints for web applications and simple integrations.
+RESTful endpoints for web applications and simple integrations with standard HTTP methods.
 
-### 2. Rust Crate Integration
-Direct library integration for Rust applications requiring high performance.
+### 2. WebSocket API
+Real-time event streams and live updates for applications requiring immediate notifications.
 
-### 3. Real-time Subscriptions
-WebSocket API for live event streams and real-time updates.
+### 3. Rust Crate Integration
+Direct library integration for Rust applications requiring high performance and type safety.
 
 ## Getting Started
 
@@ -45,10 +45,17 @@ Add Almanac crates to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-indexer-core = { path = "path/to/almanac/crates/core" }
-indexer-storage = { path = "path/to/almanac/crates/storage", features = ["postgres", "rocks"] }
-indexer-ethereum = { path = "path/to/almanac/crates/ethereum" }
-indexer-cosmos = { path = "path/to/almanac/crates/cosmos" }
+# Core infrastructure
+almanac-infrastructure-core = { path = "path/to/almanac/crates/infrastructure/core" }
+almanac-infrastructure-storage = { path = "path/to/almanac/crates/infrastructure/storage", features = ["postgres", "rocks"] }
+
+# Chain-specific clients
+indexer-ethereum = { path = "path/to/almanac/crates/chains/ethereum" }
+indexer-cosmos = { path = "path/to/almanac/crates/chains/cosmos" }
+
+# API components
+almanac-api-core = { path = "path/to/almanac/crates/api-core" }
+almanac-api-http = { path = "path/to/almanac/crates/api-http" }
 ```
 
 ## Storage Interface
@@ -80,7 +87,7 @@ pub trait Storage: Send + Sync {
 ### Creating Storage Connections
 
 ```rust
-use indexer_storage::{create_postgres_storage, create_rocks_storage};
+use almanac_infrastructure_storage::{create_postgres_storage, create_rocks_storage};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -102,14 +109,14 @@ async fn main() -> Result<()> {
 
 ## HTTP REST API
 
-All REST endpoints are prefixed with `/api/v1`. Authentication uses Bearer tokens in the `Authorization` header.
+All REST endpoints are prefixed with `/api/v1`. Authentication uses Bearer tokens in the `Authorization` header or API keys via the `x-api-key` header.
 
 ### Chain Status
 
 Get indexing status for a specific blockchain:
 
 ```
-GET /chains/{chain_id}/status
+GET /api/v1/chains/{chain_id}/status
 ```
 
 Example response:
@@ -127,17 +134,17 @@ Example response:
 
 Query events by address:
 ```
-GET /events/address/{chain_id}/{address}?limit=100&offset=0
+GET /api/v1/events/address/{chain_id}/{address}?limit=100&offset=0
 ```
 
 Query events by chain and block range:
 ```
-GET /events/chain/{chain_id}?from_height=18000000&to_height=18001000
+GET /api/v1/events/chain/{chain_id}?from_height=18000000&to_height=18001000
 ```
 
 Filter events with complex criteria:
 ```
-POST /events/filter
+POST /api/v1/events/filter
 Content-Type: application/json
 
 {
@@ -148,12 +155,27 @@ Content-Type: application/json
 }
 ```
 
+### Block Queries
+
+Get latest block information:
+```
+GET /api/v1/blocks/{chain_id}/latest
+GET /api/v1/blocks/{chain_id}/latest/{status}
+```
+
+Get specific block:
+```
+GET /api/v1/blocks/{chain_id}/{block_number}
+```
+
+
+
 ## WebSocket API
 
 Connect to the WebSocket endpoint for real-time event subscriptions:
 
 ```
-ws://localhost:8000/api/v1/ws
+ws://localhost:8080/api/v1/ws
 ```
 
 ### Subscribe to Events
@@ -196,6 +218,8 @@ Events matching your filter arrive in real-time:
 Almanac tracks multiple finality levels for robust security guarantees:
 
 ```rust
+use almanac_infrastructure_core::BlockStatus;
+
 pub enum BlockStatus {
     Confirmed,  // Included in chain, may be reorganized
     Safe,       // Unlikely to be orphaned  
@@ -224,6 +248,8 @@ let events = storage.get_events_with_status(
 Track account creation, ownership, and library approvals:
 
 ```rust
+use almanac_infrastructure_core::types::ValenceAccountInfo;
+
 let account_info = ValenceAccountInfo {
     id: "ethereum:0x1234...".to_string(),
     chain_id: "ethereum".to_string(),
@@ -240,6 +266,8 @@ storage.store_valence_account_instantiation(account_info, initial_libraries).awa
 Track message lifecycle across blockchain networks:
 
 ```rust
+use almanac_infrastructure_core::types::{ValenceProcessorMessage, ValenceMessageStatus};
+
 let message = ValenceProcessorMessage {
     id: "msg_123".to_string(),
     processor_id: "ethereum:0xprocessor...".to_string(),
@@ -255,10 +283,6 @@ storage.store_valence_processor_message(message).await?;
 storage.update_valence_processor_message_status(
     "msg_123",
     ValenceMessageStatus::Completed,
-    Some(target_block),
-    Some("0xtarget_tx..."),
-    Some(gas_used),
-    None, // error
 ).await?;
 ```
 
@@ -267,6 +291,9 @@ storage.update_valence_processor_message_status(
 Access blockchain-specific functionality:
 
 ```rust
+use indexer_ethereum::EthereumClient;
+use indexer_cosmos::CosmosClientWrapper;
+
 // Ethereum client
 let eth_client = EthereumClient::new(
     "1".to_string(), 
@@ -298,17 +325,27 @@ chain_id = "1"
 rpc_url = "http://localhost:8545"
 start_block = 18000000
 
+[chains.cosmos]
+chain_id = "cosmoshub-4"
+grpc_url = "http://localhost:9090"
+start_block = 1000000
+
 [api]
 host = "0.0.0.0"
 port = 8080
-enable_graphql = true
+
 enable_websockets = true
+
+[logging]
+level = "info"
+format = "json"
 ```
 
 Override with environment variables:
 ```bash
 export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/indexer"
 export ETHEREUM_RPC_URL="http://localhost:8545"
+export COSMOS_GRPC_URL="http://localhost:9090"
 ```
 
 ## Error Handling
@@ -316,7 +353,7 @@ export ETHEREUM_RPC_URL="http://localhost:8545"
 Comprehensive error types for robust applications:
 
 ```rust
-use indexer_core::{Error, Result};
+use almanac_infrastructure_core::{Error, Result};
 
 match storage.get_valence_account_state("invalid_id").await {
     Ok(Some(state)) => println!("Found account: {}", state.account_id),
@@ -361,34 +398,6 @@ almanac db migrate
 
 ## Integration Examples
 
-### Python Integration
-
-```python
-import requests
-import websockets
-import json
-
-# HTTP API usage
-response = requests.get("http://localhost:8000/api/v1/chains/ethereum/status")
-status = response.json()
-print(f"Latest block: {status['latest_height']}")
-
-# WebSocket subscription
-async def subscribe_to_events():
-    uri = "ws://localhost:8000/api/v1/ws"
-    async with websockets.connect(uri) as websocket:
-        subscription = {
-            "action": "subscribe",
-            "filter": {"chain_id": "ethereum", "event_type": "Transfer"}
-        }
-        await websocket.send(json.dumps(subscription))
-        
-        while True:
-            response = await websocket.recv()
-            event = json.loads(response)
-            print(f"New event: {event['data']['event_type']}")
-```
-
 ### Node.js Integration
 
 ```javascript
@@ -397,12 +406,12 @@ const WebSocket = require('ws');
 
 // HTTP API usage
 async function getChainStatus(chainId) {
-    const response = await axios.get(`http://localhost:8000/api/v1/chains/${chainId}/status`);
+    const response = await axios.get(`http://localhost:8080/api/v1/chains/${chainId}/status`);
     console.log(`Latest ${chainId} block: ${response.data.latest_height}`);
 }
 
 // WebSocket subscription
-const ws = new WebSocket('ws://localhost:8000/api/v1/ws');
+const ws = new WebSocket('ws://localhost:8080/api/v1/ws');
 ws.on('open', () => {
     ws.send(JSON.stringify({
         action: 'subscribe',
@@ -416,4 +425,28 @@ ws.on('message', (data) => {
 });
 ```
 
-This unified API documentation provides everything needed to integrate with Almanac, whether using the HTTP service, Rust crates, or real-time subscriptions. The hybrid storage architecture and finality tracking enable both high-performance access and complex analytical queries across multiple blockchain networks. 
+## Advanced Features
+
+### Distributed Query Processing
+
+For high-scale deployments, Almanac supports distributed query processing:
+
+```bash
+# Query events across multiple nodes
+curl -X POST http://localhost:8080/api/v1/query/distributed \
+  -H "Content-Type: application/json" \
+  -d '{"query": {"chain": "ethereum", "event_type": "Transfer"}, "nodes": ["node1", "node2"]}'
+```
+
+### Streaming API
+
+For high-throughput applications, use the streaming API:
+
+```bash
+# Stream events in real-time
+curl -X POST http://localhost:8080/api/v1/query/stream \
+  -H "Content-Type: application/json" \
+  -d '{"query": {"chain": "ethereum"}, "format": "json"}'
+```
+
+This comprehensive API documentation provides everything needed to integrate with Almanac, whether using the HTTP REST API, WebSocket subscriptions, or direct Rust crate integration. The hybrid storage architecture and finality tracking enable both high-performance access and complex analytical queries across multiple blockchain networks. 

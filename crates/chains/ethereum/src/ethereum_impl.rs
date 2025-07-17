@@ -4,10 +4,10 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use std::any::Any;
 use std::time::SystemTime;
-use indexer_core::{Result, Error};
-use indexer_core::types::{Event, UnifiedEvent};
-use indexer_core::service::{EventService, EventSubscription};
-use indexer_core::types::{ChainId, EventFilter};
+use almanac_infrastructure_core::{Result, Error};
+use almanac_infrastructure_core::types::{Event, UnifiedEvent};
+use almanac_infrastructure_core::service::{EventService, EventSubscription};
+use almanac_infrastructure_core::types::{ChainId, EventFilter};
 use valence_domain_clients::evm::base_client::EvmBaseClient;
 use valence_domain_clients::clients::ethereum::EthereumClient as ValenceEthereumClient;
 use valence_domain_clients::common::transaction::TransactionResponse;
@@ -73,7 +73,7 @@ impl EvmChainConfig {
     }
 }
 
-/// Ethereum client using valence-domain-clients EVM integration
+/// Ethereum client implementation
 pub struct EthereumClient {
     /// Internal valence Ethereum client
     valence_client: Arc<ValenceEthereumClient>,
@@ -81,6 +81,15 @@ pub struct EthereumClient {
     config: EvmChainConfig,
     /// Legacy chain_id for compatibility
     chain_id: ChainId,
+}
+
+impl std::fmt::Debug for EthereumClient {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EthereumClient")
+            .field("config", &self.config)
+            .field("chain_id", &self.chain_id)
+            .finish()
+    }
 }
 
 impl EthereumClient {
@@ -227,23 +236,23 @@ impl EventService for EthereumClient {
         &self.chain_id
     }
     
-    async fn get_events(&self, _filters: Vec<EventFilter>) -> indexer_core::Result<Vec<Box<dyn Event>>> {
+    async fn get_events(&self, _filters: Vec<EventFilter>) -> almanac_infrastructure_core::Result<Vec<Box<dyn Event>>> {
         // TODO: Convert EventFilter to valence domain client filters
         Ok(Vec::new())
     }
     
-    async fn get_latest_block(&self) -> indexer_core::Result<u64> {
+    async fn get_latest_block(&self) -> almanac_infrastructure_core::Result<u64> {
         let block_number = self.valence_client.latest_block_height().await
             .map_err(|e| Error::generic(format!("Failed to get latest block: {}", e)))?;
             
         Ok(block_number)
     }
     
-    async fn get_latest_block_with_status(&self, _chain: &str, _status: indexer_core::BlockStatus) -> indexer_core::Result<u64> {
+    async fn get_latest_block_with_status(&self, _chain: &str, _status: almanac_infrastructure_core::BlockStatus) -> almanac_infrastructure_core::Result<u64> {
         self.get_latest_block().await
     }
     
-    async fn subscribe(&self) -> indexer_core::Result<Box<dyn EventSubscription>> {
+    async fn subscribe(&self) -> almanac_infrastructure_core::Result<Box<dyn EventSubscription>> {
         let subscription = EthereumEventSubscription::new(
             self.valence_client.clone(),
             self.chain_id.clone(),
@@ -253,7 +262,7 @@ impl EventService for EthereumClient {
     }
 }
 
-/// Real Ethereum event subscription implementation
+/// Ethereum event subscription implementation
 pub struct EthereumEventSubscription {
     valence_client: Arc<ValenceEthereumClient>,
     chain_id: ChainId,
@@ -262,11 +271,22 @@ pub struct EthereumEventSubscription {
     max_retries: u32,
 }
 
+impl std::fmt::Debug for EthereumEventSubscription {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EthereumEventSubscription")
+            .field("chain_id", &self.chain_id)
+            .field("current_block", &self.current_block)
+            .field("retry_count", &self.retry_count)
+            .field("max_retries", &self.max_retries)
+            .finish()
+    }
+}
+
 impl EthereumEventSubscription {
     pub async fn new(
         valence_client: Arc<ValenceEthereumClient>,
         chain_id: ChainId,
-    ) -> indexer_core::Result<Self> {
+    ) -> almanac_infrastructure_core::Result<Self> {
         let current_block = valence_client.latest_block_height().await
             .map_err(|e| Error::generic(format!("Failed to get latest block: {}", e)))?;
         
@@ -279,7 +299,7 @@ impl EthereumEventSubscription {
         })
     }
     
-    async fn poll_for_events(&mut self) -> indexer_core::Result<Option<Box<dyn Event>>> {
+    async fn poll_for_events(&mut self) -> almanac_infrastructure_core::Result<Option<Box<dyn Event>>> {
         let latest_block = self.valence_client.latest_block_height().await
             .map_err(|e| Error::generic(format!("Failed to get latest block: {}", e)))?;
         
@@ -326,7 +346,7 @@ impl EventSubscription for EthereumEventSubscription {
         }
     }
     
-    async fn close(&mut self) -> indexer_core::Result<()> {
+    async fn close(&mut self) -> almanac_infrastructure_core::Result<()> {
         Ok(())
     }
 }

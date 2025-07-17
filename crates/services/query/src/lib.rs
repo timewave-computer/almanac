@@ -3,9 +3,9 @@
 // This crate provides utilities for querying blockchain event data
 // with support for filtering, aggregation, and performance optimizations.
 
-// Re-export indexer_core::Error for convenience
-pub use indexer_core::Error;
-pub use indexer_core::types::ChainId;
+// Re-export almanac_infrastructure_core::Error for convenience
+pub use almanac_infrastructure_core::Error;
+pub use almanac_infrastructure_core::types::ChainId;
 
 // Standard library imports
 use std::collections::HashMap;

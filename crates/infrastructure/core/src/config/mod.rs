@@ -726,14 +726,17 @@ pub struct AlmanacConfig {
 /// Event processing global configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventProcessingConfig {
-    /// Event ordering configuration
-    pub ordering: super::event_ordering::EventOrderingConfig,
+    /// Enable event processing
+    pub enabled: bool,
     
-    /// Finality processor configuration
-    pub finality: super::finality_processor::FinalityProcessorConfig,
+    /// Batch size for processing
+    pub batch_size: u32,
     
-    /// Ingestion queue configuration
-    pub ingestion: super::ingestion_queue::IngestionQueueConfig,
+    /// Poll interval in milliseconds
+    pub poll_interval_ms: u64,
+    
+    /// Maximum concurrent requests
+    pub max_concurrent_requests: u32,
 }
 
 impl Default for AlmanacConfig {
@@ -892,11 +895,15 @@ impl Default for AlmanacConfig {
                 },
             },
             event_processing: EventProcessingConfig {
-                ordering: super::event_ordering::EventOrderingConfig::default(),
-                finality: super::finality_processor::FinalityProcessorConfig::default(),
-                ingestion: super::ingestion_queue::IngestionQueueConfig::default(),
+                enabled: true,
+                batch_size: 100,
+                poll_interval_ms: 12000,
+                max_concurrent_requests: 10,
             },
             custom: HashMap::new(),
         }
     }
-} 
+}
+
+/// Main configuration type alias
+pub type Config = AlmanacConfig; 

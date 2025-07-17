@@ -10,17 +10,14 @@ pub mod integration;
 pub mod performance;
 pub mod property;
 
-#[cfg(feature = "integration")]
-pub mod distributed;
+// Distributed testing module disabled due to missing dependencies
+// #[cfg(feature = "distributed")]
+// pub mod distributed;
 
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn, error};
-use uuid::Uuid;
-
-use indexer_core::{Error as CoreError};
 
 /// Test configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -373,7 +370,7 @@ impl TestSuite {
     }
 
     /// Collect test metrics
-    fn collect_metrics(&self, start_memory: f64, start_time: Instant) -> TestMetrics {
+    fn collect_metrics(&self, start_memory: f64, _start_time: Instant) -> TestMetrics {
         let current_memory = self.get_memory_usage();
         let memory_delta = current_memory - start_memory;
 

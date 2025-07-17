@@ -16,7 +16,7 @@ codegen = ["serde_json", "handlebars", "cosmwasm-schema", "clap", "chrono", "con
 
 [dependencies]
 # Core indexer dependencies (keep these for interface compatibility)
-indexer-core = { path = "../../infrastructure/core" }
+almanac-infrastructure-core = { path = "../../infrastructure/core" }
 
 # Minimal async support
 async-trait.workspace = true

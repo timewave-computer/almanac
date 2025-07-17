@@ -1,10 +1,11 @@
 //! Integration tests for Ethereum contract code generation
 
-use crate::codegen::{EthereumCodegenConfig, EthereumContractCodegen};
-use crate::codegen::parser::AbiParser;
-use indexer_core::Result;
+use super::*;
+use crate::codegen::{EthereumCodegenConfig, EthereumContractCodegen, AbiParser};
+use std::path::Path;
 use std::fs;
 use tempfile::TempDir;
+use almanac_infrastructure_core::Result;
 
 /// Real ERC20 contract ABI (USDC) for testing
 const ERC20_ABI: &str = r#"[

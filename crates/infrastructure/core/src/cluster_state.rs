@@ -418,8 +418,8 @@ impl ClusterStateInspector {
         };
 
         // Aggregate metrics from all nodes
-        let mut total_latency = 0.0;
-        let mut latency_count = 0;
+        let total_latency = 0.0;
+        let latency_count = 0;
 
         for node in state.nodes.values() {
             metrics.total_events_processed += node.workload.completed_tasks_24h;

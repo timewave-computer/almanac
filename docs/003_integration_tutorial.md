@@ -29,13 +29,17 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-# Core dependencies
-indexer-core = { path = "path/to/almanac/crates/core" }
-indexer-storage = { path = "path/to/almanac/crates/storage", features = ["postgres", "rocks"] }
+# Core infrastructure dependencies
+almanac-infrastructure-core = { path = "path/to/almanac/crates/infrastructure/core" }
+almanac-infrastructure-storage = { path = "path/to/almanac/crates/infrastructure/storage", features = ["postgres", "rocks"] }
 
 # Chain-specific dependencies
-indexer-ethereum = { path = "path/to/almanac/crates/ethereum" }
-indexer-cosmos = { path = "path/to/almanac/crates/cosmos" }
+indexer-ethereum = { path = "path/to/almanac/crates/chains/ethereum" }
+indexer-cosmos = { path = "path/to/almanac/crates/chains/cosmos" }
+
+# API dependencies
+almanac-api-core = { path = "path/to/almanac/crates/api-core" }
+almanac-api-http = { path = "path/to/almanac/crates/api-http" }
 
 # Async runtime and utilities
 tokio = { version = "1.0", features = ["full"] }
@@ -142,6 +146,8 @@ pub struct ApiConfig {
     pub host: String,
     pub port: u16,
     pub enable_cors: bool,
+    pub enable_graphql: bool,
+    pub enable_websockets: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -230,6 +236,8 @@ max_retries = 3
 host = "127.0.0.1"
 port = 3000
 enable_cors = true
+enable_graphql = true
+enable_websockets = true
 
 [logging]
 level = "debug"
@@ -296,6 +304,9 @@ pub enum IndexerError {
     
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+    
+    #[error("Core error: {0}")]
+    Core(#[from] almanac_infrastructure_core::Error),
     
     #[error("Block not found: {block_number} on chain {chain}")]
     BlockNotFound { chain: String, block_number: u64 },
@@ -437,6 +448,7 @@ Create `src/storage/models.rs`:
 
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+use almanac_infrastructure_core::types::Event;
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
 pub struct Block {
@@ -490,6 +502,7 @@ mod storage;
 
 use config::Config;
 use indexer::{ethereum::EthereumIndexer, cosmos::CosmosIndexer};
+use almanac_infrastructure_storage::create_postgres_storage;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -500,10 +513,10 @@ async fn main() -> Result<()> {
     let config = Config::load()?;
     
     // Initialize storage
-    let pool = sqlx::postgres::PgPool::connect(&config.database.url).await?;
+    let storage = create_postgres_storage(&config.database.url).await?;
     
     // Run migrations
-    sqlx::migrate!("./migrations").run(&pool).await?;
+    sqlx::migrate!("./migrations").run(&storage.pool()).await?;
     
     // Start indexers based on configuration
     let mut handles = Vec::new();
@@ -541,22 +554,22 @@ Create `tests/integration_tests.rs`:
 //! Integration tests for the indexer
 
 use my_blockchain_indexer::{config::Config, indexer::*};
-use sqlx::PgPool;
+use almanac_infrastructure_storage::create_postgres_storage;
 use std::sync::Arc;
 use tempfile::NamedTempFile;
 
-async fn setup_test_db() -> PgPool {
+async fn setup_test_db() -> almanac_infrastructure_storage::BoxedStorage {
     let database_url = std::env::var("TEST_DATABASE_URL")
         .unwrap_or_else(|_| "postgresql://localhost/indexer_test".to_string());
     
-    let pool = PgPool::connect(&database_url).await.unwrap();
-    sqlx::migrate!("./migrations").run(&pool).await.unwrap();
-    pool
+    let storage = create_postgres_storage(&database_url).await.unwrap();
+    sqlx::migrate!("./migrations").run(&storage.pool()).await.unwrap();
+    storage
 }
 
 #[tokio::test]
 async fn test_ethereum_indexer() {
-    let pool = setup_test_db().await;
+    let storage = setup_test_db().await;
     
     // Test Ethereum indexer functionality
     // Implementation depends on your specific requirements
@@ -565,7 +578,7 @@ async fn test_ethereum_indexer() {
 
 #[tokio::test]
 async fn test_cosmos_indexer() {
-    let pool = setup_test_db().await;
+    let storage = setup_test_db().await;
     
     // Test Cosmos indexer functionality
     assert!(true);
@@ -573,7 +586,7 @@ async fn test_cosmos_indexer() {
 
 #[tokio::test]
 async fn test_contract_integration() {
-    let pool = setup_test_db().await;
+    let storage = setup_test_db().await;
     
     // Test generated contract code integration
     assert!(true);
@@ -589,7 +602,7 @@ Create `src/api/rest.rs`:
 
 use axum::{extract::Query, http::StatusCode, response::Json, routing::get, Router};
 use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
+use almanac_infrastructure_storage::BoxedStorage;
 use std::sync::Arc;
 
 #[derive(Deserialize)]
@@ -606,11 +619,11 @@ pub struct EventResponse {
     pub total: u64,
 }
 
-pub fn create_router(pool: Arc<PgPool>) -> Router {
+pub fn create_router(storage: Arc<BoxedStorage>) -> Router {
     Router::new()
         .route("/health", get(health_check))
         .route("/events", get(get_events))
-        .with_state(pool)
+        .with_state(storage)
 }
 
 async fn health_check() -> &'static str {
@@ -619,10 +632,10 @@ async fn health_check() -> &'static str {
 
 async fn get_events(
     Query(params): Query<EventQuery>,
-    pool: axum::extract::State<Arc<PgPool>>,
+    storage: axum::extract::State<Arc<BoxedStorage>>,
 ) -> Result<Json<EventResponse>, StatusCode> {
     // Implementation for fetching events
-    let events = vec![]; // Fetch from database
+    let events = vec![]; // Fetch from storage
     let total = 0; // Count total events
     
     Ok(Json(EventResponse { events, total }))
@@ -650,34 +663,56 @@ max_retries = 5
 host = "0.0.0.0"
 port = 8080
 enable_cors = false
+enable_graphql = true
+enable_websockets = true
 
 [logging]
 level = "info"
 format = "json"
 ```
 
-### Docker Configuration
+### Nix Configuration
 
-Create a `Dockerfile`:
+Add your indexer to your project's `flake.nix`:
 
-```dockerfile
-FROM rust:1.75 as builder
+```nix
+{
+  packages.my-blockchain-indexer = pkgs.rustPlatform.buildRustPackage {
+    pname = "my-blockchain-indexer";
+    version = "0.1.0";
+    src = ./.;
+    cargoLock.lockFile = ./Cargo.lock;
+    
+    buildInputs = with pkgs; [
+      postgresql
+      pkg-config
+      openssl
+    ];
+  };
 
-WORKDIR /app
-COPY . .
-RUN cargo build --release
+  nixosModules.my-blockchain-indexer = { config, lib, pkgs, ... }: {
+    options.services.my-blockchain-indexer = {
+      enable = lib.mkEnableOption "My blockchain indexer";
+      port = lib.mkOption {
+        type = lib.types.port;
+        default = 8080;
+        description = "Port to listen on";
+      };
+    };
 
-FROM debian:bookworm-slim
-
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    libssl3 \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY --from=builder /app/target/release/my-blockchain-indexer /usr/local/bin/
-
-EXPOSE 8080
-CMD ["my-blockchain-indexer"]
+    config = lib.mkIf config.services.my-blockchain-indexer.enable {
+      systemd.services.my-blockchain-indexer = {
+        description = "My Blockchain Indexer";
+        wantedBy = [ "multi-user.target" ];
+        serviceConfig = {
+          ExecStart = "${pkgs.my-blockchain-indexer}/bin/my-blockchain-indexer";
+          Restart = "always";
+          DynamicUser = true;
+        };
+      };
+    };
+  };
+}
 ```
 
 ### Monitoring and Observability
@@ -686,9 +721,10 @@ Add health checks and metrics to your application:
 
 ```rust
 use tracing::{info, warn, error};
+use almanac_infrastructure_core::Error;
 
 // Add to your main indexing loop
-async fn index_with_monitoring(&self, block_number: u64) -> Result<()> {
+async fn index_with_monitoring(&self, block_number: u64) -> Result<(), Error> {
     let start_time = std::time::Instant::now();
     
     match self.index_block(block_number).await {
@@ -721,7 +757,7 @@ async fn index_with_monitoring(&self, block_number: u64) -> Result<()> {
 1. **Batch Processing**: Process multiple blocks together when possible
 2. **Connection Pooling**: Use database connection pools efficiently
 3. **Async Processing**: Leverage Rust's async capabilities for concurrent operations
-4. **Caching**: Implement caching for frequently accessed data
+4. **Caching**: Implement caching for frequently accessed data using `almanac-infrastructure-caching`
 
 ### Error Recovery
 
@@ -736,5 +772,12 @@ async fn index_with_monitoring(&self, block_number: u64) -> Result<()> {
 2. **Rate Limiting**: Implement rate limiting for API endpoints
 3. **Authentication**: Secure API endpoints with proper authentication
 4. **Logging**: Log security-relevant events without exposing sensitive data
+
+### Development Workflow
+
+1. **Nix Environment**: Use `nix develop` for consistent development environment
+2. **Code Generation**: Regenerate contract code when ABIs/schemas change
+3. **Testing**: Write comprehensive tests for all components
+4. **Documentation**: Keep documentation up-to-date with code changes
 
 This comprehensive tutorial provides the foundation for building robust blockchain indexers with Almanac. The patterns shown work across both Ethereum and Cosmos chains, with the generated contract code providing type-safe integration for specific contract interactions. 

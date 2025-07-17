@@ -1,7 +1,7 @@
 //! CLI interface for cosmos contract code generation
 
 use super::{CosmosCodegenConfig, generate_contract_code};
-use indexer_core::Result;
+use almanac_infrastructure_core::Result;
 use clap::{Arg, ArgMatches, Command};
 
 /// Build the CLI command for cosmos contract generation
@@ -66,13 +66,13 @@ pub fn build_generate_contract_command() -> Command {
 /// Handle the cosmos generate-contract command
 pub async fn handle_generate_contract_command(matches: &ArgMatches) -> Result<()> {
     let msg_file = matches.get_one::<String>("msg-file")
-        .ok_or_else(|| indexer_core::Error::Config("Message file path is required".to_string()))?;
+        .ok_or_else(|| almanac_infrastructure_core::Error::config("Message file path is required".to_string()))?;
 
     let contract_address = matches.get_one::<String>("address")
-        .ok_or_else(|| indexer_core::Error::Config("Contract address is required".to_string()))?;
+        .ok_or_else(|| almanac_infrastructure_core::Error::config("Contract address is required".to_string()))?;
 
     let chain_id = matches.get_one::<String>("chain")
-        .ok_or_else(|| indexer_core::Error::Config("Chain ID is required".to_string()))?;
+        .ok_or_else(|| almanac_infrastructure_core::Error::config("Chain ID is required".to_string()))?;
 
     let output_dir = matches.get_one::<String>("output-dir")
         .map(|s| s.as_str())
@@ -145,12 +145,12 @@ pub async fn handle_generate_contract_command(matches: &ArgMatches) -> Result<()
 fn validate_contract_address(address: &str) -> Result<()> {
     // Basic validation for cosmos contract address format
     if address.is_empty() {
-        return Err(indexer_core::Error::Config("Contract address cannot be empty".to_string()));
+        return Err(almanac_infrastructure_core::Error::config("Contract address cannot be empty".to_string()));
     }
 
     // Cosmos contract addresses typically start with a chain prefix
     if !address.contains('1') {
-        return Err(indexer_core::Error::Config(
+        return Err(almanac_infrastructure_core::Error::config(
             "Contract address should be a valid bech32 address".to_string()
         ));
     }
@@ -161,12 +161,12 @@ fn validate_contract_address(address: &str) -> Result<()> {
 /// Validate chain ID format
 fn validate_chain_id(chain_id: &str) -> Result<()> {
     if chain_id.is_empty() {
-        return Err(indexer_core::Error::Config("Chain ID cannot be empty".to_string()));
+        return Err(almanac_infrastructure_core::Error::config("Chain ID cannot be empty".to_string()));
     }
 
     // Basic format validation
     if chain_id.len() < 3 {
-        return Err(indexer_core::Error::Config("Chain ID is too short".to_string()));
+        return Err(almanac_infrastructure_core::Error::config("Chain ID is too short".to_string()));
     }
 
     Ok(())
@@ -175,18 +175,18 @@ fn validate_chain_id(chain_id: &str) -> Result<()> {
 /// Validate message file exists and is readable
 async fn validate_msg_file(file_path: &str) -> Result<()> {
     if !tokio::fs::try_exists(file_path).await
-        .map_err(|e| indexer_core::Error::Config(format!("Failed to check file existence: {}", e)))? 
+        .map_err(|e| almanac_infrastructure_core::Error::config(format!("Failed to check file existence: {}", e)))? 
     {
-        return Err(indexer_core::Error::Config(format!("Message file not found: {}", file_path)));
+        return Err(almanac_infrastructure_core::Error::config(format!("Message file not found: {}", file_path)));
     }
 
     // Try to read the file to ensure it's accessible
     let _content = tokio::fs::read_to_string(file_path).await
-        .map_err(|e| indexer_core::Error::Config(format!("Failed to read message file: {}", e)))?;
+        .map_err(|e| almanac_infrastructure_core::Error::config(format!("Failed to read message file: {}", e)))?;
 
     // Basic JSON validation
     let _: serde_json::Value = serde_json::from_str(&_content)
-        .map_err(|e| indexer_core::Error::Config(format!("Invalid JSON in message file: {}", e)))?;
+        .map_err(|e| almanac_infrastructure_core::Error::config(format!("Invalid JSON in message file: {}", e)))?;
 
     Ok(())
 }
@@ -196,7 +196,7 @@ pub fn print_features_help() {
     println!("Available features:");
     println!("  client     - Generate client code for contract interactions");
     println!("  storage    - Generate storage models and database schemas");
-    println!("  api        - Generate REST, GraphQL, and WebSocket APIs");
+    println!("  api        - Generate REST and WebSocket APIs");
     println!("  migrations - Generate database migration files");
     println!();
     println!("Example: --features client,storage,api");

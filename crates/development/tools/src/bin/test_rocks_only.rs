@@ -7,6 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use rocksdb::{Options, DB, ColumnFamilyDescriptor, BlockBasedOptions};
 use tempfile::tempdir;
 use serde::{Serialize, Deserialize};
+use anyhow::Result;
 
 // Simple Event struct for testing
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -23,260 +24,296 @@ struct Event {
     timestamp: u64,
 }
 
-// Block status for testing
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-enum BlockStatus {
-    Pending,
-    Final,
+// Column families
+const EVENTS_CF: &str = "events";
+const BLOCKS_CF: &str = "blocks";
+
+// Simple RocksDB storage implementation
+struct RocksStorage {
+    db: DB,
+    path: String,
 }
 
-// Basic error type
-type Error = Box<dyn std::error::Error + Send + Sync>;
-type Result<T> = std::result::Result<T, Error>;
-
-// Column family names
-const CF_EVENTS: &str = "events";
-const CF_BLOCKS: &str = "blocks";
-const CF_META: &str = "meta";
-
-// Helper function to create a test event
-fn create_test_event(block: u64, tx_index: u64, log_index: u64, event_type: &str) -> Event {
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
+impl RocksStorage {
+    fn new(path: &str) -> Result<Self> {
+        // Create options for blocks column family
+        let mut blocks_opts = Options::default();
+        blocks_opts.create_if_missing(true);
+        blocks_opts.set_max_write_buffer_number(3);
+        
+        // Create options for events column family  
+        let mut events_opts = Options::default();
+        events_opts.create_if_missing(true);
+        events_opts.set_max_write_buffer_number(5);
+        
+        // Block-based table options for better performance
+        let mut block_opts = BlockBasedOptions::default();
+        block_opts.set_block_size(16 * 1024);
+        block_opts.set_cache_index_and_filter_blocks(true);
+        events_opts.set_block_based_table_factory(&block_opts);
+        
+        // Column family descriptors
+        let cfs = vec![
+            ColumnFamilyDescriptor::new(BLOCKS_CF, blocks_opts),
+            ColumnFamilyDescriptor::new(EVENTS_CF, events_opts),
+        ];
+        
+        // DB options
+        let mut db_opts = Options::default();
+        db_opts.create_if_missing(true);
+        db_opts.create_missing_column_families(true);
+        
+        let db = DB::open_cf_descriptors(&db_opts, path, cfs)?;
+        
+        Ok(Self {
+            db,
+            path: path.to_string(),
+        })
+    }
     
+    fn store_event(&self, event: &Event) -> Result<()> {
+        let cf = self.db.cf_handle(EVENTS_CF).unwrap();
+        
+        // Key: chain_id:block_number:tx_index:log_index
+        let key = format!("{}:{}:{}:{}", 
+            event.chain, 
+            event.block_number,
+            event.tx_index,
+            event.log_index
+        );
+        
+        let value = bincode::serialize(event)?;
+        self.db.put_cf(&cf, key.as_bytes(), &value)?;
+        
+        Ok(())
+    }
+    
+    fn get_event(&self, chain: &str, block: u64, tx_index: u64, log_index: u64) -> Result<Option<Event>> {
+        let cf = self.db.cf_handle(EVENTS_CF).unwrap();
+        let key = format!("{}:{}:{}:{}", chain, block, tx_index, log_index);
+        
+        match self.db.get_cf(&cf, key.as_bytes())? {
+            Some(value) => {
+                let event = bincode::deserialize(&value)?;
+                Ok(Some(event))
+            }
+            None => Ok(None),
+        }
+    }
+    
+    fn store_block(&self, chain: &str, block_number: u64, block_hash: &str) -> Result<()> {
+        let cf = self.db.cf_handle(BLOCKS_CF).unwrap();
+        let key = format!("{}:{}", chain, block_number);
+        self.db.put_cf(&cf, key.as_bytes(), block_hash.as_bytes())?;
+        Ok(())
+    }
+    
+    fn get_block(&self, chain: &str, block_number: u64) -> Result<Option<String>> {
+        let cf = self.db.cf_handle(BLOCKS_CF).unwrap();
+        let key = format!("{}:{}", chain, block_number);
+        
+        match self.db.get_cf(&cf, key.as_bytes())? {
+            Some(value) => Ok(Some(String::from_utf8(value)?)),
+            None => Ok(None),
+        }
+    }
+    
+    fn delete_events_from_block(&self, chain: &str, block_number: u64) -> Result<u64> {
+        let cf = self.db.cf_handle(EVENTS_CF).unwrap();
+        let mut batch = rocksdb::WriteBatch::default();
+        let mut count = 0;
+        
+        // Scan for all events in this block
+        let prefix = format!("{}:{}:", chain, block_number);
+        let iter = self.db.prefix_iterator_cf(&cf, prefix.as_bytes());
+        
+        for item in iter {
+            if let Ok((key, _)) = item {
+                if let Ok(key_str) = String::from_utf8(key.to_vec()) {
+                    if key_str.starts_with(&prefix) {
+                        batch.delete_cf(&cf, &key);
+                        count += 1;
+                    }
+                }
+            }
+        }
+        
+        self.db.write(batch)?;
+        Ok(count)
+    }
+    
+    fn count_events(&self) -> Result<usize> {
+        let cf = self.db.cf_handle(EVENTS_CF).unwrap();
+        let iter = self.db.iterator_cf(&cf, rocksdb::IteratorMode::Start);
+        Ok(iter.count())
+    }
+}
+
+impl Drop for RocksStorage {
+    fn drop(&mut self) {
+        // RocksDB will be closed automatically
+        println!("Closing RocksDB at {}", self.path);
+    }
+}
+
+// Test functions
+fn test_store_and_retrieve() -> Result<()> {
+    let dir = tempdir()?;
+    let storage = RocksStorage::new(dir.path().to_str().unwrap())?;
+    
+    // Create test event
+    let event = Event {
+        id: "evt_1".to_string(),
+        chain: "ethereum".to_string(),
+        block_number: 12345,
+        block_hash: "0xabc123".to_string(),
+        tx_hash: "0xdef456".to_string(),
+        tx_index: 0,
+        log_index: 1,
+        event_type: "Transfer".to_string(),
+        raw_data: vec![1, 2, 3, 4],
+        timestamp: SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
+    };
+    
+    // Store event
+    storage.store_event(&event)?;
+    println!("✓ Event stored successfully");
+    
+    // Retrieve event
+    let retrieved = storage.get_event("ethereum", 12345, 0, 1)?;
+    assert!(retrieved.is_some(), "Event should be found");
+    let retrieved = retrieved.unwrap();
+    assert_eq!(retrieved.id, event.id);
+    assert_eq!(retrieved.chain, event.chain);
+    println!("✓ Event retrieved successfully");
+    
+    // Try non-existent event
+    let not_found = storage.get_event("ethereum", 99999, 0, 0)?;
+    assert!(not_found.is_none(), "Non-existent event should not be found");
+    println!("✓ Non-existent event returns None");
+    
+    Ok(())
+}
+
+fn test_block_storage() -> Result<()> {
+    let dir = tempdir()?;
+    let storage = RocksStorage::new(dir.path().to_str().unwrap())?;
+    
+    // Store blocks
+    storage.store_block("ethereum", 100, "0xblock100")?;
+    storage.store_block("ethereum", 101, "0xblock101")?;
+    storage.store_block("cosmos", 200, "cosmos_block_200")?;
+    println!("✓ Blocks stored successfully");
+    
+    // Retrieve blocks
+    let block100 = storage.get_block("ethereum", 100)?;
+    assert_eq!(block100, Some("0xblock100".to_string()));
+    
+    let block200 = storage.get_block("cosmos", 200)?;
+    assert_eq!(block200, Some("cosmos_block_200".to_string()));
+    
+    let not_found = storage.get_block("ethereum", 999)?;
+    assert!(not_found.is_none());
+    println!("✓ Blocks retrieved successfully");
+    
+    Ok(())
+}
+
+fn test_batch_operations() -> Result<()> {
+    let dir = tempdir()?;
+    let storage = RocksStorage::new(dir.path().to_str().unwrap())?;
+    
+    // Store multiple events in a block
+    for i in 0..10 {
+        let event = Event {
+            id: format!("evt_{}", i),
+            chain: "ethereum".to_string(),
+            block_number: 1000,
+            block_hash: "0xblock1000".to_string(),
+            tx_hash: format!("0xtx{}", i / 3), // 3 events per tx
+            tx_index: (i / 3) as u64,
+            log_index: (i % 3) as u64,
+            event_type: "Transfer".to_string(),
+            raw_data: vec![i as u8],
+            timestamp: SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
+        };
+        storage.store_event(&event)?;
+    }
+    
+    let count = storage.count_events()?;
+    assert_eq!(count, 10, "Should have 10 events");
+    println!("✓ Batch insert: {} events stored", count);
+    
+    // Delete all events from block 1000
+    let deleted = storage.delete_events_from_block("ethereum", 1000)?;
+    assert_eq!(deleted, 10, "Should delete 10 events");
+    println!("✓ Batch delete: {} events deleted", deleted);
+    
+    let count = storage.count_events()?;
+    assert_eq!(count, 0, "Should have 0 events after deletion");
+    
+    Ok(())
+}
+
+fn test_performance() -> Result<()> {
+    let dir = tempdir()?;
+    let storage = RocksStorage::new(dir.path().to_str().unwrap())?;
+    
+    let start = SystemTime::now();
+    let num_events = 10000;
+    
+    // Insert many events
+    for i in 0..num_events {
+        let event = Event {
+            id: format!("evt_{}", i),
+            chain: "ethereum".to_string(),
+            block_number: i / 100, // 100 events per block
+            block_hash: format!("0xblock{}", i / 100),
+            tx_hash: format!("0xtx{}", i / 10), // 10 events per tx
+            tx_index: (i / 10) as u64,
+            log_index: (i % 10) as u64,
+            event_type: if i % 2 == 0 { "Transfer" } else { "Approval" }.to_string(),
+            raw_data: vec![(i % 256) as u8; 100], // 100 bytes of data
+            timestamp: SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
+        };
+        storage.store_event(&event)?;
+    }
+    
+    let elapsed = SystemTime::now().duration_since(start)?;
+    let rate = num_events as f64 / elapsed.as_secs_f64();
+    println!("✓ Performance test: Inserted {} events in {:.2}s ({:.0} events/sec)", 
+        num_events, elapsed.as_secs_f64(), rate);
+    
+    // Random reads
+    let start = SystemTime::now();
+    let num_reads = 1000;
+    for i in 0..num_reads {
+        let block = (i * 7) % 100; // Random blocks
+        let tx = (i * 3) % 10;
+        let log = i % 10;
+        let _ = storage.get_event("ethereum", block, tx, log)?;
+    }
+    
+    let elapsed = SystemTime::now().duration_since(start)?;
+    let rate = num_reads as f64 / elapsed.as_secs_f64();
+    println!("✓ Random reads: {} reads in {:.2}s ({:.0} reads/sec)", 
+        num_reads, elapsed.as_secs_f64(), rate);
+    
+    Ok(())
+}
+
+fn create_test_event(block: u64, tx_index: u64, log_index: u64, event_type: &str) -> Event {
     Event {
-        id: format!("{}_{}_{}_{}", "test_chain", block, tx_index, log_index),
-        chain: "test_chain".to_string(),
+        id: format!("evt_{}_{}", block, log_index),
+        chain: "ethereum".to_string(),
         block_number: block,
-        block_hash: format!("block_hash_{}", block),
-        tx_hash: format!("tx_hash_{}", tx_index),
+        block_hash: format!("0xblock{}", block),
+        tx_hash: format!("0xtx{}_{}", block, tx_index),
         tx_index,
         log_index,
         event_type: event_type.to_string(),
-        raw_data: vec![],
-        timestamp,
-    }
-}
-
-// Simple RocksDB wrapper
-struct RocksDBStore {
-    db: DB,
-}
-
-impl RocksDBStore {
-    // Create a new RocksDB instance with column families
-    fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let path = path.as_ref();
-        
-        // Create directory if it doesn't exist
-        if !path.exists() {
-            fs::create_dir_all(path)?;
-        }
-        
-        // Configure options
-        let mut options = Options::default();
-        options.create_if_missing(true);
-        options.create_missing_column_families(true);
-        
-        // Configure block based options
-        let mut block_opts = BlockBasedOptions::default();
-        block_opts.set_block_size(16 * 1024); // 16KB
-        options.set_block_based_table_factory(&block_opts);
-        
-        // Prepare column family descriptors
-        let cf_descriptors = vec![
-            ColumnFamilyDescriptor::new(CF_EVENTS, options.clone()),
-            ColumnFamilyDescriptor::new(CF_BLOCKS, options.clone()),
-            ColumnFamilyDescriptor::new(CF_META, options.clone()),
-        ];
-        
-        // Open DB with column families
-        let db = DB::open_cf_descriptors(&options, path, cf_descriptors)?;
-        
-        Ok(Self { db })
-    }
-    
-    // Store events
-    fn store_events(&self, chain: &str, events: &[Event]) -> Result<()> {
-        if events.is_empty() {
-            return Ok(());
-        }
-        
-        // Get column families
-        let events_cf = self.db.cf_handle(CF_EVENTS).ok_or("Events CF not found")?;
-        let blocks_cf = self.db.cf_handle(CF_BLOCKS).ok_or("Blocks CF not found")?;
-        
-        // Use a batch for atomic writes
-        let mut batch = rocksdb::WriteBatch::default();
-        
-        for event in events {
-            // Store event in events_cf
-            let event_key = format!("{}:{}:{}:{}", chain, event.block_number, event.tx_index, event.log_index);
-            let event_value = serde_json::to_vec(event)?;
-            batch.put_cf(&events_cf, event_key.as_bytes(), event_value);
-            
-            // Store block info in blocks_cf
-            let block_key = format!("{}:{}", chain, event.block_number);
-            let block_info = serde_json::json!({
-                "hash": event.block_hash,
-                "timestamp": event.timestamp,
-                "status": "Pending"
-            });
-            batch.put_cf(&blocks_cf, block_key.as_bytes(), serde_json::to_vec(&block_info)?);
-        }
-        
-        // Write the batch
-        self.db.write(batch)?;
-        
-        Ok(())
-    }
-    
-    // Update block status
-    fn update_block_status(&self, chain: &str, block_number: u64, status: BlockStatus) -> Result<()> {
-        let blocks_cf = self.db.cf_handle(CF_BLOCKS).ok_or("Blocks CF not found")?;
-        
-        // Block key
-        let block_key = format!("{}:{}", chain, block_number);
-        
-        // Get existing block info
-        let block_value = self.db.get_cf(&blocks_cf, block_key.as_bytes())?;
-        
-        if let Some(value) = block_value {
-            let mut block_info: serde_json::Value = serde_json::from_slice(&value)?;
-            
-            // Update status
-            let status_str = match status {
-                BlockStatus::Pending => "Pending",
-                BlockStatus::Final => "Final",
-            };
-            block_info["status"] = serde_json::Value::String(status_str.to_string());
-            
-            // Store updated block info
-            self.db.put_cf(&blocks_cf, block_key.as_bytes(), serde_json::to_vec(&block_info)?)?;
-        }
-        
-        Ok(())
-    }
-    
-    // Get latest block
-    fn get_latest_block(&self, chain: &str) -> Result<u64> {
-        let blocks_cf = self.db.cf_handle(CF_BLOCKS).ok_or("Blocks CF not found")?;
-        
-        // Iterate over blocks
-        let iter = self.db.iterator_cf(&blocks_cf, rocksdb::IteratorMode::End);
-        let mut latest_block = 0;
-        
-        for result in iter {
-            let (key, _value) = result?;
-            let key = key.to_vec();
-            let key_str = String::from_utf8_lossy(&key);
-            let parts: Vec<&str> = key_str.split(':').collect();
-            
-            if parts.len() == 2 && parts[0] == chain {
-                if let Ok(block_number) = parts[1].parse::<u64>() {
-                    latest_block = std::cmp::max(latest_block, block_number);
-                }
-            }
-        }
-        
-        Ok(latest_block)
-    }
-    
-    // Get latest block with specific status
-    fn get_latest_block_with_status(&self, chain: &str, status: BlockStatus) -> Result<u64> {
-        let blocks_cf = self.db.cf_handle(CF_BLOCKS).ok_or("Blocks CF not found")?;
-        
-        // Status string
-        let status_str = match status {
-            BlockStatus::Pending => "Pending",
-            BlockStatus::Final => "Final",
-        };
-        
-        // Iterate over blocks
-        let iter = self.db.iterator_cf(&blocks_cf, rocksdb::IteratorMode::End);
-        let mut latest_block = 0;
-        
-        for result in iter {
-            let (key, value) = result?;
-            let key = key.to_vec();
-            let value = value.to_vec();
-            let key_str = String::from_utf8_lossy(&key);
-            let parts: Vec<&str> = key_str.split(':').collect();
-            
-            if parts.len() == 2 && parts[0] == chain {
-                if let Ok(block_number) = parts[1].parse::<u64>() {
-                    // Check block status
-                    let block_info: serde_json::Value = serde_json::from_slice(&value)?;
-                    if let Some(block_status) = block_info["status"].as_str() {
-                        if block_status == status_str {
-                            latest_block = std::cmp::max(latest_block, block_number);
-                        }
-                    }
-                }
-            }
-        }
-        
-        Ok(latest_block)
-    }
-    
-    // Delete blocks from a specific block number
-    fn delete_blocks_from(&self, chain: &str, from_block: u64) -> Result<()> {
-        let events_cf = self.db.cf_handle(CF_EVENTS).ok_or("Events CF not found")?;
-        let blocks_cf = self.db.cf_handle(CF_BLOCKS).ok_or("Blocks CF not found")?;
-        
-        // Use a batch for atomic writes
-        let mut batch = rocksdb::WriteBatch::default();
-        
-        // Delete events
-        let event_prefix = format!("{}:{}:", chain, from_block);
-        let iter = self.db.iterator_cf(&events_cf, rocksdb::IteratorMode::From(
-            event_prefix.as_bytes(),
-            rocksdb::Direction::Forward,
-        ));
-        
-        for result in iter {
-            let (key, _) = result?;
-            let key_vec = key.to_vec();
-            let key_str = String::from_utf8_lossy(&key_vec);
-            let parts: Vec<&str> = key_str.split(':').collect();
-            
-            if parts.len() >= 2 && parts[0] == chain {
-                if let Ok(block_number) = parts[1].parse::<u64>() {
-                    if block_number >= from_block {
-                        batch.delete_cf(&events_cf, &key_vec);
-                    }
-                }
-            }
-        }
-        
-        // Delete blocks
-        let block_prefix = format!("{}:", chain);
-        let iter = self.db.iterator_cf(&blocks_cf, rocksdb::IteratorMode::From(
-            block_prefix.as_bytes(),
-            rocksdb::Direction::Forward,
-        ));
-        
-        for result in iter {
-            let (key, _) = result?;
-            let key_vec = key.to_vec();
-            let key_str = String::from_utf8_lossy(&key_vec);
-            let parts: Vec<&str> = key_str.split(':').collect();
-            
-            if parts.len() == 2 && parts[0] == chain {
-                if let Ok(block_number) = parts[1].parse::<u64>() {
-                    if block_number >= from_block {
-                        batch.delete_cf(&blocks_cf, &key_vec);
-                    }
-                }
-            }
-        }
-        
-        // Write the batch
-        self.db.write(batch)?;
-        
-        Ok(())
+        raw_data: vec![1, 2, 3],
+        timestamp: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
     }
 }
 
@@ -288,162 +325,18 @@ fn main() -> Result<()> {
     println!("\n--- Test 1: Store and Retrieve ---");
     test_store_and_retrieve()?;
     
-    // Test 2: Block finality
-    println!("\n--- Test 2: Block Finality ---");
-    test_block_finality()?;
+    // Test 2: Block storage
+    println!("\n--- Test 2: Block Storage ---");
+    test_block_storage()?;
     
-    // Test 3: Chain reorg
-    println!("\n--- Test 3: Chain Reorganization ---");
-    test_chain_reorg()?;
+    // Test 3: Batch operations
+    println!("\n--- Test 3: Batch Operations ---");
+    test_batch_operations()?;
     
-    println!("\nAll tests passed!");
+    // Test 4: Performance
+    println!("\n--- Test 4: Performance ---");
+    test_performance()?;
     
+    println!("\n✅ All tests passed!");
     Ok(())
 }
-
-// Test 1: Store and retrieve
-fn test_store_and_retrieve() -> Result<()> {
-    // Create a temporary directory
-    let temp_dir = tempdir()?;
-    let db_path = temp_dir.path();
-    
-    println!("Using temporary directory: {}", db_path.display());
-    
-    // Initialize RocksDB
-    let rocks = RocksDBStore::new(db_path)?;
-    
-    // Store some test events
-    let chain = "test_chain";
-    let events = vec![
-        create_test_event(1, 0, 0, "Transfer"),
-        create_test_event(1, 0, 1, "Approval"),
-        create_test_event(2, 0, 0, "Transfer"),
-    ];
-    
-    println!("Storing events...");
-    
-    // Store block 1 with its events
-    rocks.store_events(chain, &events[0..2])?;
-    
-    // Store block 2 with its event
-    rocks.store_events(chain, &events[2..3])?;
-    
-    // Mark blocks as final
-    rocks.update_block_status(chain, 1, BlockStatus::Final)?;
-    rocks.update_block_status(chain, 2, BlockStatus::Final)?;
-    
-    // Get latest block
-    let latest_block = rocks.get_latest_block(chain)?;
-    println!("Latest block: {}", latest_block);
-    assert_eq!(latest_block, 2, "Latest block should be 2");
-    
-    // Get latest finalized block
-    let latest_final = rocks.get_latest_block_with_status(chain, BlockStatus::Final)?;
-    println!("Latest finalized block: {}", latest_final);
-    assert_eq!(latest_final, 2, "Latest finalized block should be 2");
-    
-    println!("Test passed!");
-    
-    Ok(())
-}
-
-// Test 2: Block finality
-fn test_block_finality() -> Result<()> {
-    // Create a temporary directory
-    let temp_dir = tempdir()?;
-    let db_path = temp_dir.path();
-    
-    println!("Using temporary directory: {}", db_path.display());
-    
-    // Initialize RocksDB
-    let rocks = RocksDBStore::new(db_path)?;
-    
-    // Store some test events with different block statuses
-    let chain = "test_chain";
-    let events = vec![
-        create_test_event(1, 0, 0, "Transfer"),
-        create_test_event(2, 0, 0, "Transfer"),
-        create_test_event(3, 0, 0, "Transfer"),
-    ];
-    
-    println!("Storing events...");
-    
-    // Store all events
-    rocks.store_events(chain, &events)?;
-    
-    // Set different statuses
-    rocks.update_block_status(chain, 1, BlockStatus::Final)?;
-    rocks.update_block_status(chain, 2, BlockStatus::Pending)?;
-    rocks.update_block_status(chain, 3, BlockStatus::Pending)?;
-    
-    // Get latest finalized block
-    let latest_final = rocks.get_latest_block_with_status(chain, BlockStatus::Final)?;
-    println!("Latest finalized block: {}", latest_final);
-    assert_eq!(latest_final, 1, "Latest finalized block should be 1");
-    
-    // Update block 2 to final
-    rocks.update_block_status(chain, 2, BlockStatus::Final)?;
-    
-    // Get latest finalized block again
-    let new_latest_final = rocks.get_latest_block_with_status(chain, BlockStatus::Final)?;
-    println!("Latest finalized block after update: {}", new_latest_final);
-    assert_eq!(new_latest_final, 2, "Latest finalized block should now be 2");
-    
-    println!("Test passed!");
-    
-    Ok(())
-}
-
-// Test 3: Chain reorg
-fn test_chain_reorg() -> Result<()> {
-    // Create a temporary directory
-    let temp_dir = tempdir()?;
-    let db_path = temp_dir.path();
-    
-    println!("Using temporary directory: {}", db_path.display());
-    
-    // Initialize RocksDB
-    let rocks = RocksDBStore::new(db_path)?;
-    
-    // Store events for blocks 1-5
-    let chain = "test_chain";
-    println!("Storing initial blocks 1-5...");
-    
-    for block in 1..=5 {
-        let event = create_test_event(block, 0, 0, "Transfer");
-        rocks.store_events(chain, &[event])?;
-        rocks.update_block_status(chain, block, BlockStatus::Pending)?;
-    }
-    
-    // Finalize blocks 1-3
-    println!("Finalizing blocks 1-3...");
-    for block in 1..=3 {
-        rocks.update_block_status(chain, block, BlockStatus::Final)?;
-    }
-    
-    // Simulate chain reorganization starting from block 4
-    println!("Simulating chain reorganization from block 4...");
-    rocks.delete_blocks_from(chain, 4)?;
-    
-    // Check that block 3 is the latest block
-    let latest_block = rocks.get_latest_block(chain)?;
-    println!("Latest block after reorg: {}", latest_block);
-    assert_eq!(latest_block, 3, "After reorg, latest block should be 3");
-    
-    // Add new blocks 4-6 after reorg
-    println!("Adding new blocks 4-6 after reorg...");
-    for block in 4..=6 {
-        let event = create_test_event(block, 1, 0, "NewTransfer");  // different tx_index to simulate different chain
-        rocks.store_events(chain, &[event])?;
-        rocks.update_block_status(chain, block, BlockStatus::Pending)?;
-    }
-    
-    // Verify total number of blocks
-    let latest_block = rocks.get_latest_block(chain)?;
-    println!("Latest block after adding new blocks: {}", latest_block);
-    assert_eq!(latest_block, 6, "Latest block should be 6 after adding new blocks");
-    
-    println!("Test passed!");
-    
-    Ok(())
-} 

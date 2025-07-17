@@ -4,7 +4,7 @@
 //! from parsed CosmWasm contract schemas.
 
 use super::{CosmosCodegenConfig, parser::CosmWasmSchema};
-use indexer_core::Result;
+use almanac_infrastructure_core::Result;
 use std::path::{Path, PathBuf};
 use convert_case::Casing;
 
@@ -25,7 +25,7 @@ impl CosmosContractCodegen {
         
         if !self.config.dry_run {
             tokio::fs::create_dir_all(output_dir).await
-                .map_err(|e| indexer_core::Error::Config(format!("Failed to create output directory: {}", e)))?;
+                .map_err(|e| almanac_infrastructure_core::Error::Config(format!("Failed to create output directory: {}", e)))?;
         }
 
         for feature in &self.config.features {
@@ -50,7 +50,7 @@ impl CosmosContractCodegen {
         let client_dir = output_dir.join("client");
         if !self.config.dry_run {
             tokio::fs::create_dir_all(&client_dir).await
-                .map_err(|e| indexer_core::Error::Config(format!("Failed to create client directory: {}", e)))?;
+                .map_err(|e| almanac_infrastructure_core::Error::Config(format!("Failed to create client directory: {}", e)))?;
         }
 
         // Generate basic client module
@@ -87,7 +87,7 @@ impl {}Client {{
         let storage_dir = output_dir.join("storage");
         if !self.config.dry_run {
             tokio::fs::create_dir_all(&storage_dir).await
-                .map_err(|e| indexer_core::Error::Config(format!("Failed to create storage directory: {}", e)))?;
+                .map_err(|e| almanac_infrastructure_core::Error::Config(format!("Failed to create storage directory: {}", e)))?;
         }
 
         let storage_code = format!(
@@ -112,7 +112,7 @@ pub struct {}Storage {{
         let api_dir = output_dir.join("api");
         if !self.config.dry_run {
             tokio::fs::create_dir_all(&api_dir).await
-                .map_err(|e| indexer_core::Error::Config(format!("Failed to create api directory: {}", e)))?;
+                .map_err(|e| almanac_infrastructure_core::Error::Config(format!("Failed to create api directory: {}", e)))?;
         }
 
         let api_code = format!(
@@ -137,7 +137,7 @@ pub struct {}Api {{
         let migrations_dir = output_dir.join("migrations");
         if !self.config.dry_run {
             tokio::fs::create_dir_all(&migrations_dir).await
-                .map_err(|e| indexer_core::Error::Config(format!("Failed to create migrations directory: {}", e)))?;
+                .map_err(|e| almanac_infrastructure_core::Error::Config(format!("Failed to create migrations directory: {}", e)))?;
         }
 
         let migration_sql = format!(
@@ -180,10 +180,10 @@ CREATE TABLE IF NOT EXISTS contract_state (
         } else {
             if let Some(parent) = path.parent() {
                 tokio::fs::create_dir_all(parent).await
-                    .map_err(|e| indexer_core::Error::Config(format!("Failed to create directory: {}", e)))?;
+                    .map_err(|e| almanac_infrastructure_core::Error::Config(format!("Failed to create directory: {}", e)))?;
             }
             tokio::fs::write(path, content).await
-                .map_err(|e| indexer_core::Error::Config(format!("Failed to write file {}: {}", path.display(), e)))?;
+                .map_err(|e| almanac_infrastructure_core::Error::Config(format!("Failed to write file {}: {}", path.display(), e)))?;
         }
         Ok(())
     }

@@ -22,8 +22,8 @@ mkdir -p "$TMP_DIR"
 cleanup() {
   echo -e "\n${YELLOW}Cleaning up...${NC}"
   
-  # Run the stop_db function from the Nix environment if possible
-  nix-shell db-test-shell.nix --run "stop_db" || true
+  # Run the stop_databases function from the Nix environment if possible
+  nix develop --command bash -c "stop_databases" || true
   
   echo -e "${GREEN}Done!${NC}"
 }
@@ -31,20 +31,22 @@ cleanup() {
 # Set up cleanup on script exit
 trap cleanup EXIT
 
-# Link the PostgreSQL migrations before running tests
-echo -e "${CYAN}Setting up database migrations...${NC}"
-./scripts/link-migrations.sh
+# Link the PostgreSQL migrations before running tests (if script exists)
+if [ -f "./scripts/link-migrations.sh" ]; then
+  echo -e "${CYAN}Setting up database migrations...${NC}"
+  ./scripts/link-migrations.sh
+fi
 
 echo -e "${CYAN}Starting database tests using Nix environment...${NC}"
 
 # Run the test with increased verbosity and a larger timeout
-nix-shell db-test-shell.nix --run "
+nix develop --command bash -c "
   # Initialize database
-  init_db
+  init_databases
 
   # Run storage sync tests with verbose output
   echo -e '${CYAN}Running storage sync tests...${NC}'
-  RUST_BACKTRACE=1 SQLX_OFFLINE=false cargo test -p indexer-storage --test storage_sync -- --nocapture
+  RUST_BACKTRACE=1 SQLX_OFFLINE=false cargo test -p almanac-storage --test storage_sync -- --nocapture
   
   # If we get here, tests passed
   echo -e '${GREEN}Storage tests completed successfully!${NC}'

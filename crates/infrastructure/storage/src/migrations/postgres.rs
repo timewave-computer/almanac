@@ -3,8 +3,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use sqlx::{Pool, Postgres, Transaction};
 use tracing::{debug, info, error};
 
-use indexer_core::Result;
-use indexer_core::Error;
+use almanac_infrastructure_core::Result;
+use almanac_infrastructure_core::Error;
 
 
 /// PostgreSQL migration executor

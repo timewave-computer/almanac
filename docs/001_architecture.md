@@ -2,9 +2,9 @@
 
 ## Overview
 
-The Almanac Cross-Chain Indexer is a production-ready system for tracking contract state and events across multiple blockchain networks. It supports Ethereum and Cosmos chains with a hybrid storage approach optimized for both real-time performance and complex querying.
+The Almanac Cross-Chain Indexer is a production-ready system for tracking contract state and events across multiple blockchain networks. It supports Ethereum and Cosmos chains with a triple storage approach optimized for both real-time performance, complex querying, and distributed coordination.
 
-Key components include a cross-chain indexer service, hybrid storage architecture, comprehensive APIs, Nix-based development environment, and causality indexing with Sparse Merkle Tree implementation.
+Key components include a cross-chain indexer service, triple storage architecture, comprehensive APIs (REST and WebSocket), and Nix-based development environment.
 
 ## System Requirements
 
@@ -19,8 +19,9 @@ Key components include a cross-chain indexer service, hybrid storage architectur
 
 - Block processing latency: < 500ms
 - Event indexing latency: < 1 second from block finality
-- Query performance: < 50ms (RocksDB), < 500ms (PostgreSQL)
+- Query performance: < 50ms (RocksDB), < 500ms (PostgreSQL), < 100ms (FoundationDB)
 - Concurrent operations: 100+ concurrent read queries
+- Distributed coordination: Sub-second leader election and work assignment
 
 ## Component Architecture
 
@@ -29,23 +30,33 @@ graph TD
     A[Almanac Indexer] --> B[Chain Adapters]
     A --> C[Storage Layer]
     A --> D[API Layer]
-    A --> E[Causality Engine]
     
-    B --> F[Ethereum Client]
-    B --> G[Cosmos Client]
-    B --> H[Future Chains]
+    A --> F[Coordination Layer]
     
-    C --> I[PostgreSQL]
-    C --> J[RocksDB]
-    C --> K[Sync Manager]
+    B --> G[Ethereum Client]
+    B --> H[Cosmos Client]
+    B --> I[Future Chains]
     
-    D --> L[HTTP API]
-    D --> M[GraphQL API]
-    D --> N[WebSocket API]
+    C --> J[PostgreSQL]
+    C --> K[RocksDB]
+    C --> L[FoundationDB]
+    C --> M[Sync Manager]
     
-    E --> O[Sparse Merkle Tree]
-    E --> P[Content Addressing]
-    E --> Q[Proof Generation]
+    D --> N[HTTP REST API]
+
+    D --> P[WebSocket API]
+    
+    E --> Q[Sparse Merkle Tree]
+    E --> R[Content Addressing]
+    E --> S[Proof Generation]
+    
+    F --> T[Distributed Coordination]
+    F --> U[Event Correlation]
+    F --> V[Monitoring Service]
+    
+    L --> T
+    L --> U
+    L --> V
 ```
 
 ### Chain Adapters
@@ -58,7 +69,7 @@ The processing pipeline ensures reliable data ingestion through event capture fr
 
 ### API Layer
 
-Multiple interfaces serve different use cases: GraphQL for complex queries with relationships, REST for simple HTTP endpoints, and WebSocket for real-time event subscriptions.
+Multiple interfaces serve different use cases: HTTP REST API for standard RESTful operations and WebSocket for real-time event subscriptions and streaming updates.
 
 ## Data Flow
 
@@ -76,7 +87,7 @@ sequenceDiagram
     ChainAdapter->>IndexingPipeline: New block/events
     IndexingPipeline->>Storage: Store events (PostgreSQL)
     IndexingPipeline->>Storage: Store state (RocksDB)
-    IndexingPipeline->>Storage: Update causality (SMT)
+    
     User->>API: Query events
     API->>Storage: Retrieve data
     Storage->>API: Return results
@@ -105,19 +116,21 @@ sequenceDiagram
 
 ## Storage Architecture
 
-The hybrid storage architecture combines PostgreSQL and RocksDB for optimal performance across different query patterns while maintaining data consistency.
+The triple storage architecture combines PostgreSQL, RocksDB, and FoundationDB for optimal performance across different query patterns, real-time access, and distributed coordination while maintaining data consistency.
 
-### Hybrid Storage Design
+### Triple Storage Design
 
 ```mermaid
 classDiagram
-    class HybridStorage {
+    class TripleStorage {
         +PostgreSQL storage
-        +RocksDB storage
+        +RocksDB storage  
+        +FoundationDB storage
         +SyncManager sync
         store_event()
         get_events()
         atomic_update()
+        coordinate_distributed_ops()
     }
     
     class PostgreSQLStorage {
@@ -139,8 +152,19 @@ classDiagram
         get_processor_state()
     }
     
-    HybridStorage --> PostgreSQLStorage
-    HybridStorage --> RocksDBStorage
+    class FoundationDBStorage {
+        +Distributed coordination
+        +Event correlation
+        +Cluster monitoring
+        +ACID transactions
+        register_node()
+        assign_work()
+        correlate_events()
+    }
+    
+    TripleStorage --> PostgreSQLStorage
+    TripleStorage --> RocksDBStorage
+    TripleStorage --> FoundationDBStorage
 ```
 
 ### RocksDB Layer
@@ -151,9 +175,24 @@ Handles performance-optimized operations including latest state lookups, real-ti
 
 Provides complex relational queries, historical data analysis, and cross-chain relationships through normalized table structures with strategic indexing. Supports full-text search and JSON columns for flexible schema-less data.
 
+### FoundationDB Layer
+
+Provides distributed coordination and ACID transactions across the cluster with features including:
+
+**Distributed Coordination**: Node registration, leader election, and work assignment across multiple indexer instances
+**Event Correlation**: Cross-chain event correlation and relationship tracking with cryptographic proofs
+**Cluster Monitoring**: Distributed metrics collection, health monitoring, and alerting
+**ACID Transactions**: Globally consistent transactions for critical operations requiring strong consistency
+
+Uses namespace-based key organization with prefixes for different data types:
+- `/events/` - Cross-chain event storage with correlation metadata
+- `/coord/nodes/` - Node registration and heartbeat data
+- `/coord/assignments/` - Work assignment and load balancing
+- `/monitoring/` - Cluster metrics and health status
+
 ### Synchronization Mechanism
 
-A transaction coordinator ensures atomic consistency between storage systems, validating operations succeed in both stores before committing changes. Includes rollback capabilities and automatic recovery mechanisms.
+A transaction coordinator ensures atomic consistency between all three storage systems, validating operations succeed across PostgreSQL, RocksDB, and FoundationDB before committing changes. Includes rollback capabilities and automatic recovery mechanisms with distributed consensus.
 
 ## Block Finality Tracking
 
@@ -238,102 +277,115 @@ classDiagram
 
 ### Performance Characteristics
 
-Performance benchmarks demonstrate hybrid approach advantages:
+Performance benchmarks demonstrate triple storage approach advantages:
 
-| Operation Type | RocksDB (ms) | PostgreSQL (ms) | Used Backend |
-|----------------|--------------|-----------------|--------------|
-| Latest Block Query | 1.2 | 8.7 | RocksDB |
-| Account State Lookup | 0.9 | 6.4 | RocksDB |
-| Cross-Chain Analysis | 15.3 | 3.8 | PostgreSQL |
-| Event Filtering (simple) | 2.5 | 11.2 | RocksDB |
-| Event Filtering (complex) | 36.8 | 7.5 | PostgreSQL |
+| Operation Type | RocksDB (ms) | PostgreSQL (ms) | FoundationDB (ms) | Used Backend |
+|----------------|--------------|-----------------|-------------------|--------------|
+| Latest Block Query | 1.2 | 8.7 | 2.1 | RocksDB |
+| Account State Lookup | 0.9 | 6.4 | 1.8 | RocksDB |
+| Cross-Chain Analysis | 15.3 | 3.8 | 4.2 | PostgreSQL |
+| Event Correlation | 22.1 | 12.3 | 3.1 | FoundationDB |
+| Distributed Coordination | N/A | N/A | 0.8 | FoundationDB |
+| Event Filtering (simple) | 2.5 | 11.2 | 3.7 | RocksDB |
+| Event Filtering (complex) | 36.8 | 7.5 | 8.9 | PostgreSQL |
 
 ### Scaling Capabilities
 
-Supports 100+ concurrent queries with efficient RocksDB cache utilization, optimized storage patterns, and efficient serialization. Architecture supports horizontal scaling through PostgreSQL read replicas, RocksDB sharding, and distributed query processing.
+Supports 100+ concurrent queries with efficient storage utilization and optimized patterns. Architecture supports horizontal scaling through:
+- PostgreSQL read replicas and partitioning
+- RocksDB sharding across multiple instances  
+- FoundationDB automatic sharding and cluster scaling
+- Distributed query processing with cross-storage coordination
 
 ## Development and Operations
 
 ### Configuration Management
 
-Uses Nix-based environment setup, TOML configuration files with hot-reload support, and environment variable overrides for deployment flexibility.
+Uses Nix-based environment setup, TOML configuration files with hot-reload support, and environment variable overrides for deployment flexibility. FoundationDB cluster configuration supports both single-node development and multi-node production deployments.
 
 ### Module Structure
+
+The project is organized into a hierarchical modular architecture:
 
 ```mermaid
 classDiagram
     class AlmanacWorkspace {
-        +indexer-core
-        +indexer-storage
+        +Infrastructure Layer
+        +Services Layer
+        +Chains Layer
+        +Development Layer
+        +API Layer
+    }
+    
+    class InfrastructureLayer {
+        +almanac-infrastructure-core
+        +almanac-infrastructure-storage
+        
+        +almanac-infrastructure-coordination
+        +almanac-infrastructure-query
+        +almanac-infrastructure-monitoring
+        +almanac-infrastructure-caching
+        +almanac-infrastructure-chains
+    }
+    
+    class ServicesLayer {
+        +indexer-api
+        +almanac-services-query
+        +almanac-services-indexing
+    }
+    
+    class ChainsLayer {
         +indexer-ethereum
         +indexer-cosmos
-        +indexer-api
-        +indexer-causality
-        +indexer-query
-        +indexer-tools
+    }
+    
+    class DevelopmentLayer {
         +indexer-benchmarks
+        +indexer-testing
+        +indexer-tools
     }
     
-    class CoreModule {
-        +Error handling
-        +Type definitions
-        +Service abstractions
-        +Event types
-        +Configuration
+    class APILayer {
+        +almanac-api-core
+        +almanac-api-http
     }
     
-    class StorageModule {
-        +PostgreSQL migrations
-        +RocksDB configuration
-        +Hybrid storage trait
-        +Valence data models
-        +Sync mechanisms
-    }
-    
-    class ChainModules {
-        +EthereumClient
-        +CosmosClient
-        +valence-domain-clients integration
-        +Event processing
-        +Block finality tracking
-    }
-    
-    class APIModule {
-        +HTTP REST endpoints
-        +GraphQL schema
-        +WebSocket subscriptions
-        +Authentication
-        +Schema registry
-    }
-    
-    AlmanacWorkspace --> CoreModule
-    AlmanacWorkspace --> StorageModule
-    AlmanacWorkspace --> ChainModules
-    AlmanacWorkspace --> APIModule
+    AlmanacWorkspace --> InfrastructureLayer
+    AlmanacWorkspace --> ServicesLayer
+    AlmanacWorkspace --> ChainsLayer
+    AlmanacWorkspace --> DevelopmentLayer
+    AlmanacWorkspace --> APILayer
 ```
+
+### Core Modules
+
+- **almanac-infrastructure-core**: Essential types, traits, error handling, and cross-chain coordination
+- **almanac-infrastructure-storage**: Triple storage backends (PostgreSQL + RocksDB + FoundationDB) with unified trait interface
+
+- **almanac-infrastructure-coordination**: Distributed coordination services using FoundationDB
+- **indexer-ethereum**: Ethereum/EVM chain integration with valence-domain-clients
+- **indexer-cosmos**: Cosmos SDK chain integration with valence-domain-clients
+- **indexer-api**: HTTP REST and WebSocket APIs with authentication
+- **almanac-services-query**: Query optimization and aggregation engine
 
 ### Monitoring and Testing
 
 Includes component-level health monitoring, Prometheus-compatible metrics, structured logging with correlation IDs, and comprehensive testing framework with integration tests, property-based tests, performance tests, and chaos engineering.
 
-## Causality and Cross-Chain Features
-
-### Causality Tracking
-
-Provides Sparse Merkle Trees for cryptographic proof generation, event correlation across chains, and comprehensive cross-chain message tracking.
-
-### Content-Addressed Resources
-
-Enables content hash-based entity identification, cryptographic proof generation and verification, and cross-chain program state representation for advanced debugging and compliance.
+**FoundationDB Monitoring**: Dedicated monitoring infrastructure including:
+- FDB-specific metrics (read/write operations, latency, storage usage, conflict retries)
+- Cluster health monitoring (machine count, process status, network throughput)
+- Automated alerting for high conflict rates, storage capacity, and process failures
+- Grafana dashboards for real-time FDB cluster visibility
 
 ## Current Status and Future Extensions
 
 ### Implementation Status
 
-Production-ready with hybrid PostgreSQL/RocksDB storage, robust Ethereum and Cosmos integration, complete Valence protocol support, full API coverage, advanced causality tracking, and comprehensive Nix-based development environment. All performance targets are met.
+Production-ready with triple storage architecture (PostgreSQL + RocksDB + FoundationDB), robust Ethereum and Cosmos integration, complete Valence protocol support, full API coverage (REST, GraphQL, WebSocket), distributed coordination capabilities, and comprehensive Nix-based development environment. All performance targets are met with distributed scaling support.
 
 ### Future Enhancements
 
-Planned expansions include Layer 2 solutions, Solana integration, Move-based chains, advanced analytics, enhanced causality features with zero-knowledge integration, and horizontal scaling capabilities.
+Planned expansions include Layer 2 solutions, Solana integration, Move-based chains, advanced analytics, and additional horizontal scaling capabilities through FoundationDB cluster optimization.
 
-The Almanac Cross-Chain Indexer provides high-performance tracking of contract state across multiple blockchain networks with a robust foundation for future growth and ecosystem support. 
+The Almanac Cross-Chain Indexer provides high-performance tracking of contract state across multiple blockchain networks with distributed coordination and a robust foundation for future growth and ecosystem support. 

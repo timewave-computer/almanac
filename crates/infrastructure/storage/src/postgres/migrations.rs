@@ -8,7 +8,7 @@ use tracing::{info, warn};
 #[cfg(test)]
 use sqlx::Row;
 
-use indexer_core::{Result, Error};
+use almanac_infrastructure_core::{Result, Error};
 
 /// Schema module with contract schema types
 pub mod schema {

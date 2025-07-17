@@ -1,6 +1,6 @@
 use crate::Storage;
-use indexer_core::{BlockStatus, Error, Result};
-use indexer_core::types::{Event, EventFilter};
+use almanac_infrastructure_core::{BlockStatus, Error, Result};
+use almanac_infrastructure_core::types::{Event, EventFilter};
 use crate::{
     ValenceAccountInfo, ValenceAccountLibrary, ValenceAccountExecution, ValenceAccountState,
     ValenceAuthorizationGrant, ValenceAuthorizationInfo, ValenceAuthorizationPolicy, 
@@ -13,10 +13,35 @@ use crate::{
     ValenceAuthorizationRequestDecisionRequest, ValenceLibraryVersionUpdateRequest,
     ValenceLibraryApprovalRevocationRequest,
 };
-use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use std::time::SystemTime;
+
+/// Simple event implementation for memory storage
+#[derive(Debug, Clone)]
+struct SimpleEvent {
+    id: String,
+    chain: String,
+    block_number: u64,
+    block_hash: String,
+    tx_hash: String,
+    timestamp: SystemTime,
+    event_type: String,
+    raw_data: Vec<u8>,
+}
+
+impl Event for SimpleEvent {
+    fn id(&self) -> &str { &self.id }
+    fn chain(&self) -> &str { &self.chain }
+    fn block_number(&self) -> u64 { self.block_number }
+    fn block_hash(&self) -> &str { &self.block_hash }
+    fn tx_hash(&self) -> &str { &self.tx_hash }
+    fn timestamp(&self) -> SystemTime { self.timestamp }
+    fn event_type(&self) -> &str { &self.event_type }
+    fn raw_data(&self) -> &[u8] { &self.raw_data }
+    fn as_any(&self) -> &dyn std::any::Any { self }
+}
 
 /// Simple block information for memory storage
 #[derive(Debug, Clone)]
@@ -33,7 +58,14 @@ pub struct Block {
 pub struct MemoryStorage {
     events: Arc<RwLock<Vec<Box<dyn Event>>>>,
     blocks: Arc<RwLock<HashMap<String, HashMap<u64, Block>>>>,
+    _latest_block: Arc<RwLock<u64>>,
     processor_states: Arc<RwLock<HashMap<String, serde_json::Value>>>,
+}
+
+impl Default for MemoryStorage {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MemoryStorage {
@@ -41,12 +73,22 @@ impl MemoryStorage {
         Self {
             events: Arc::new(RwLock::new(Vec::new())),
             blocks: Arc::new(RwLock::new(HashMap::new())),
+            _latest_block: Arc::new(RwLock::new(0)),
+            processor_states: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+    
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            events: Arc::new(RwLock::new(Vec::with_capacity(capacity))),
+            blocks: Arc::new(RwLock::new(HashMap::new())),
+            _latest_block: Arc::new(RwLock::new(0)),
             processor_states: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 }
 
-#[async_trait]
+#[async_trait::async_trait]
 impl Storage for MemoryStorage {
     async fn store_event(&self, event: Box<dyn Event>) -> Result<()> {
         let mut events = self.events.write().await;
@@ -54,21 +96,24 @@ impl Storage for MemoryStorage {
         Ok(())
     }
 
-    async fn get_events(&self, filters: Vec<EventFilter>) -> Result<Vec<Box<dyn Event>>> {
+    async fn get_events(&self, _filters: Vec<EventFilter>) -> Result<Vec<Box<dyn Event>>> {
         let events = self.events.read().await;
-        
-        // For memory storage, we can't clone trait objects, so we'll return empty results
-        // In a real implementation, we would store concrete types that implement Clone
-        let mut results = Vec::new();
-        
-        // For simplicity in memory storage, if no filters are provided, return empty for now
-        // This is a limitation of the memory storage implementation
-        if filters.is_empty() {
-            return Ok(results);
-        }
-        
-        // Basic filtering would go here, but since we can't clone trait objects,
-        // we return empty results. In a real memory storage, we'd store concrete types.
+        // TODO: Apply filtering based on the filters parameter
+        // For now, return all events
+        let results: Vec<Box<dyn Event>> = events.iter()
+            .map(|e| {
+                Box::new(SimpleEvent {
+                    id: e.id().to_string(),
+                    chain: e.chain().to_string(),
+                    block_number: e.block_number(),
+                    block_hash: e.block_hash().to_string(),
+                    tx_hash: e.tx_hash().to_string(),
+                    timestamp: e.timestamp(),
+                    event_type: e.event_type().to_string(),
+                    raw_data: e.raw_data().to_vec(),
+                }) as Box<dyn Event>
+            })
+            .collect();
         Ok(results)
     }
 
@@ -107,9 +152,27 @@ impl Storage for MemoryStorage {
         self.get_latest_block(chain).await
     }
 
-    async fn get_events_with_status(&self, filters: Vec<EventFilter>, _status: BlockStatus) -> Result<Vec<Box<dyn Event>>> {
+    async fn get_events_with_status(&self, _filters: Vec<EventFilter>, _status: BlockStatus) -> Result<Vec<Box<dyn Event>>> {
         // For memory storage, we don't differentiate by status
-        self.get_events(filters).await
+        // Just return all events that match any of the filters
+        let events = self.events.read().await;
+        // Clone the events manually since Box<dyn Event> doesn't implement Clone
+        let cloned_events: Vec<Box<dyn Event>> = events.iter()
+            .map(|e| {
+                // This is a workaround - in production you'd implement proper cloning
+                Box::new(SimpleEvent {
+                    id: e.id().to_string(),
+                    chain: e.chain().to_string(),
+                    block_number: e.block_number(),
+                    block_hash: e.block_hash().to_string(),
+                    tx_hash: e.tx_hash().to_string(),
+                    timestamp: e.timestamp(),
+                    event_type: e.event_type().to_string(),
+                    raw_data: e.raw_data().to_vec(),
+                }) as Box<dyn Event>
+            })
+            .collect();
+        Ok(cloned_events)
     }
 
     async fn reorg_chain(&self, chain: &str, from_block: u64) -> Result<()> {

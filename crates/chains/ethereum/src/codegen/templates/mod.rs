@@ -3,7 +3,7 @@
 //! Contains Handlebars templates for generating different types of code.
 
 use handlebars::Handlebars;
-use indexer_core::Result;
+use almanac_infrastructure_core::Result;
 
 /// Template manager for ethereum contract code generation
 pub struct EthereumTemplateManager {
@@ -25,24 +25,24 @@ impl EthereumTemplateManager {
     fn register_templates(handlebars: &mut Handlebars) -> Result<()> {
         // Client templates
         handlebars.register_template_string("client_mod", include_str!("client_mod.hbs"))
-            .map_err(|e| indexer_core::Error::Config(format!("Failed to register client_mod template: {}", e)))?;
+            .map_err(|e| almanac_infrastructure_core::Error::Config(format!("Failed to register client_mod template: {}", e)))?;
         
         handlebars.register_template_string("client_view", include_str!("client_view.hbs"))
-            .map_err(|e| indexer_core::Error::Config(format!("Failed to register client_view template: {}", e)))?;
+            .map_err(|e| almanac_infrastructure_core::Error::Config(format!("Failed to register client_view template: {}", e)))?;
         
         handlebars.register_template_string("client_transaction", include_str!("client_transaction.hbs"))
-            .map_err(|e| indexer_core::Error::Config(format!("Failed to register client_transaction template: {}", e)))?;
+            .map_err(|e| almanac_infrastructure_core::Error::Config(format!("Failed to register client_transaction template: {}", e)))?;
 
         handlebars.register_template_string("client_types", include_str!("client_types.hbs"))
-            .map_err(|e| indexer_core::Error::Config(format!("Failed to register client_types template: {}", e)))?;
+            .map_err(|e| almanac_infrastructure_core::Error::Config(format!("Failed to register client_types template: {}", e)))?;
 
         // Storage templates
         handlebars.register_template_string("storage_postgres", include_str!("storage_postgres.hbs"))
-            .map_err(|e| indexer_core::Error::Config(format!("Failed to register storage_postgres template: {}", e)))?;
+            .map_err(|e| almanac_infrastructure_core::Error::Config(format!("Failed to register storage_postgres template: {}", e)))?;
 
         // API templates
         handlebars.register_template_string("api_rest", include_str!("api_rest.hbs"))
-            .map_err(|e| indexer_core::Error::Config(format!("Failed to register api_rest template: {}", e)))?;
+            .map_err(|e| almanac_infrastructure_core::Error::Config(format!("Failed to register api_rest template: {}", e)))?;
 
         Ok(())
     }
@@ -50,7 +50,7 @@ impl EthereumTemplateManager {
     /// Render a template with the given data
     pub fn render(&self, template_name: &str, data: &serde_json::Value) -> Result<String> {
         self.handlebars.render(template_name, data)
-            .map_err(|e| indexer_core::Error::Config(format!("Failed to render template {}: {}", template_name, e)))
+            .map_err(|e| almanac_infrastructure_core::Error::Config(format!("Failed to render template {}: {}", template_name, e)))
     }
 
     /// Get list of available templates
@@ -61,6 +61,22 @@ impl EthereumTemplateManager {
 
 impl Default for EthereumTemplateManager {
     fn default() -> Self {
-        Self::new().expect("Failed to initialize template manager")
+        Self::new().expect("Default template manager creation should not fail")
     }
+}
+
+/// Setup templates - convenience function for initialization
+pub fn setup_templates() -> Result<EthereumTemplateManager> {
+    EthereumTemplateManager::new()
+}
+
+/// Render a template with the given data - convenience function
+pub fn render_template<T: serde::Serialize>(
+    template_manager: &EthereumTemplateManager,
+    template_name: &str,
+    data: &T,
+) -> Result<String> {
+    let value = serde_json::to_value(data)
+        .map_err(|e| almanac_infrastructure_core::Error::Config(format!("Failed to serialize data for template: {}", e)))?;
+    template_manager.render(template_name, &value)
 } 

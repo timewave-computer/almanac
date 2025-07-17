@@ -59,7 +59,7 @@ route:
       
     # API alerts
     - match_re:
-        component: (api|graphql)
+                  component: api
       receiver: api-team
       
     # Development environment alerts (lower priority)

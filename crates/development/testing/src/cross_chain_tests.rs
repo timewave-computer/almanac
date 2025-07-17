@@ -1,10 +1,10 @@
-use indexer_core::{
+use almanac_infrastructure_core::{
     coordination::{CoordinationService, NodeInfo, NodeCapability, NodeStatus},
     distributed_correlation::{EventCorrelation, CorrelationType, EventReference},
     types::{ChainId, EventFilter},
     Result,
 };
-use indexer_storage::fdb_coordination::FdbCoordinationService;
+use almanac_infrastructure_storage::fdb_coordination::FdbCoordinationService;
 use std::sync::Arc;
 use tokio::time::{sleep, Duration};
 
@@ -129,7 +129,7 @@ async fn test_cross_chain_message_tracking() -> Result<()> {
 
 #[tokio::test]
 async fn test_multi_chain_indexing_consistency() -> Result<()> {
-    use indexer_core::distributed_event_service::{
+    use almanac_infrastructure_core::distributed_event_service::{
         DistributedEventService, DistributedEventConfig, PartitionStrategy
     };
     
@@ -181,7 +181,7 @@ async fn test_multi_chain_indexing_consistency() -> Result<()> {
 
 #[tokio::test]
 async fn test_cross_chain_finality_handling() -> Result<()> {
-    use indexer_core::BlockStatus;
+    use almanac_infrastructure_core::BlockStatus;
     
     // Different chains have different finality mechanisms
     struct ChainFinality {

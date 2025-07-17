@@ -4,37 +4,31 @@
 // including PostgreSQL and RocksDB
 
 // Re-export from core
-pub use indexer_core::{Error, Result, BlockStatus};
+pub use almanac_infrastructure_core::{Error, Result, BlockStatus};
 
 // Common module imports
-use indexer_core::types::Event;
-use indexer_core::types::EventFilter;
+use almanac_infrastructure_core::types::Event;
+use almanac_infrastructure_core::types::EventFilter;
 use serde::{Serialize, Deserialize};
 use std::sync::Arc;
 
+// Core modules
+pub mod backend;
+
 // Conditional modules based on features
 pub mod memory;
-
-#[cfg(feature = "rocks")]
-pub mod rocks;
-
-#[cfg(feature = "fdb")]
-pub mod fdb;
-
-#[cfg(feature = "fdb")]
-pub mod fdb_coordination;
-
-#[cfg(feature = "fdb")]
-pub mod fdb_event_correlation;
-
-#[cfg(feature = "fdb")]
-pub mod fdb_monitoring;
-
-#[cfg(feature = "postgres")]
 pub mod postgres;
+pub mod rocks;
+pub mod archival;
+pub mod backup_restore;
+pub mod sync;
+pub mod core_migrations;
+
+// Hybrid storage (requires both postgres and rocks features)
+#[cfg(all(feature = "postgres", feature = "rocks"))]
+pub mod hybrid;
 
 // Common modules
-pub mod sync;
 pub mod optimization;
 
 // For testing only
@@ -340,17 +334,7 @@ pub async fn create_postgres_storage(connection_string: &str) -> Result<BoxedSto
     Ok(Arc::new(storage))
 }
 
-#[cfg(feature = "fdb")]
-pub async fn create_fdb_storage(cluster_file: Option<&str>, namespace: &str) -> Result<BoxedStorage> {
-    use fdb::{FdbConfig, FdbStorage};
-    
-    let config = FdbConfig {
-        cluster_file: cluster_file.map(|s| s.to_string()),
-        namespace: namespace.to_string(),
-    };
-    let storage = FdbStorage::new(config).await?;
-    Ok(Arc::new(storage))
-}
+
 
 // Re-export repositories from postgres module
 #[cfg(feature = "postgres")]
@@ -363,6 +347,21 @@ pub use postgres::migrations::schema::{
     ContractSchemaRegistry,
     InMemorySchemaRegistry,
 };
+
+// Re-export backend types
+pub use backend::{
+    StorageBackend, StorageFactory, BackendSelector,
+    PostgresBackendConfig, WorkloadCharacteristics, DataVolume,
+};
+
+#[cfg(feature = "rocks")]
+pub use backend::RocksBackendConfig;
+
+#[cfg(feature = "memory")]
+pub use backend::MemoryBackendConfig;
+
+#[cfg(all(feature = "postgres", feature = "rocks"))]
+pub use backend::{HybridConfig, QueryRouting};
 
 /// Request for updating valence library approval
 #[derive(Debug, Clone)]

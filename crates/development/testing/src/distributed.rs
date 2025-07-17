@@ -1,8 +1,8 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use indexer_core::coordination::{NodeInfo, NodeCapabilities, NodeStatus};
-use indexer_storage::fdb::{FdbConfig, FdbStorage};
-use indexer_storage::fdb_coordination::FdbCoordinationService;
+use almanac_infrastructure_core::coordination::{NodeInfo, NodeCapabilities, NodeStatus};
+use almanac_infrastructure_storage::fdb::{FdbConfig, FdbStorage};
+use almanac_infrastructure_storage::fdb_coordination::FdbCoordinationService;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -213,7 +213,7 @@ impl DistributedTestScenarios {
     
     /// Test work distribution and rebalancing
     pub async fn test_work_distribution(cluster: &DistributedTestCluster) -> Result<()> {
-        use indexer_core::coordination::{WorkAssignment, WorkType, WorkDistributor};
+        use almanac_infrastructure_core::coordination::{WorkAssignment, WorkType, WorkDistributor};
         
         info!("Testing work distribution...");
         
@@ -259,7 +259,7 @@ impl DistributedTestScenarios {
     
     /// Test node failure and recovery
     pub async fn test_node_failure_recovery(cluster: &DistributedTestCluster) -> Result<()> {
-        use indexer_core::coordination::{HealthMonitor, WorkType, WorkAssignment};
+        use almanac_infrastructure_core::coordination::{HealthMonitor, WorkType, WorkAssignment};
         
         info!("Testing node failure and recovery...");
         
@@ -312,7 +312,7 @@ impl DistributedTestScenarios {
 /// Integration test helpers
 pub mod helpers {
     use super::*;
-    use indexer_core::{Event, EventType, UnifiedEvent};
+    use almanac_infrastructure_core::{Event, EventType, UnifiedEvent};
     
     /// Generate test events
     pub fn generate_test_events(count: usize, chain_id: &str) -> Vec<Box<dyn Event>> {
@@ -345,7 +345,7 @@ pub mod helpers {
         source_chain: &str,
         target_chain: &str,
     ) -> Result<()> {
-        use indexer_core::distributed_correlation::{
+        use almanac_infrastructure_core::distributed_correlation::{
             DistributedEventCorrelator, EventCorrelation, CorrelationType,
         };
         

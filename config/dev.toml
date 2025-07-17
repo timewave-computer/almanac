@@ -4,7 +4,7 @@
 host = "127.0.0.1"
 port = 8080
 enable_http = true
-enable_graphql = true
+
 
 [storage]
 rocksdb_path = "./data/rocks_dev"

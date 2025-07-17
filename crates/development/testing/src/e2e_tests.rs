@@ -1,11 +1,11 @@
-use indexer_core::{
+use almanac_infrastructure_core::{
     Result, Error,
     service::{EventService, BoxedEventService},
     types::{ChainId, EventFilter, ApiConfig},
     coordination::{CoordinationService, NodeInfo, NodeCapability, NodeStatus},
     distributed_event_service::{DistributedEventService, DistributedEventConfig, PartitionStrategy},
 };
-use indexer_storage::{
+use almanac_infrastructure_storage::{
     Storage, StorageBackend,
     fdb::{FdbStorage, FdbConfig},
     fdb_coordination::FdbCoordinationService,
@@ -288,7 +288,7 @@ async fn test_storage_proof_generation() -> Result<()> {
 
 #[tokio::test]
 async fn test_distributed_query_validation() -> Result<()> {
-    use indexer_core::distributed_query_planner::{
+    use almanac_infrastructure_core::distributed_query_planner::{
         DistributedQueryPlanner, QueryRoutingService
     };
     
@@ -378,7 +378,7 @@ async fn test_distributed_query_validation() -> Result<()> {
 
 // Helper functions
 
-fn create_test_event(chain: &str, block: u64, event_type: &str) -> Box<dyn indexer_core::event::Event> {
+fn create_test_event(chain: &str, block: u64, event_type: &str) -> Box<dyn almanac_infrastructure_core::event::Event> {
     // Mock event implementation
     struct TestEvent {
         chain: String,
@@ -386,9 +386,9 @@ fn create_test_event(chain: &str, block: u64, event_type: &str) -> Box<dyn index
         event_type: String,
     }
     
-    impl indexer_core::event::Event for TestEvent {
-        fn id(&self) -> indexer_core::event::EventId {
-            indexer_core::event::EventId(format!("{}-{}-{}", self.chain, self.block, self.event_type))
+    impl almanac_infrastructure_core::event::Event for TestEvent {
+        fn id(&self) -> almanac_infrastructure_core::event::EventId {
+            almanac_infrastructure_core::event::EventId(format!("{}-{}-{}", self.chain, self.block, self.event_type))
         }
         
         fn chain(&self) -> &ChainId {
@@ -400,12 +400,12 @@ fn create_test_event(chain: &str, block: u64, event_type: &str) -> Box<dyn index
             self.block
         }
         
-        fn block_hash(&self) -> indexer_core::event::BlockHash {
-            indexer_core::event::BlockHash(format!("0x{:064x}", self.block))
+        fn block_hash(&self) -> almanac_infrastructure_core::event::BlockHash {
+            almanac_infrastructure_core::event::BlockHash(format!("0x{:064x}", self.block))
         }
         
-        fn tx_hash(&self) -> indexer_core::event::TxHash {
-            indexer_core::event::TxHash(format!("0x{:064x}", self.block * 1000))
+        fn tx_hash(&self) -> almanac_infrastructure_core::event::TxHash {
+            almanac_infrastructure_core::event::TxHash(format!("0x{:064x}", self.block * 1000))
         }
         
         fn event_type(&self) -> &str {
@@ -430,7 +430,7 @@ fn create_test_event(chain: &str, block: u64, event_type: &str) -> Box<dyn index
 
 fn create_mock_storage() -> impl Storage {
     // Return a mock storage implementation
-    indexer_storage::MemoryStorage::new()
+    almanac_infrastructure_storage::MemoryStorage::new()
 }
 
 fn create_mock_event_service() -> impl EventService {
@@ -443,7 +443,7 @@ fn create_mock_event_service() -> impl EventService {
             Box::leak(Box::new(ChainId("ethereum".to_string())))
         }
         
-        async fn get_events(&self, _filters: Vec<EventFilter>) -> Result<Vec<Box<dyn indexer_core::event::Event>>> {
+        async fn get_events(&self, _filters: Vec<EventFilter>) -> Result<Vec<Box<dyn almanac_infrastructure_core::event::Event>>> {
             Ok(vec![])
         }
         
@@ -451,11 +451,11 @@ fn create_mock_event_service() -> impl EventService {
             Ok(1000000)
         }
         
-        async fn get_latest_block_with_status(&self, _chain: &str, _status: indexer_core::BlockStatus) -> Result<u64> {
+        async fn get_latest_block_with_status(&self, _chain: &str, _status: almanac_infrastructure_core::BlockStatus) -> Result<u64> {
             Ok(999000)
         }
         
-        async fn subscribe(&self) -> Result<tokio::sync::mpsc::Receiver<Box<dyn indexer_core::event::Event>>> {
+        async fn subscribe(&self) -> Result<tokio::sync::mpsc::Receiver<Box<dyn almanac_infrastructure_core::event::Event>>> {
             let (tx, rx) = tokio::sync::mpsc::channel(100);
             Ok(rx)
         }

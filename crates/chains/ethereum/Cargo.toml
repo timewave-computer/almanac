@@ -17,7 +17,7 @@ codegen = ["ethabi", "handlebars", "clap", "chrono", "convert_case", "sha3", "he
 
 [dependencies]
 # Core indexer dependencies (keep these for interface compatibility)
-indexer-core = { path = "../../infrastructure/core" }
+almanac-infrastructure-core = { path = "../../infrastructure/core" }
 
 # Minimal async support
 async-trait.workspace = true

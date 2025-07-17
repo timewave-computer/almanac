@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use foundationdb::api::{FdbApiBuilder, NetworkStop};
 use foundationdb::{Database, FdbResult, KeySelector, RangeOption, Transaction};
 use futures::TryStreamExt;
-use indexer_core::{
+use almanac_infrastructure_core::{
     Block, BlockStatus, ChainId, Event, EventFilter, EventType, Storage, UnifiedEvent,
 };
 use serde::{Deserialize, Serialize};
@@ -390,21 +390,21 @@ impl Storage for FdbStorage {
     // Valence-specific methods - minimal implementation for distributed storage focus
     async fn store_valence_account_instantiation(
         &self,
-        _account_info: indexer_core::ValenceAccountInfo,
+        _account_info: almanac_infrastructure_core::ValenceAccountInfo,
     ) -> Result<(), Box<dyn std::error::Error>> {
         Err("Valence account storage not implemented in FDB backend".into())
     }
 
     async fn store_valence_account_config_update(
         &self,
-        _config_update: indexer_core::ValenceAccountConfigUpdate,
+        _config_update: almanac_infrastructure_core::ValenceAccountConfigUpdate,
     ) -> Result<(), Box<dyn std::error::Error>> {
         Err("Valence account config storage not implemented in FDB backend".into())
     }
 
     async fn store_valence_account_library_approval(
         &self,
-        _approval: indexer_core::ValenceAccountLibraryApproval,
+        _approval: almanac_infrastructure_core::ValenceAccountLibraryApproval,
     ) -> Result<(), Box<dyn std::error::Error>> {
         Err("Valence library approval storage not implemented in FDB backend".into())
     }
@@ -418,7 +418,7 @@ impl Storage for FdbStorage {
 
     async fn store_valence_account_action(
         &self,
-        _action: indexer_core::ValenceAccountAction,
+        _action: almanac_infrastructure_core::ValenceAccountAction,
     ) -> Result<(), Box<dyn std::error::Error>> {
         Err("Valence account action storage not implemented in FDB backend".into())
     }
@@ -430,7 +430,7 @@ impl Storage for FdbStorage {
         Err("Valence account action status update not implemented in FDB backend".into())
     }
 
-    async fn get_valence_account_info(&self, _account_id: &str) -> Result<Option<indexer_core::ValenceAccountInfo>, Box<dyn std::error::Error>> {
+    async fn get_valence_account_info(&self, _account_id: &str) -> Result<Option<almanac_infrastructure_core::ValenceAccountInfo>, Box<dyn std::error::Error>> {
         Ok(None)
     }
 
@@ -439,14 +439,14 @@ impl Storage for FdbStorage {
         _account_id: &str,
         _limit: Option<usize>,
         _offset: Option<usize>,
-    ) -> Result<Vec<indexer_core::ValenceAccountAction>, Box<dyn std::error::Error>> {
+    ) -> Result<Vec<almanac_infrastructure_core::ValenceAccountAction>, Box<dyn std::error::Error>> {
         Ok(Vec::new())
     }
 
     async fn store_valence_processor_instantiation(
         &self,
-        _processor_info: indexer_core::ValenceProcessorInfo,
-        _initial_config: Option<indexer_core::ValenceProcessorConfig>,
+        _processor_info: almanac_infrastructure_core::ValenceProcessorInfo,
+        _initial_config: Option<almanac_infrastructure_core::ValenceProcessorConfig>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         Err("Valence processor storage not implemented in FDB backend".into())
     }
@@ -499,15 +499,15 @@ impl Storage for FdbStorage {
 
     async fn store_valence_authorization_instantiation(
         &self,
-        _auth_info: indexer_core::ValenceAuthorizationInfo,
-        _initial_policy: Option<indexer_core::ValenceAuthorizationPolicy>,
+        _auth_info: almanac_infrastructure_core::ValenceAuthorizationInfo,
+        _initial_policy: Option<almanac_infrastructure_core::ValenceAuthorizationPolicy>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         Err("Valence authorization storage not implemented in FDB backend".into())
     }
 
     async fn store_valence_authorization_policy(
         &self,
-        _policy: indexer_core::ValenceAuthorizationPolicy,
+        _policy: almanac_infrastructure_core::ValenceAuthorizationPolicy,
     ) -> Result<(), Box<dyn std::error::Error>> {
         Err("Valence authorization policy storage not implemented in FDB backend".into())
     }
@@ -521,7 +521,7 @@ impl Storage for FdbStorage {
 
     async fn store_valence_authorization_grant(
         &self,
-        _grant: indexer_core::ValenceAuthorizationGrant,
+        _grant: almanac_infrastructure_core::ValenceAuthorizationGrant,
     ) -> Result<(), Box<dyn std::error::Error>> {
         Err("Valence authorization grant storage not implemented in FDB backend".into())
     }
@@ -535,7 +535,7 @@ impl Storage for FdbStorage {
 
     async fn store_valence_authorization_request(
         &self,
-        _request: indexer_core::ValenceAuthorizationRequest,
+        _request: almanac_infrastructure_core::ValenceAuthorizationRequest,
     ) -> Result<(), Box<dyn std::error::Error>> {
         Err("Valence authorization request storage not implemented in FDB backend".into())
     }
@@ -549,15 +549,15 @@ impl Storage for FdbStorage {
 
     async fn store_valence_library_instantiation(
         &self,
-        _library_info: indexer_core::ValenceLibraryInfo,
-        _initial_version: Option<indexer_core::ValenceLibraryVersion>,
+        _library_info: almanac_infrastructure_core::ValenceLibraryInfo,
+        _initial_version: Option<almanac_infrastructure_core::ValenceLibraryVersion>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         Err("Valence library storage not implemented in FDB backend".into())
     }
 
     async fn store_valence_library_version(
         &self,
-        _version: indexer_core::ValenceLibraryVersion,
+        _version: almanac_infrastructure_core::ValenceLibraryVersion,
     ) -> Result<(), Box<dyn std::error::Error>> {
         Err("Valence library version storage not implemented in FDB backend".into())
     }
@@ -571,7 +571,7 @@ impl Storage for FdbStorage {
 
     async fn store_valence_library_approval(
         &self,
-        _approval: indexer_core::ValenceLibraryApproval,
+        _approval: almanac_infrastructure_core::ValenceLibraryApproval,
     ) -> Result<(), Box<dyn std::error::Error>> {
         Err("Valence library approval storage not implemented in FDB backend".into())
     }
@@ -585,16 +585,16 @@ impl Storage for FdbStorage {
 
     async fn store_valence_library_usage(
         &self,
-        _usage: indexer_core::ValenceLibraryUsage,
+        _usage: almanac_infrastructure_core::ValenceLibraryUsage,
     ) -> Result<(), Box<dyn std::error::Error>> {
         Err("Valence library usage storage not implemented in FDB backend".into())
     }
 
-    async fn get_valence_account_policies(&self, _account_id: &str) -> Result<Vec<indexer_core::ValenceAuthorizationPolicy>, Box<dyn std::error::Error>> {
+    async fn get_valence_account_policies(&self, _account_id: &str) -> Result<Vec<almanac_infrastructure_core::ValenceAuthorizationPolicy>, Box<dyn std::error::Error>> {
         Ok(Vec::new())
     }
 
-    async fn get_valence_authorization_grants(&self, _subject_account: &str) -> Result<Vec<indexer_core::ValenceAuthorizationGrant>, Box<dyn std::error::Error>> {
+    async fn get_valence_authorization_grants(&self, _subject_account: &str) -> Result<Vec<almanac_infrastructure_core::ValenceAuthorizationGrant>, Box<dyn std::error::Error>> {
         Ok(Vec::new())
     }
 
@@ -607,7 +607,7 @@ impl Storage for FdbStorage {
         _library_id: &str,
         _limit: Option<usize>,
         _offset: Option<usize>,
-    ) -> Result<Vec<indexer_core::ValenceLibraryUsage>, Box<dyn std::error::Error>> {
+    ) -> Result<Vec<almanac_infrastructure_core::ValenceLibraryUsage>, Box<dyn std::error::Error>> {
         Ok(Vec::new())
     }
 
@@ -671,7 +671,7 @@ impl Storage for FdbStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use indexer_core::EventType;
+    use almanac_infrastructure_core::EventType;
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     struct TestEvent {

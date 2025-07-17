@@ -16,8 +16,7 @@ The monitoring stack includes:
 
 1. **Start the monitoring stack**:
    ```bash
-   cd monitoring
-   docker-compose up -d
+   nix develop --command start-monitoring
    ```
 
 2. **Access the services**:
@@ -142,8 +141,7 @@ Detailed runbooks are provided in the `runbooks/` directory:
 
 1. **Prometheus data**:
    ```bash
-   docker exec almanac-prometheus promtool tsdb snapshot /prometheus
-   docker cp almanac-prometheus:/prometheus/snapshots ./backups/
+   nix develop --command backup-prometheus
    ```
 
 2. **Grafana dashboards**:
@@ -155,11 +153,7 @@ Detailed runbooks are provided in the `runbooks/` directory:
 
 3. **Restore from backup**:
    ```bash
-   docker-compose down
-   docker volume rm monitoring_prometheus-data
-   docker volume create monitoring_prometheus-data
-   # Copy backup data to volume
-   docker-compose up -d
+   nix develop --command restore-prometheus --backup-path ./backups/snapshot-xxx
    ```
 
 ## Troubleshooting

@@ -3,13 +3,13 @@
 // Purpose: Provides functionality to query chain state at specific block heights
 // and track state transitions over time.
 
-use indexer_core::Error;
-use indexer_storage::BoxedStorage;
+use almanac_infrastructure_core::Error;
+use almanac_infrastructure_storage::BoxedStorage;
 use serde::{Serialize, Deserialize};
 use chrono::{DateTime, Utc};
 use crate::ChainId;
 
-// Define the types that were imported from indexer_storage
+// Define the types that were imported from almanac_infrastructure_storage
 type BlockRange = (u64, u64);
 type BlockHeight = u64;
 

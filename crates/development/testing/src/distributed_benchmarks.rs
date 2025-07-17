@@ -16,8 +16,8 @@ use serde::{Serialize, Deserialize};
 use crate::{BenchmarkConfig, fixtures};
 use crate::benchmarks::{BenchmarkResults, calculate_latency_statistics};
 use crate::distributed::DistributedTestCluster;
-use indexer_core::coordination::{NodeCapabilities, WorkType, WorkAssignment};
-use indexer_core::distributed_query::{DistributedQuery, QueryResult};
+use almanac_infrastructure_core::coordination::{NodeCapabilities, WorkType, WorkAssignment};
+use almanac_infrastructure_core::distributed_query::{DistributedQuery, QueryResult};
 use uuid::Uuid;
 
 /// Distributed benchmark suite
@@ -359,7 +359,7 @@ impl DistributedBenchmarkSuite {
                     let nodes = self.cluster.get_active_nodes().await?;
                     for node in nodes.iter().take(3) {
                         let _ = self.cluster.coordination
-                            .update_node_status(&node.node_id, indexer_core::coordination::NodeStatus::Active)
+                            .update_node_status(&node.node_id, almanac_infrastructure_core::coordination::NodeStatus::Active)
                             .await;
                     }
                 }
@@ -425,7 +425,7 @@ impl DistributedBenchmarkSuite {
         let load_balance_scores = Arc::new(RwLock::new(Vec::new()));
 
         // Create work distributor
-        use indexer_core::coordination::WorkDistributor;
+        use almanac_infrastructure_core::coordination::WorkDistributor;
         let distributor = WorkDistributor::new(
             Box::new(self.cluster.coordination.clone()),
             Default::default(),
@@ -525,7 +525,7 @@ impl DistributedBenchmarkSuite {
             tokio::time::sleep(Duration::from_millis(500)).await;
 
             // Check if work was redistributed
-            use indexer_core::coordination::HealthMonitor;
+            use almanac_infrastructure_core::coordination::HealthMonitor;
             let monitor = HealthMonitor::new(
                 Box::new(self.cluster.coordination.clone()),
                 Default::default(),
@@ -834,7 +834,7 @@ fn calculate_load_balance_score(assignments: &[WorkAssignment]) -> f64 {
 async fn simulate_node_data_transfer(
     source: &str,
     target: &str,
-    data: &[Box<dyn indexer_core::types::Event>],
+    data: &[Box<dyn almanac_infrastructure_core::types::Event>],
 ) -> Result<u64> {
     // Calculate data size (approximate)
     let bytes_per_event = 1024; // 1KB per event

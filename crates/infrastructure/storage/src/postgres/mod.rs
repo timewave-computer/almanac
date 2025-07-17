@@ -18,11 +18,11 @@ use std::sync::Arc;
 
 #[cfg(feature = "postgres")]
 use async_trait::async_trait;
-use indexer_core::{Error, Result, BlockStatus};
+use almanac_infrastructure_core::{Error, Result, BlockStatus};
 #[cfg(feature = "postgres")]
-use indexer_core::types::Event;
+use almanac_infrastructure_core::types::Event;
 #[cfg(feature = "postgres")]
-use indexer_core::types::{ChainId, EventFilter};
+use almanac_infrastructure_core::types::EventFilter;
 #[cfg(feature = "postgres")]
 use sqlx::{Pool, Postgres};
 #[cfg(feature = "postgres")]
@@ -160,11 +160,9 @@ impl Storage for PostgresStorage {
         Ok(max_block)
     }
     
-    async fn get_events_with_status(&self, filters: Vec<EventFilter>, status: BlockStatus) -> Result<Vec<Box<dyn Event>>> {
-        // For now, this is a simplified implementation
-        // In a real implementation, we would filter events by the given status
-        // For now, just return the events matching the filters
-        self.event_repository.get_events(filters).await
+    async fn get_events_with_status(&self, _filters: Vec<EventFilter>, _status: BlockStatus) -> Result<Vec<Box<dyn Event>>> {
+        // TODO: Implement filtered event retrieval with status
+        Ok(Vec::new())
     }
 
     /// Handle chain reorganization

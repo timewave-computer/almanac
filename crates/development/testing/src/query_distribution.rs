@@ -5,8 +5,8 @@
 
 use anyhow::Result;
 use async_trait::async_trait;
-use indexer_core::coordination::{QueryDistribution, QueryPlan, QueryNode};
-use indexer_core::distributed_query::{DistributedQuery, QueryResult, QueryValidation};
+use almanac_infrastructure_core::coordination::{QueryDistribution, QueryPlan, QueryNode};
+use almanac_infrastructure_core::distributed_query::{DistributedQuery, QueryResult, QueryValidation};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -456,7 +456,7 @@ pub struct ResultValidation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use indexer_core::distributed_query::QueryFilter;
+    use almanac_infrastructure_core::distributed_query::QueryFilter;
 
     #[tokio::test]
     async fn test_query_syntax_validation() {

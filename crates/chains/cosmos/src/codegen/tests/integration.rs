@@ -1,7 +1,7 @@
 //! Integration tests for cosmos contract code generation
 
 use crate::codegen::{CosmosCodegenConfig, parser::*, CosmosContractCodegen};
-use indexer_core::Result;
+use almanac_infrastructure_core::Result;
 use std::fs;
 use tempfile::TempDir;
 use std::collections::HashMap;

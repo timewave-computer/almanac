@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::path::Path;
 use tokio::sync::Mutex;
 use serde::{Serialize, Deserialize};
-use indexer_core::Error;
+use almanac_infrastructure_core::Error;
 use super::{Measurement, BenchmarkReport};
 
 /// Type alias for benchmark test function

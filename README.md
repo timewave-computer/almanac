@@ -10,7 +10,7 @@ The project has been reorganized into cohesive submodules for better maintainabi
 Core system components and foundational services:
 - **`core/`** - Core types, traits, error handling, and cross-chain coordination
 - **`storage/`** - Dual storage backends (PostgreSQL + RocksDB) with unified trait interface  
-- **`causality/`** - Event ordering and causality tracking with SMT (Sparse Merkle Tree)
+
 
 ### **Chains** (`crates/chains/`)
 Blockchain-specific integrations:
@@ -19,7 +19,7 @@ Blockchain-specific integrations:
 
 ### **Services** (`crates/services/`)
 User-facing services and APIs:
-- **`api/`** - GraphQL and REST API endpoints with authentication
+- **`api/`** - REST API endpoints with authentication
 - **`query/`** - Query optimization and aggregation engine
 
 ### **Development** (`crates/development/`)
@@ -43,8 +43,8 @@ End-to-end integration tests and test runners
 │  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘           │
 │                                                                            │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐           │
-│  │Code         │ │Cross-Chain  │ │Causality    │ │Extension    │           │
-│  │Generation   │ │Aggregator   │ │Indexer      │ │Framework    │           │
+│  │Code         │ │Cross-Chain  │ │Monitoring   │ │Extension    │           │
+│  │Generation   │ │Aggregator   │ │System       │ │Framework    │           │
 │  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘           │
 │                                                                            │
 │  Contract Code Generation System:                                         │

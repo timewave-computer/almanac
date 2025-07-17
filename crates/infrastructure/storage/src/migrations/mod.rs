@@ -16,7 +16,7 @@ use std::path::Path;
 use std::fs;
 
 #[cfg(feature = "postgres")]
-use indexer_core::{Error, Result};
+use almanac_infrastructure_core::{Error, Result};
 
 #[cfg(feature = "postgres")]
 pub mod postgres;

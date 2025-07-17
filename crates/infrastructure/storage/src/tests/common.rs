@@ -2,7 +2,7 @@
 use std::time::{SystemTime, Duration};
 use std::any::Any;
 
-use indexer_core::types::Event;
+use almanac_infrastructure_core::types::Event;
 use rand::{thread_rng, Rng};
 
 /// Assert that a duration is less than an expected maximum

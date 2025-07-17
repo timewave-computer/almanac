@@ -1,1052 +1,223 @@
-# This file defines a Nix flake for the Almanac project with CosmWasm support.
 {
   description = "Almanac: Cross-chain event indexer and processor";
 
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
-    flake-parts.url = "github:hercules-ci/flake-parts";
-    rust-overlay.url = "github:oxalica/rust-overlay";
-    fenix = {
-      url = "github:nix-community/fenix";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    flake-utils.url = "github:numtide/flake-utils";
+    
+    # Blockchain development environments
+    fdb = {
+      url = "path:./nix/fdb";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    crane = {
-      url = "github:ipetkov/crane";
+    
+    ethereum = {
+      url = "path:./nix/ethereum";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    crate2nix = {
-      url = "github:kolloch/crate2nix";
-      flake = false;
-    };
-    foundry = {
-      url = "github:shazow/foundry.nix/monthly"; # Use monthly for stability
+    
+    cosmos = {
+      url = "path:./nix/cosmos";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    # Add workflow environments
-    workflows = {
-      url = "path:./nix/environments";
+    
+    solana = {
+      url = "path:./nix/solana";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
-  outputs = inputs@{ self, nixpkgs, flake-parts, fenix, crane, rust-overlay, foundry, workflows, crate2nix, ... }:
-    # Create a simplified flake that directly specifies outputs without using modules
-    flake-parts.lib.mkFlake { inherit self inputs; } {
-      systems = [ "aarch64-darwin" "x86_64-linux" ]; # Add systems as needed
-      
-      # Include the database-module from the local nix directory
-      imports = [];
-      
-      perSystem = { config, self', inputs', pkgs, system, ... }:
-        let
-          # Use pkgs.lib for convenience
-          lib = pkgs.lib;
+  outputs = inputs@{ self, nixpkgs, flake-utils, fdb, ethereum, cosmos, solana, ... }:
+    flake-utils.lib.eachSystem [ "aarch64-darwin" "x86_64-linux" ] (system:
+      let
+        pkgs = nixpkgs.legacyPackages.${system};
+        lib = pkgs.lib;
+        
+        # For macOS, set a deployment target
+        darwinDeploymentTarget = "11.0";
+        
+        # Import packages from subflakes
+        fdb-packages = fdb.packages.${system};
+        ethereum-packages = ethereum.packages.${system};
+        cosmos-packages = cosmos.packages.${system};
+        solana-packages = solana.packages.${system};
+        
+        # Create a set of common environment variables
+        commonEnv = {
+          MACOSX_DEPLOYMENT_TARGET = darwinDeploymentTarget;
+          DEVELOPER_DIR = "";
+        };
+        
+        # Combined development shell with all blockchain tools
+        combinedDevShell = pkgs.mkShell {
+          name = "almanac-development";
           
-          # For macOS, set a deployment target
-          darwinDeploymentTarget = "11.0";
-          
-          # Create a set of common environment variables
-          commonEnv = {
-            # Always set MACOSX_DEPLOYMENT_TARGET, it won't affect non-macOS systems
-            MACOSX_DEPLOYMENT_TARGET = darwinDeploymentTarget;
-            # Clear the DEVELOPER_DIR variable to fix linking issues on macOS
-            DEVELOPER_DIR = "";
-          };
-          
-          # Build the Rust project using crate2nix (conditionally)
-          project = if builtins.pathExists ./Cargo.nix then import ./Cargo.nix {
-            inherit pkgs;
+          packages = [ 
+            # Rust toolchain
+            pkgs.rustc
+            pkgs.cargo
+            pkgs.pkg-config 
+            pkgs.openssl
+            pkgs.curl
+            pkgs.jq
             
-            # Optimize for development builds by default
-            rootFeatures = [ "default" ];
-            release = false; # Use debug builds in development
+            # FoundationDB
+            fdb-packages.foundationdb
+            fdb-packages.fdb-manage
+            fdb-packages.fdb-init
+            fdb-packages.fdb-config-generator
             
-            # Enhanced crate overrides for optimal compilation
-            defaultCrateOverrides = pkgs.defaultCrateOverrides // {
-              # Core crate optimizations
-              indexer-core = attrs: {
-                # Minimal features for faster builds
-                features = attrs.features or [] ++ [ "basic" ];
-                buildInputs = lib.optionals pkgs.stdenv.isDarwin [
-                  pkgs.darwin.apple_sdk.frameworks.Security
-                  pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
-                ];
-              };
-              
-              # Storage crate - heavy compilation optimizations
-              indexer-storage = attrs: {
-                # Start with memory backend only
-                features = attrs.features or [] ++ [ "memory" ];
-                
-                nativeBuildInputs = with pkgs; [
-                  pkg-config
-                  cmake
-                ] ++ lib.optionals (builtins.elem "postgres" (attrs.features or [])) [
-                  sqlx-cli
-                ] ++ lib.optionals (builtins.elem "rocks" (attrs.features or [])) [
-                  cmake
-                ];
-                
-                buildInputs = lib.optionals (builtins.elem "postgres" (attrs.features or [])) [
-                  pkgs.postgresql_15
-                ] ++ lib.optionals (builtins.elem "rocks" (attrs.features or [])) [
-                  rocksdb-custom
-                  pkgs.zlib
-                  pkgs.bzip2
-                  pkgs.lz4
-                  pkgs.zstd
-                  pkgs.snappy
-                ] ++ lib.optionals pkgs.stdenv.isDarwin [
-                  pkgs.darwin.apple_sdk.frameworks.Security
-                  pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
-                ];
-                
-                # Conditional environment setup
-                preBuild = lib.optionalString (builtins.elem "postgres" (attrs.features or [])) ''
-                  export SQLX_OFFLINE=true
-                '' + lib.optionalString (builtins.elem "rocks" (attrs.features or [])) ''
-                  export ROCKSDB_LIB_DIR="${rocksdb-custom}/lib"
-                  export ROCKSDB_INCLUDE_DIR="${rocksdb-custom}/include"
-                  export PKG_CONFIG_PATH="${rocksdb-custom}/lib/pkgconfig"
-                '';
-              };
-              
-              # API crate - conditional feature builds
-              indexer-api = attrs: {
-                features = attrs.features or [] ++ [ "rest" ]; # Minimal by default
-                buildInputs = lib.optionals pkgs.stdenv.isDarwin [
-                  pkgs.darwin.apple_sdk.frameworks.Security
-                  pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
-                ];
-              };
-              
-              # Testing crate - only include when needed
-              indexer-testing = attrs: {
-                features = attrs.features or [] ++ [ "property" ];
-                buildInputs = lib.optionals pkgs.stdenv.isDarwin [
-                  pkgs.darwin.apple_sdk.frameworks.Security
-                  pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
-                ];
-                # Skip in production builds
-                meta.broken = lib.elem "production" (attrs.features or []);
-              };
-              
-              # Chain clients - minimal by default
-              indexer-ethereum = attrs: {
-                features = attrs.features or []; # No default features
-                buildInputs = lib.optionals pkgs.stdenv.isDarwin [
-                  pkgs.darwin.apple_sdk.frameworks.Security
-                  pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
-                ];
-              };
-              
-              indexer-cosmos = attrs: {
-                features = attrs.features or []; # No default features
-                buildInputs = lib.optionals pkgs.stdenv.isDarwin [
-                  pkgs.darwin.apple_sdk.frameworks.Security
-                  pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
-                ];
-              };
-              
-              # Tools and utilities
-              indexer-tools = attrs: {
-                buildInputs = lib.optionals (builtins.elem "rocks" (attrs.features or [])) [
-                  rocksdb-custom
-                ] ++ lib.optionals pkgs.stdenv.isDarwin [
-                  pkgs.darwin.apple_sdk.frameworks.Security
-                  pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
-                ];
-                
-                ROCKSDB_LIB_DIR = lib.mkIf (builtins.elem "rocks" (attrs.features or [])) "${rocksdb-custom}/lib";
-                ROCKSDB_INCLUDE_DIR = lib.mkIf (builtins.elem "rocks" (attrs.features or [])) "${rocksdb-custom}/include";
-              };
-              
-              # Benchmarks - only when explicitly requested
-              indexer-benchmarks = attrs: {
-                # Skip unless explicitly building benchmarks
-                meta.broken = !(builtins.elem "benchmarks" (attrs.features or []));
-                
-                nativeBuildInputs = with pkgs; [
-                  pkg-config
-                  cmake
-                ];
-                buildInputs = [
-                  rocksdb-custom
-                  pkgs.zlib
-                  pkgs.bzip2
-                  pkgs.lz4
-                  pkgs.zstd
-                  pkgs.snappy
-                ] ++ lib.optionals pkgs.stdenv.isDarwin [
-                  pkgs.darwin.apple_sdk.frameworks.Security
-                  pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
-                ];
-                
-                ROCKSDB_LIB_DIR = "${rocksdb-custom}/lib";
-                ROCKSDB_INCLUDE_DIR = "${rocksdb-custom}/include";
-                PKG_CONFIG_PATH = "${rocksdb-custom}/lib/pkgconfig";
-              };
-              
-              # Query crate - lightweight
-              indexer-query = attrs: {
-                buildInputs = lib.optionals pkgs.stdenv.isDarwin [
-                  pkgs.darwin.apple_sdk.frameworks.Security
-                ];
-              };
-              
-              # Causality crate - SMT operations
-              indexer-causality = attrs: {
-                features = attrs.features or [] ++ [ "smt" ];
-                buildInputs = lib.optionals pkgs.stdenv.isDarwin [
-                  pkgs.darwin.apple_sdk.frameworks.Security
-                ];
-              };
-              
-              # System dependencies
-              openssl-sys = attrs: {
-                nativeBuildInputs = with pkgs; [ pkg-config ];
-                buildInputs = [ pkgs.openssl ];
-                preBuild = ''
-                  export OPENSSL_DIR=${pkgs.openssl.dev}
-                  export OPENSSL_LIB_DIR=${pkgs.openssl.out}/lib
-                  export OPENSSL_INCLUDE_DIR=${pkgs.openssl.dev}/include
-                '';
-              };
-              
-              # Protocol Buffers dependencies
-              prost-build = attrs: {
-                nativeBuildInputs = [ pkgs.protobuf ];
-              };
-              
-              # Additional system crates
-              ring = attrs: {
-                buildInputs = lib.optionals pkgs.stdenv.isDarwin [
-                  pkgs.darwin.apple_sdk.frameworks.Security
-                ];
-              };
-            };
-          } else null;
-          
-          # Create database packages directly (simplified version of what's in the module)
-          initDatabasesScript = pkgs.writeShellApplication {
-            name = "init-databases";
-            runtimeInputs = with pkgs; [
-              postgresql_15
-              sqlx-cli
-              git
-            ];
-            text = ''
-              # Initialize and start databases for the Almanac project
-              set -e
-
-              echo "=== Almanac Database Initialization ==="
-
-              # Create required data directories
-              PROJECT_ROOT="$(pwd)"
-              mkdir -p "$PROJECT_ROOT/data/rocksdb"
-              mkdir -p "$PROJECT_ROOT/data/postgres"
-
-              # === PostgreSQL initialization and startup ===
-              echo "Initializing PostgreSQL..."
-
-              # Configure PostgreSQL data directory
-              export PGDATA="$PROJECT_ROOT/data/postgres"
-              export PGUSER=postgres
-              export PGPASSWORD=postgres
-              export PGDATABASE=indexer
-              export PGHOST=localhost
-              export PGPORT=5432
-
-              # Initialize PostgreSQL if not already done
-              if [ ! -f "$PGDATA/PG_VERSION" ]; then
-                echo "Creating new PostgreSQL database cluster..."
-                initdb -D "$PGDATA" --auth=trust --no-locale --encoding=UTF8 --username=$PGUSER
-                
-                # Configure PostgreSQL to listen on localhost
-                echo "listen_addresses = '127.0.0.1'" >> "$PGDATA/postgresql.conf"
-                echo "port = 5432" >> "$PGDATA/postgresql.conf"
-                
-                echo "PostgreSQL initialized successfully."
-              else
-                echo "Using existing PostgreSQL database at $PGDATA"
-              fi
-
-              # Start PostgreSQL server if not running
-              if ! pg_isready -q; then
-                echo "Starting PostgreSQL server..."
-                pg_ctl -D "$PGDATA" -o "-F -p $PGPORT" start -l "$PGDATA/postgres.log"
-                
-                # Wait for PostgreSQL to be ready
-                attempt=0
-                max_attempts=10
-                until pg_isready -q || [ $attempt -eq $max_attempts ]; do
-                  attempt=$((attempt+1))
-                  echo "Waiting for PostgreSQL to be ready... (attempt $attempt/$max_attempts)"
-                  sleep 1
-                done
-
-                if [ $attempt -eq $max_attempts ]; then
-                  echo "Failed to connect to PostgreSQL after $max_attempts attempts."
-                  exit 1
-                fi
-              else
-                echo "PostgreSQL is already running."
-              fi
-
-              # Create development database if it doesn't exist
-              if ! psql -lqt | cut -d \| -f 1 | grep -qw indexer; then
-                echo "Creating development database 'indexer'..."
-                createdb indexer
-                
-                # Set DATABASE_URL for applications
-                export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/indexer"
-                echo "export DATABASE_URL=\"$DATABASE_URL\"" > "$PROJECT_ROOT/.db_env"
-                
-                # Run migrations if needed
-                echo "Running PostgreSQL migrations..."
-                cd "$PROJECT_ROOT/crates/storage"
-                if command -v sqlx &> /dev/null; then
-                  SQLX_OFFLINE=false sqlx migrate run
-                else
-                  echo "sqlx-cli not found, skipping automatic migrations."
-                  echo "You may need to run migrations manually."
-                fi
-                cd "$PROJECT_ROOT"
-              else
-                echo "Development database 'indexer' already exists."
-              fi
-
-              # === RocksDB initialization ===
-              echo -e "\nInitializing RocksDB storage..."
-
-              # RocksDB doesn't need a server, but we'll pre-create the directory
-              # and ensure permissions are correct
-              ROCKS_PATH="$PROJECT_ROOT/data/rocksdb"
-              mkdir -p "$ROCKS_PATH"
-              echo "RocksDB storage directory prepared at $ROCKS_PATH"
-
-              # === Finish ===
-              echo -e "\n=== Database Initialization Complete ==="
-              echo "PostgreSQL: Running on localhost:5432"
-              echo "  • Database: indexer"
-              echo "  • Connection URL: $DATABASE_URL"
-              echo "  • Data directory: $PGDATA"
-              echo "  • Log file: $PGDATA/postgres.log"
-              echo ""
-              echo "RocksDB:"
-              echo "  • Data directory: $ROCKS_PATH"
-              echo "  • Access through application configs pointing to this path"
-              echo ""
-              echo "Environment variables have been saved to .db_env"
-
-              # To ensure these variables are available in the current shell
-              echo "Run 'source .db_env' to load database environment variables in your current shell."
-
-              # Create a stop-postgres.sh script for clean shutdown
-              cat > "$PGDATA/stop-postgres.sh" << 'EOF'
-#!/bin/bash
-set -e
-
-# Script to cleanly shut down PostgreSQL
-if [ -f "$PGDATA/postmaster.pid" ]; then
-  echo "Stopping PostgreSQL server..."
-  pg_ctl -D "$PGDATA" stop -m fast
-  echo "PostgreSQL server stopped successfully."
-else
-  echo "PostgreSQL is not running or PID file not found."
-fi
-EOF
-
-              chmod +x "$PGDATA/stop-postgres.sh"
-              echo "Created PostgreSQL stop script at $PGDATA/stop-postgres.sh"
-            '';
-          };
-
-          stopDatabasesScript = pkgs.writeShellApplication {
-            name = "stop-databases";
-            runtimeInputs = with pkgs; [
-              postgresql_15
-              git
-            ];
-            text = ''
-              # Gracefully stop running database services
-              set -e
-
-              PROJECT_ROOT="$(pwd)"
-              echo "=== Gracefully Stopping Databases ==="
-
-              # === PostgreSQL shutdown ===
-              export PGDATA="$PROJECT_ROOT/data/postgres"
-              
-              if [ ! -d "$PGDATA" ]; then
-                echo "PostgreSQL data directory not found at $PGDATA"
-                echo "No PostgreSQL instance to stop."
-              elif pg_isready -q; then
-                echo "Stopping PostgreSQL server..."
-                pg_ctl -D "$PGDATA" stop -m fast
-                
-                # Wait for PostgreSQL to stop
-                attempt=0
-                max_attempts=10
-                while pg_isready -q && [ $attempt -lt $max_attempts ]; do
-                  attempt=$((attempt+1))
-                  echo "Waiting for PostgreSQL to stop... (attempt $attempt/$max_attempts)"
-                  sleep 1
-                done
-                
-                if pg_isready -q; then
-                  echo "WARNING: PostgreSQL server did not stop gracefully."
-                  echo "You may need to manually kill the process."
-                else
-                  echo "✓ PostgreSQL server stopped successfully."
-                fi
-              else
-                echo "PostgreSQL server is not running."
-              fi
-
-              # RocksDB is not a server, so nothing to stop
-
-              echo -e "\n=== Database Shutdown Complete ==="
-            '';
-          };
-          
-          # Use rust from nixpkgs for now
-          rustToolchain = pkgs.rustc;
-          
-          # Define PostgreSQL configuration 
-          pgPort = 5432;
-          pgUser = "postgres";
-          pgPassword = "postgres";
-          pgDatabase = "indexer"; # Changed to match what's used in the scripts
-          pgSchema = "public";
-          
-          # Load foundry package properly
-          foundryPackage = inputs.foundry.defaultPackage.${system};
-          
-          # Add PostgreSQL to the basic development shell
-          basicDevShell = pkgs.mkShell {
-            packages = [ 
-              rustToolchain 
-              pkgs.cargo
-              pkgs.pkg-config 
-              pkgs.openssl
-              pkgs.postgresql_15
-              pkgs.sqlx-cli
-              pkgs.curl
-              pkgs.jq
-              foundryPackage
-              pkgs.crate2nix
-              rocksdb-custom
-            ];
+            # Ethereum tools
+            ethereum-packages.geth
+            ethereum-packages.lighthouse
+            ethereum-packages.forge
             
-            # Shell hook to set up PostgreSQL
-            shellHook = ''
-              # Setup PostgreSQL environment
-              export PGHOST=localhost
-              export PGPORT=${toString pgPort}
-              export PGUSER=${pgUser}
-              export PGPASSWORD=${pgPassword}
-              export PGDATABASE=${pgDatabase}
-              export PGDATA="$PWD/data/postgres"
-              export DATABASE_URL="postgres://$PGUSER:$PGPASSWORD@$PGHOST:$PGPORT/$PGDATABASE?schema=$pgSchema"
-              
-              # Set macOS deployment target for Rust builds
-              export MACOSX_DEPLOYMENT_TARGET="${darwinDeploymentTarget}"
-              
-              # Clear the DEVELOPER_DIR variable to fix macOS linking issues
-              unset DEVELOPER_DIR
-              unset DEVELOPER_DIR_aarch64_apple_darwin
-              
-              # Database commands - we're exposing the database scripts
-              echo "Using simplified development environment"
-              echo "rust version: $(rustc --version)"
-              echo "crate2nix version: $(crate2nix --version)"
-              echo ""
-              echo "Database commands available:"
-              echo "  init_databases       - Initialize and start PostgreSQL and RocksDB"
-              echo "  stop_databases       - Stop PostgreSQL server"
-              echo "  run_almanac_tests    - Run the Almanac test suite"
-              echo ""
-              echo "Nix build commands available:"
-              echo "  generate_cargo_nix   - Generate Cargo.nix from Cargo.toml using crate2nix"
-              echo "  update_cargo_nix     - Update existing Cargo.nix file"
-              echo ""
-              
-              # Expose the database commands as shell functions
-              function init_databases {
-                ${initDatabasesScript}/bin/init-databases
-              }
-              
-              function stop_databases {
-                ${stopDatabasesScript}/bin/stop-databases
-              }
-              
-              function run_almanac_tests {
-                bash $PWD/scripts/almanac-test-suite.sh
-              }
-              
-              # Expose crate2nix commands as shell functions
-              function generate_cargo_nix {
-                ${packages.generate-cargo-nix}/bin/generate-cargo-nix
-              }
-              
-              function update_cargo_nix {
-                ${packages.update-cargo-nix}/bin/update-cargo-nix
-              }
-              
-              export -f init_databases
-              export -f stop_databases
-              export -f run_almanac_tests
-              export -f generate_cargo_nix
-              export -f update_cargo_nix
-              
-              # Check PostgreSQL status and start if needed
-              if ! pg_isready -q; then
-                echo "PostgreSQL is not running. Run 'init_databases' to start it."
-              else 
-                echo "PostgreSQL is running at $PGHOST:$PGPORT"
-                echo "Database: $PGDATABASE"
-                echo "Connection URL: $DATABASE_URL"
-              fi
-              
-              # Check if Cargo.nix exists
-              if [ ! -f "Cargo.nix" ]; then
-                echo ""
-                echo "Note: Cargo.nix not found. Run 'generate_cargo_nix' to create it for Nix builds."
-              else
-                echo ""
-                echo "Cargo.nix found. You can use 'nix build' to build Rust packages."
-              fi
-            '';
+            # Cosmos tools
+            cosmos-packages.neutron
             
-            # Set environment variables for macOS compatibility
-            inherit (commonEnv) MACOSX_DEPLOYMENT_TARGET;
-          };
+            # Solana tools
+            solana-packages.solana-tools
+          ];
           
-          # Use wasm-bindgen-cli from nixpkgs instead of building from source
-          packages = {
-            wasm-bindgen-pkg = pkgs.wasm-bindgen-cli;
-            init-databases = initDatabasesScript;
-            stop-databases = stopDatabasesScript;
-            rocksdb-custom = rocksdb-custom;  # Expose our custom RocksDB derivation
+          shellHook = ''
+            # Set macOS deployment target for Rust builds
+            export MACOSX_DEPLOYMENT_TARGET="${darwinDeploymentTarget}"
             
-            # Script to generate Cargo.nix using crate2nix
-            generate-cargo-nix = pkgs.writeShellApplication {
-              name = "generate-cargo-nix";
-              runtimeInputs = with pkgs; [ 
-                crate2nix
-                nix 
-              ];
-              text = ''
-                echo "Generating Cargo.nix using crate2nix..."
+            # Clear the DEVELOPER_DIR variable to fix macOS linking issues
+            unset DEVELOPER_DIR
+            unset DEVELOPER_DIR_aarch64_apple_darwin
+            
+            # FoundationDB environment setup
+            export PROJECT_ROOT="$(pwd)"
+            export FDB_CLUSTER_FILE="$PROJECT_ROOT/data/fdb.cluster"
+            export FDB_NETWORK_OPTION_TLS_CERT_PATH=""
+            export FDB_NETWORK_OPTION_TLS_KEY_PATH=""
+            export FDB_NETWORK_OPTION_TLS_CA_PATH=""
+            
+            # Set FoundationDB compilation environment for Rust
+            export BINDGEN_EXTRA_CLANG_ARGS="-I${fdb-packages.foundationdb}/include"
+            export C_INCLUDE_PATH="${fdb-packages.foundationdb}/include:$${C_INCLUDE_PATH:-}"
+            export CPLUS_INCLUDE_PATH="${fdb-packages.foundationdb}/include:$${CPLUS_INCLUDE_PATH:-}"
+            export LIBRARY_PATH="${fdb-packages.foundationdb}/lib:$${LIBRARY_PATH:-}"
+            export LD_LIBRARY_PATH="${fdb-packages.foundationdb}/lib:$${LD_LIBRARY_PATH:-}"
+            export PKG_CONFIG_PATH="${fdb-packages.foundationdb}/lib/pkgconfig:$${PKG_CONFIG_PATH:-}"
+            
+            # Create local include directory for FoundationDB headers
+            if command -v fdbcli >/dev/null 2>&1; then
+              FDB_LOCAL_INCLUDE="$PWD/.fdb_include"
+              if [ ! -d "$FDB_LOCAL_INCLUDE/foundationdb" ]; then
+                echo "Setting up local FoundationDB headers..."
+                mkdir -p "$FDB_LOCAL_INCLUDE/foundationdb"
                 
-                # Check if we have a Cargo.toml file
-                if [ ! -f "Cargo.toml" ]; then
-                  echo "Error: Cargo.toml not found in current directory"
-                  exit 1
+                # Find and copy FDB headers from Nix store
+                FDB_NIX_INCLUDE=$(find ${fdb-packages.foundationdb} -name "fdb_c.h" -type f 2>/dev/null | head -1 | xargs dirname 2>/dev/null || echo "")
+                if [ -n "$FDB_NIX_INCLUDE" ] && [ -d "$FDB_NIX_INCLUDE" ]; then
+                  cp -r "$FDB_NIX_INCLUDE"/* "$FDB_LOCAL_INCLUDE/foundationdb/" 2>/dev/null || true
                 fi
                 
-                # Generate Cargo.nix using crate2nix from nixpkgs
-                crate2nix generate \
-                  --nixpkgs-path ${pkgs.path} \
-                  --output ./Cargo.nix
-                
-                echo "Successfully generated Cargo.nix"
-                echo "You can now use 'nix build .#almanac' to build the main binary"
-                echo "Or 'nix build .#<crate-name>' to build specific workspace crates"
-              '';
-            };
-            
-            # Script to update the generated Cargo.nix
-            update-cargo-nix = pkgs.writeShellApplication {
-              name = "update-cargo-nix";
-              runtimeInputs = with pkgs; [ 
-                crate2nix
-                nix 
-              ];
-              text = ''
-                echo "Updating Cargo.nix..."
-                
-                # Backup existing Cargo.nix if it exists
-                if [ -f "Cargo.nix" ]; then
-                  cp Cargo.nix Cargo.nix.backup
-                  echo "Backed up existing Cargo.nix to Cargo.nix.backup"
+                # Create stub fdb.options if missing
+                if [ ! -f "$FDB_LOCAL_INCLUDE/foundationdb/fdb.options" ]; then
+                  cat > "$FDB_LOCAL_INCLUDE/foundationdb/fdb.options" << 'EOFFDB'
+# FoundationDB Options File (stub for compilation)
+# Generated for Nix build environment
+EOFFDB
                 fi
-                
-                # Regenerate Cargo.nix
-                crate2nix generate \
-                  --nixpkgs-path ${pkgs.path} \
-                  --output ./Cargo.nix
-                
-                echo "Successfully updated Cargo.nix"
-              '';
-            };
+              fi
+              
+              # Export paths for build
+              export FDB_INCLUDE_DIR="$FDB_LOCAL_INCLUDE"
+              export CPATH="$FDB_LOCAL_INCLUDE:$${CPATH:-}"
+              export C_INCLUDE_PATH="$FDB_LOCAL_INCLUDE:$${C_INCLUDE_PATH:-}"
+            fi
             
-            e2e-test = pkgs.writeShellApplication {
-              name = "e2e-test";
-              runtimeInputs = with pkgs; [
-                foundryPackage
-                bash
-              ];
-              text = ''
-                # Set up environment
-                export RPC_URL="http://localhost:8545"
-                export PRIVATE_KEY="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
-                export TOKEN_NAME="Faucet Token"
-                export TOKEN_SYMBOL="FCT"
-                export TOKEN_DECIMALS="18"
-                export FAUCET_AMOUNT="100000000000000000000" # 100 tokens
-                
-                # Create a temporary copy of the script
-                TEMP_SCRIPT=$(mktemp)
-                cp ${toString ./scripts/e2e-test.sh} $TEMP_SCRIPT
-                chmod +x $TEMP_SCRIPT
-                
-                # Execute the script
-                $TEMP_SCRIPT
-                EXIT_CODE=$?
-                
-                # Clean up
-                rm -f $TEMP_SCRIPT
-                
-                exit $EXIT_CODE
-              '';
-            };
-            almanac-test-suite = pkgs.writeShellApplication {
-              name = "almanac-test-suite";
-              runtimeInputs = with pkgs; [
-                bash
-                foundryPackage
-                curl
-                jq
-                postgresql_15
-                rustc
-                cargo
-                sqlx-cli
-              ];
-              text = ''
-                # Run the almanac test suite
-                SCRIPT_PATH=${toString ./scripts/almanac-test-suite.sh}
-                
-                # Make sure the script is executable
-                chmod +x $SCRIPT_PATH
-                
-                # Execute the script
-                $SCRIPT_PATH
-                exit $?
-              '';
-            };
-            default = pkgs.wasm-bindgen-cli;
+            # Set up blockchain client environment variables
+            export ETH_RPC_URL="http://localhost:8545"
+            export GETH_DATA_DIR="$PWD/data/ethereum/geth"
+            export LIGHTHOUSE_DATA_DIR="$PWD/data/ethereum/lighthouse"
+            export COSMOS_RPC_URL="http://localhost:26657"
+            export SOLANA_RPC_URL="http://localhost:8899"
             
-            # Add workflow packages
-            workflow-menu = workflows.packages.${system}.workflow-menu;
-            anvil-workflow = workflows.packages.${system}.anvil-workflow;
-            reth-workflow = workflows.packages.${system}.reth-workflow;
-            cosmwasm-workflow = workflows.packages.${system}.cosmwasm-workflow;
-            all-workflows = workflows.packages.${system}.all-workflows;
-          } // (if project != null then {
-            # crate2nix-generated packages (only available when Cargo.nix exists)
-            almanac = project.workspaceMembers.almanac.build;
-            indexer-core = project.workspaceMembers.indexer-core.build;
-            indexer-storage = project.workspaceMembers.indexer-storage.build;
-            indexer-ethereum = project.workspaceMembers.indexer-ethereum.build;
-            indexer-cosmos = project.workspaceMembers.indexer-cosmos.build;
-            indexer-api = project.workspaceMembers.indexer-api.build;
-            indexer-pipeline = project.workspaceMembers.indexer-pipeline.build;
-            indexer-query = project.workspaceMembers.indexer-query.build;
-            indexer-tools = project.workspaceMembers.indexer-tools.build;
-            indexer-common = project.workspaceMembers.indexer-common.build;
-            indexer-benchmarks = project.workspaceMembers.indexer-benchmarks.build;
-          } else {});
+            echo "=== Almanac Cross-Chain Development Environment ==="
+            echo "rust version: $(rustc --version)"
+            echo ""
+            echo "Available blockchain environments:"
+            echo "  FoundationDB: fdb-manage start/stop/status"
+            echo "  Ethereum: geth, lighthouse, forge"
+            echo "  Cosmos: neutron"  
+            echo "  Solana: solana, anchor"
+            echo ""
+            echo "Quick start:"
+            echo "  fdb-manage start     # Start FoundationDB"
+            echo "  geth --sepolia       # Start Ethereum testnet"
+            echo "  neutron init mynode  # Initialize Cosmos node"
+            echo "  solana-test-validator # Start Solana validator"
+            echo ""
+          '';
           
-          # Add apps for workflow environments
-          apps = {
-            default = workflows.apps.${system}.default; # Use workflow menu as the default
-            workflow-menu = workflows.apps.${system}.workflow-menu;
-            anvil-workflow = workflows.apps.${system}.anvil-workflow;
-            reth-workflow = workflows.apps.${system}.reth-workflow;
-            cosmwasm-workflow = workflows.apps.${system}.cosmwasm-workflow;
-            all-workflows = workflows.apps.${system}.all-workflows;
+          inherit (commonEnv) MACOSX_DEPLOYMENT_TARGET;
+        };
+        
+      in {
+        # Main packages - expose all subflake packages
+        packages = {
+          # FoundationDB packages
+          foundationdb = fdb-packages.foundationdb;
+          fdb-manage = fdb-packages.fdb-manage;
+          fdb-init = fdb-packages.fdb-init;
+          fdb-config-generator = fdb-packages.fdb-config-generator;
+          
+          # Ethereum packages
+          geth = ethereum-packages.geth;
+          lighthouse = ethereum-packages.lighthouse;
+          forge = ethereum-packages.forge;
+          
+          # Cosmos packages
+          neutron = cosmos-packages.neutron;
+          
+          # Solana packages
+          solana-tools = solana-packages.solana-tools;
+          solana-node = solana-packages.solana-node;
+          anchor = solana-packages.anchor;
+          
+          # Default package
+          default = fdb-packages.foundationdb;
+        };
+        
+        # Development shells
+        devShells = {
+          default = combinedDevShell;
+          
+          # Individual blockchain development shells
+          fdb = fdb.devShells.${system}.default;
+          ethereum = ethereum.devShells.${system}.default;
+          cosmos = cosmos.devShells.${system}.default;
+          solana = solana.devShells.${system}.default;
+        };
+        
+        # Apps for easy access
+        apps = {
+          fdb-manage = {
+            type = "app";
+            program = "${fdb-packages.fdb-manage}/bin/fdb-manage";
           };
           
-          # Custom RocksDB derivation with Rust bindings included
-          rocksdb-custom = pkgs.stdenv.mkDerivation rec {
-            pname = "rocksdb-with-rust";
-            version = "8.1.1";
-            
-            src = pkgs.fetchFromGitHub {
-              owner = "facebook";
-              repo = "rocksdb";
-              rev = "v${version}";
-              sha256 = "sha256-79hRtc5QSWLLyjRGCmuYZSoIc9IcIsnl8UCinz2sVw4=";
-            };
-            
-            nativeBuildInputs = with pkgs; [
-              cmake
-              pkg-config
-              rustc
-              cargo
-            ];
-            
-            buildInputs = with pkgs; [
-              zlib
-              bzip2
-              lz4
-              zstd
-              snappy
-            ] ++ lib.optionals stdenv.isDarwin [
-              darwin.apple_sdk.frameworks.Security
-              darwin.apple_sdk.frameworks.SystemConfiguration
-            ];
-            
-            cmakeFlags = [
-              "-DROCKSDB_BUILD_SHARED=ON"
-              "-DWITH_ZLIB=ON"
-              "-DWITH_BZ2=ON"
-              "-DWITH_LZ4=ON"
-              "-DWITH_ZSTD=ON"
-              "-DWITH_SNAPPY=ON"
-              "-DWITH_GFLAGS=OFF"
-              "-DWITH_TESTS=OFF"
-              "-DWITH_BENCHMARK_TOOLS=OFF"
-              "-DWITH_TOOLS=OFF"
-              "-DUSE_RTTI=ON"
-              "-DPORTABLE=ON"
-            ];
-            
-            # Build both C++ library and Rust wrapper
-            buildPhase = ''
-              runHook preBuild
-              
-              # Build C++ library
-              echo "Building RocksDB C++ library..."
-              make -j$NIX_BUILD_CORES
-              
-              # Create simple Rust FFI wrapper without external dependencies
-              echo "Creating Rust FFI wrapper..."
-              mkdir -p rust-wrapper/src
-              
-              cat > rust-wrapper/src/lib.rs << 'EOF'
-//! RocksDB FFI bindings
-//! 
-//! This provides a direct FFI interface to RocksDB without any external dependencies.
-//! We'll use std::ffi instead of the libc crate to avoid network dependencies.
-
-use std::ffi::{CStr, CString};
-use std::os::raw::{c_char, c_int, c_void};
-use std::ptr;
-
-// Type aliases for C types
-pub type size_t = usize;
-
-// Opaque types
-#[repr(C)]
-pub struct rocksdb_t {
-    _unused: [u8; 0],
-}
-
-#[repr(C)]
-pub struct rocksdb_options_t {
-    _unused: [u8; 0],
-}
-
-#[repr(C)]
-pub struct rocksdb_writeoptions_t {
-    _unused: [u8; 0],
-}
-
-#[repr(C)]
-pub struct rocksdb_readoptions_t {
-    _unused: [u8; 0],
-}
-
-#[repr(C)]
-pub struct rocksdb_writebatch_t {
-    _unused: [u8; 0],
-}
-
-#[repr(C)]
-pub struct rocksdb_iterator_t {
-    _unused: [u8; 0],
-}
-
-#[repr(C)]
-pub struct rocksdb_column_family_handle_t {
-    _unused: [u8; 0],
-}
-
-// External C functions from RocksDB
-#[link(name = "rocksdb")]
-extern "C" {
-    // Database operations
-    pub fn rocksdb_open(
-        options: *const rocksdb_options_t,
-        name: *const c_char,
-        errptr: *mut *mut c_char,
-    ) -> *mut rocksdb_t;
-    
-    pub fn rocksdb_close(db: *mut rocksdb_t);
-    
-    // Options
-    pub fn rocksdb_options_create() -> *mut rocksdb_options_t;
-    pub fn rocksdb_options_destroy(options: *mut rocksdb_options_t);
-    pub fn rocksdb_options_set_create_if_missing(options: *mut rocksdb_options_t, val: u8);
-    
-    // Read/Write operations
-    pub fn rocksdb_get(
-        db: *mut rocksdb_t,
-        readoptions: *const rocksdb_readoptions_t,
-        key: *const c_char,
-        keylen: size_t,
-        vallen: *mut size_t,
-        errptr: *mut *mut c_char,
-    ) -> *mut c_char;
-    
-    pub fn rocksdb_put(
-        db: *mut rocksdb_t,
-        writeoptions: *const rocksdb_writeoptions_t,
-        key: *const c_char,
-        keylen: size_t,
-        val: *const c_char,
-        vallen: size_t,
-        errptr: *mut *mut c_char,
+          geth = {
+            type = "app";
+            program = "${ethereum-packages.geth}/bin/geth";
+          };
+          
+          neutron = {
+            type = "app";
+            program = "${cosmos-packages.neutron}/bin/neutron";
+          };
+          
+          solana = {
+            type = "app";
+            program = "${solana-packages.solana-node}/bin/solana";
+          };
+        };
+        
+        formatter = pkgs.nixpkgs-fmt;
+      }
     );
-    
-    pub fn rocksdb_delete(
-        db: *mut rocksdb_t,
-        writeoptions: *const rocksdb_writeoptions_t,
-        key: *const c_char,
-        keylen: size_t,
-        errptr: *mut *mut c_char,
-    );
-    
-    // Memory management
-    pub fn rocksdb_free(ptr: *mut c_void);
-}
-
-// Safe Rust wrapper
-pub struct DB {
-    inner: *mut rocksdb_t,
-}
-
-impl DB {
-    pub fn open(path: &str) -> Result<Self, String> {
-        let options = unsafe { rocksdb_options_create() };
-        unsafe {
-            rocksdb_options_set_create_if_missing(options, 1);
-        }
-        
-        let path_cstr = CString::new(path).unwrap();
-        let mut err: *mut c_char = ptr::null_mut();
-        
-        let db = unsafe {
-            rocksdb_open(options, path_cstr.as_ptr(), &mut err)
-        };
-        
-        unsafe { rocksdb_options_destroy(options) };
-        
-        if !err.is_null() {
-            let err_str = unsafe {
-                let err_cstr = CStr::from_ptr(err);
-                let result = err_cstr.to_string_lossy().into_owned();
-                rocksdb_free(err as *mut c_void);
-                result
-            };
-            return Err(err_str);
-        }
-        
-        Ok(DB { inner: db })
-    }
-    
-    pub fn put(&self, key: &[u8], value: &[u8]) -> Result<(), String> {
-        let mut err: *mut c_char = ptr::null_mut();
-        
-        unsafe {
-            rocksdb_put(
-                self.inner,
-                ptr::null(), // write options
-                key.as_ptr() as *const c_char,
-                key.len(),
-                value.as_ptr() as *const c_char,
-                value.len(),
-                &mut err,
-            );
-        }
-        
-        if !err.is_null() {
-            let err_str = unsafe {
-                let err_cstr = CStr::from_ptr(err);
-                let result = err_cstr.to_string_lossy().into_owned();
-                rocksdb_free(err as *mut c_void);
-                result
-            };
-            return Err(err_str);
-        }
-        
-        Ok(())
-    }
-    
-    pub fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>, String> {
-        let mut err: *mut c_char = ptr::null_mut();
-        let mut vallen: size_t = 0;
-        
-        let value_ptr = unsafe {
-            rocksdb_get(
-                self.inner,
-                ptr::null(), // read options
-                key.as_ptr() as *const c_char,
-                key.len(),
-                &mut vallen,
-                &mut err,
-            )
-        };
-        
-        if !err.is_null() {
-            let err_str = unsafe {
-                let err_cstr = CStr::from_ptr(err);
-                let result = err_cstr.to_string_lossy().into_owned();
-                rocksdb_free(err as *mut c_void);
-                result
-            };
-            return Err(err_str);
-        }
-        
-        if value_ptr.is_null() {
-            return Ok(None);
-        }
-        
-        let value = unsafe {
-            let slice = std::slice::from_raw_parts(value_ptr as *const u8, vallen);
-            let result = slice.to_vec();
-            rocksdb_free(value_ptr as *mut c_void);
-            result
-        };
-        
-        Ok(Some(value))
-    }
-}
-
-impl Drop for DB {
-    fn drop(&mut self) {
-        unsafe {
-            rocksdb_close(self.inner);
-        }
-    }
-}
-
-unsafe impl Send for DB {}
-unsafe impl Sync for DB {}
-
-// Re-export for convenience
-pub use self::DB as RocksDB;
-EOF
-              
-              runHook postBuild
-            '';
-            
-            installPhase = ''
-              runHook preInstall
-              
-              # Install C++ library
-              make install
-              
-              # Install Rust source for direct inclusion in projects
-              mkdir -p $out/src/rust
-              cp -r rust-wrapper/src/* $out/src/rust/
-              
-              # Create a simple Cargo.toml for the Rust wrapper
-              cat > $out/src/rust/Cargo.toml << 'EOF'
-[package]
-name = "rocksdb-sys"
-version = "0.1.0"
-edition = "2021"
-
-[lib]
-name = "rocksdb_sys"
-crate-type = ["rlib", "cdylib"]
-EOF
-              
-              # Create pkg-config file
-              mkdir -p $out/lib/pkgconfig
-              cat > $out/lib/pkgconfig/rocksdb.pc << EOF
-prefix=$out
-exec_prefix=\''${prefix}
-libdir=\''${exec_prefix}/lib
-includedir=\''${prefix}/include
-
-Name: RocksDB
-Description: A persistent key-value store for fast storage environments
-Version: ${version}
-Libs: -L\''${libdir} -lrocksdb
-Libs.private: -lz -lbz2 -llz4 -lzstd -lsnappy
-Cflags: -I\''${includedir}
-EOF
-              
-              runHook postInstall
-            '';
-            
-            # Test that the library works
-            doCheck = false;
-            # checkPhase = ''
-            #   # Test C++ library
-            #   echo "Testing RocksDB C++ library..."
-            #   cat > test_rocksdb.cpp << 'EOF'
-            # #include <rocksdb/db.h>
-            # #include <iostream>
-            # #include <string>
-            # 
-            # int main() {
-            #     rocksdb::DB* db;
-            #     rocksdb::Options options;
-            #     options.create_if_missing = true;
-            #     
-            #     rocksdb::Status status = rocksdb::DB::Open(options, "/tmp/testdb", &db);
-            #     if (!status.ok()) {
-            #         std::cerr << "Unable to open database: " << status.ToString() << std::endl;
-            #         return 1;
-            #     }
-            #     
-            #     // Test put/get
-            #     status = db->Put(rocksdb::WriteOptions(), "key1", "value1");
-            #     if (!status.ok()) {
-            #         std::cerr << "Unable to put: " << status.ToString() << std::endl;
-            #         return 1;
-            #     }
-            #     
-            #     std::string value;
-            #     status = db->Get(rocksdb::ReadOptions(), "key1", &value);
-            #     if (!status.ok() || value != "value1") {
-            #         std::cerr << "Unable to get or wrong value" << std::endl;
-            #         return 1;
-            #     }
-            #     
-            #     delete db;
-            #     std::cout << "RocksDB C++ test passed!" << std::endl;
-            #     return 0;
-            # }
-            # EOF
-            #   
-            #   # Use headers from the source directory during build
-            #   $CXX -std=c++17 -I../include -L. -lrocksdb test_rocksdb.cpp -o test_rocksdb
-            #   ./test_rocksdb
-            #   
-            #   echo "✓ RocksDB C++ library test passed"
-            # '';
-            
-            meta = with lib; {
-              description = "RocksDB with integrated Rust bindings";
-              homepage = "https://rocksdb.org/";
-              license = with licenses; [ gpl2 asl20 ];
-              platforms = platforms.unix;
-            };
-          };
-        in
-        {
-          # Define minimal outputs needed to get the shell working
-          packages = packages;
-          apps = apps;
-          devShells.default = basicDevShell;
-          formatter = pkgs.nixpkgs-fmt;
-        };
-    };
 }

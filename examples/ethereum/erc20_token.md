@@ -929,61 +929,66 @@ async fn benchmark_indexing_performance() {
 
 ## Deployment
 
-### Docker Configuration
+### Nix Configuration
 
-```dockerfile
-# Dockerfile
-FROM rust:1.75 as builder
+Add to your `flake.nix`:
 
-WORKDIR /app
-COPY . .
-RUN cargo build --release
+```nix
+{
+  packages.usdc-indexer = pkgs.rustPlatform.buildRustPackage {
+    pname = "usdc-indexer";
+    version = "0.1.0";
+    src = ./.;
+    cargoLock.lockFile = ./Cargo.lock;
+  };
 
-FROM debian:bookworm-slim
+  devShells.default = pkgs.mkShell {
+    buildInputs = with pkgs; [
+      postgresql_15
+      cargo
+      rustc
+      rustfmt
+      clippy
+    ];
+    
+    shellHook = ''
+      export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/almanac_usdc"
+      echo "Starting PostgreSQL..."
+      pg_ctl -D $PWD/pgdata -l logfile start || pg_ctl -D $PWD/pgdata -l logfile restart
+      echo "PostgreSQL started. Run 'usdc-indexer' to start the indexer."
+    '';
+  };
 
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    libssl3 \
-    && rm -rf /var/lib/apt/lists/*
+  nixosModules.usdc-indexer = { config, lib, pkgs, ... }: {
+    options.services.usdc-indexer = {
+      enable = lib.mkEnableOption "USDC token indexer";
+      databaseUrl = lib.mkOption {
+        type = lib.types.str;
+        description = "PostgreSQL connection string";
+      };
+      ethProviderUrl = lib.mkOption {
+        type = lib.types.str;
+        description = "Ethereum RPC provider URL";
+      };
+    };
 
-COPY --from=builder /app/target/release/usdc-indexer /usr/local/bin/
-
-EXPOSE 3000 9090
-
-CMD ["usdc-indexer"]
-```
-
-```yaml
-# docker-compose.yml
-version: '3.8'
-
-services:
-  postgres:
-    image: postgres:15
-    environment:
-      POSTGRES_DB: almanac_usdc
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-  usdc-indexer:
-    build: .
-    ports:
-      - "3000:3000"
-      - "9090:9090"
-    environment:
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/almanac_usdc
-      ETH_PROVIDER_URL: https://mainnet.infura.io/v3/YOUR_PROJECT_ID
-      RUST_LOG: info
-    depends_on:
-      - postgres
-    restart: unless-stopped
-
-volumes:
-  postgres_data:
+    config = lib.mkIf config.services.usdc-indexer.enable {
+      systemd.services.usdc-indexer = {
+        description = "USDC Token Indexer";
+        wantedBy = [ "multi-user.target" ];
+        environment = {
+          DATABASE_URL = config.services.usdc-indexer.databaseUrl;
+          ETH_PROVIDER_URL = config.services.usdc-indexer.ethProviderUrl;
+        };
+        serviceConfig = {
+          ExecStart = "${pkgs.usdc-indexer}/bin/usdc-indexer";
+          Restart = "always";
+          DynamicUser = true;
+        };
+      };
+    };
+  };
+}
 ```
 
 This example demonstrates a complete, production-ready USDC token integration using the Ethereum codegen system, including real-time indexing, API endpoints, and comprehensive monitoring. 

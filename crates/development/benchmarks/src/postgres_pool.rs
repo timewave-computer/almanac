@@ -6,7 +6,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Semaphore;
-use indexer_core::Error;
+use almanac_infrastructure_core::Error;
 use super::{Measurement, BenchmarkReport};
 use super::postgres_opt::ConnectionPoolConfig;
 

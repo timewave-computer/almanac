@@ -1,139 +1,124 @@
-use async_trait::async_trait;
+//! Service layer traits for Almanac infrastructure
+//!
+//! This module contains the core service traits that define the interface
+//! for event services and subscriptions across different blockchain networks.
+
+use crate::Result;
+use crate::types::{ChainId, EventFilter, Event, UnifiedEvent};
+use std::fmt::Debug;
 use std::sync::Arc;
+use async_trait::async_trait;
 
-use crate::types::Event;
-use crate::types::{ChainId, EventFilter};
-use crate::{BlockStatus, Result};
+/// Type alias for a boxed event service
+pub type BoxedEventService = Arc<dyn EventService<EventType = UnifiedEvent>>;
 
-/// Define common interfaces for chain services
-/// Trait for event subscription
+/// Trait for blockchain event services
 #[async_trait]
-pub trait EventSubscription: Send + Sync {
-    /// Wait for the next event
-    async fn next(&mut self) -> Option<Box<dyn Event>>;
+pub trait EventService: Send + Sync + Debug {
+    /// Associated event type that this service handles
+    type EventType: Event;
+    
+    /// Get the chain ID this service handles
+    fn chain_id(&self) -> &ChainId;
+    
+    /// Get events matching the given filters
+    async fn get_events(&self, filters: Vec<EventFilter>) -> Result<Vec<Box<dyn Event>>>;
+    
+    /// Get the latest block number
+    async fn get_latest_block(&self) -> Result<u64>;
+    
+    /// Get the latest block number for a specific chain with status
+    async fn get_latest_block_with_status(&self, chain: &str, status: crate::BlockStatus) -> Result<u64>;
+    
+    /// Subscribe to real-time events
+    async fn subscribe(&self) -> Result<Box<dyn EventSubscription>>;
+}
 
-    /// Close the subscription
+/// Trait for event subscriptions - provides streaming access to events
+#[async_trait]
+pub trait EventSubscription: Send + Sync + Debug {
+    /// Get the next event from the subscription
+    async fn next(&mut self) -> Option<Box<dyn Event>>;
+    
+    /// Close the subscription and clean up resources
     async fn close(&mut self) -> Result<()>;
 }
 
-/// Trait for event services
-#[async_trait]
-pub trait EventService: Send + Sync {
-    /// The type of event handled by this service
-    type EventType: Event + 'static;
+/// Trait object for event subscriptions
+pub type BoxedEventSubscription = Box<dyn EventSubscription>;
 
-    /// Get the chain ID
-    fn chain_id(&self) -> &ChainId;
-
-    /// Get the latest block with the specified status
-    async fn get_latest_block_with_status(&self, _chain: &str, _status: BlockStatus) -> Result<u64> {
-        self.get_latest_block().await
-    }
-
-    /// Get events matching the given filters and status
-    async fn get_events_with_status(&self, filters: Vec<EventFilter>, _status: BlockStatus) -> Result<Vec<Box<dyn Event>>> {
-        self.get_events(filters).await
-    }
-
-    /// Get events matching the given filters
-    async fn get_events(&self, filters: Vec<EventFilter>) -> Result<Vec<Box<dyn Event>>>;
-
-    /// Subscribe to new events
-    async fn subscribe(&self) -> Result<Box<dyn EventSubscription>>;
-
-    /// Get the latest block number
-    async fn get_latest_block(&self) -> Result<u64>;
+/// Default implementation for EventService when no specific implementation is needed
+#[derive(Debug)]
+pub struct NoOpEventService {
+    chain_id: ChainId,
 }
 
-/// Trait for services that work with boxed events
-#[async_trait]
-pub trait BoxedEventServiceTrait: Send + Sync {
-    /// Get the chain ID
-    fn chain_id(&self) -> &ChainId;
-
-    /// Get the latest block with the specified status
-    async fn get_latest_block_with_status(&self, _chain: &str, _status: BlockStatus) -> Result<u64> {
-        self.get_latest_block().await
-    }
-
-    /// Get events matching the given filters and status
-    async fn get_events_with_status(&self, filters: Vec<EventFilter>, _status: BlockStatus) -> Result<Vec<Box<dyn Event>>> {
-        self.get_events(filters).await
-    }
-
-    /// Get events matching the given filters
-    async fn get_events(&self, filters: Vec<EventFilter>) -> Result<Vec<Box<dyn Event>>>;
-
-    /// Subscribe to new events
-    async fn subscribe(&self) -> Result<Box<dyn EventSubscription>>;
-
-    /// Get the latest block number
-    async fn get_latest_block(&self) -> Result<u64>;
-}
-
-/// Type alias for a boxed event service that works with boxed events
-pub type BoxedEventService = Arc<dyn BoxedEventServiceTrait>;
-
-/// Generic wrapper to convert EventService to BoxedEventServiceTrait
-pub struct EventServiceWrapper<T> {
-    service: Arc<T>,
-}
-
-impl<T> EventServiceWrapper<T> {
-    pub fn new(service: Arc<T>) -> Self {
-        Self { service }
+impl NoOpEventService {
+    pub fn new(chain_id: ChainId) -> Self {
+        Self { chain_id }
     }
 }
 
 #[async_trait]
-impl<T> BoxedEventServiceTrait for EventServiceWrapper<T>
-where
-    T: EventService + Send + Sync + 'static,
-{
+impl EventService for NoOpEventService {
+    type EventType = UnifiedEvent;
+    
     fn chain_id(&self) -> &ChainId {
-        self.service.chain_id()
+        &self.chain_id
     }
-
-    async fn get_latest_block_with_status(&self, chain: &str, status: BlockStatus) -> Result<u64> {
-        self.service.get_latest_block_with_status(chain, status).await
+    
+    async fn get_events(&self, _filters: Vec<EventFilter>) -> Result<Vec<Box<dyn Event>>> {
+        Ok(Vec::new())
     }
-
-    async fn get_events_with_status(&self, filters: Vec<EventFilter>, status: BlockStatus) -> Result<Vec<Box<dyn Event>>> {
-        self.service.get_events_with_status(filters, status).await
-    }
-
-    async fn get_events(&self, filters: Vec<EventFilter>) -> Result<Vec<Box<dyn Event>>> {
-        self.service.get_events(filters).await
-    }
-
-    async fn subscribe(&self) -> Result<Box<dyn EventSubscription>> {
-        self.service.subscribe().await
-    }
-
+    
     async fn get_latest_block(&self) -> Result<u64> {
-        self.service.get_latest_block().await
+        Ok(0)
+    }
+    
+    async fn get_latest_block_with_status(&self, _chain: &str, _status: crate::BlockStatus) -> Result<u64> {
+        Ok(0)
+    }
+    
+    async fn subscribe(&self) -> Result<Box<dyn EventSubscription>> {
+        Ok(Box::new(NoOpEventSubscription))
     }
 }
 
-/// Helper function to wrap an EventService into a BoxedEventService
-pub fn wrap_event_service<T>(service: Arc<T>) -> BoxedEventService
-where
-    T: EventService + Send + Sync + 'static,
-{
-    Arc::new(EventServiceWrapper::new(service))
+/// Default implementation for EventSubscription when no specific implementation is needed
+#[derive(Debug)]
+pub struct NoOpEventSubscription;
+
+#[async_trait]
+impl EventSubscription for NoOpEventSubscription {
+    async fn next(&mut self) -> Option<Box<dyn Event>> {
+        None
+    }
+    
+    async fn close(&mut self) -> Result<()> {
+        Ok(())
+    }
 }
 
-/// Registry for event services
-pub trait EventServiceRegistry: Send + Sync {
-    /// Register an event service
-    fn register_service(&mut self, chain_id: ChainId, service: BoxedEventService);
-
-    /// Get an event service for the given chain
-    fn get_service(&self, chain_id: &str) -> Option<BoxedEventService>;
-
-    /// Get all registered services
-    fn get_services(&self) -> Vec<BoxedEventService>;
-
-    /// Remove a service
-    fn remove_service(&mut self, chain_id: &str) -> Option<BoxedEventService>;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[tokio::test]
+    async fn test_noop_event_service() {
+        let service = NoOpEventService::new(ChainId::new("test"));
+        assert_eq!(service.chain_id().as_str(), "test");
+        
+        let events = service.get_events(vec![]).await.unwrap();
+        assert!(events.is_empty());
+        
+        let latest_block = service.get_latest_block().await.unwrap();
+        assert_eq!(latest_block, 0);
+    }
+    
+    #[tokio::test]
+    async fn test_noop_event_subscription() {
+        let mut subscription = NoOpEventSubscription;
+        assert!(subscription.next().await.is_none());
+        assert!(subscription.close().await.is_ok());
+    }
 } 

@@ -1,10 +1,10 @@
 use async_trait::async_trait;
 use foundationdb::{Database, FdbResult, KeySelector, RangeOption, Transaction};
 use futures::TryStreamExt;
-use indexer_core::coordination::{
+use almanac_infrastructure_core::coordination::{
     CoordinationService, LeaderInfo, NodeInfo, NodeStatus, WorkAssignment,
 };
-use indexer_core::Result;
+use almanac_infrastructure_core::Result;
 use serde_json;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::{debug, info, warn};
@@ -356,7 +356,7 @@ impl CoordinationService for FdbCoordinationService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use indexer_core::coordination::{NodeCapabilities, WorkType};
+    use almanac_infrastructure_core::coordination::{NodeCapabilities, WorkType};
 
     #[tokio::test]
     async fn test_coordination_basic_operations() {

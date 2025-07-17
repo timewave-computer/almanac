@@ -3,7 +3,7 @@
 // Purpose: Provides tools for optimizing RocksDB performance through key structure
 // design, caching parameters, and compaction strategies
 
-use indexer_core::Error;
+use almanac_infrastructure_core::Error;
 use rocksdb::{Options, DB, Cache, BlockBasedOptions, DBCompactionStyle};
 use super::{Measurement, BenchmarkReport};
 
