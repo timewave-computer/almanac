@@ -1,0 +1,37 @@
+[package]
+name = "almanac-consensus"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+description = "Consensus, finality, and reorg handling for Almanac"
+
+[dependencies]
+# Core dependencies
+almanac-core = { path = "../almanac-core" }
+almanac-chains = { path = "../almanac-chains" }
+
+# Async runtime
+tokio = { workspace = true, features = ["sync", "time"] }
+async-trait = { workspace = true }
+futures = { workspace = true }
+
+# Serialization
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# Time
+chrono = { workspace = true }
+
+# Collections
+dashmap = "5.5"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros"] }

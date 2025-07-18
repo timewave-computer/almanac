@@ -1,0 +1,39 @@
+# Ethereum node configuration
+
+[chain]
+id = "ethereum-mainnet"
+confirmations = 6
+
+[rpc]
+url = "https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY"
+# Uncomment and set if using API key in header
+# api_key = "YOUR_API_KEY"
+max_retries = 3
+timeout_secs = 30
+
+[storage]
+[storage.fdb]
+# Leave empty to use default cluster file
+cluster_file = "/etc/foundationdb/fdb.cluster"
+namespace = "almanac/ethereum-mainnet"
+
+[indexing]
+# Start from latest, specific block number, or "latest"
+start_block = "latest"
+batch_size = 100
+max_concurrent_batches = 5
+reindex_on_startup = false
+
+[consensus]
+fork_choice = "longest_chain"
+max_reorg_depth = 100
+
+[consensus.finality_levels]
+confirmed = 1
+safe = 6
+justified = 32
+finalized = 64
+
+[monitoring]
+enable_metrics = true
+enable_tracing = true

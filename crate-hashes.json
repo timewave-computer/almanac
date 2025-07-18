@@ -1,6 +1,0 @@
-{
-  "git+https://github.com/timewave-computer/valence-coprocessor-domain-prover.git?tag=v0.3.1#valence-coprocessor-domain-prover@0.3.1": "157iv619mg3jrc4bvr64j2mgq08k9m9328ix3cmd9azbmy20n51b",
-  "git+https://github.com/timewave-computer/valence-coprocessor.git?tag=v0.3.1#valence-coprocessor-client@0.3.1": "1pm7y44wfbn99xm2175ha1jpvns55qniix52rxk3pwxw7bz6q8d7",
-  "git+https://github.com/timewave-computer/valence-coprocessor.git?tag=v0.3.1#valence-coprocessor@0.3.1": "1pm7y44wfbn99xm2175ha1jpvns55qniix52rxk3pwxw7bz6q8d7",
-  "git+https://github.com/timewave-computer/valence-domain-clients?branch=main#0.1.0": "0b8gs6xsmbji22q9b2q3v3zfrj4mdshm0m89256d3z7x7srlivrf"
-}

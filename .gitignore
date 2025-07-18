@@ -1,180 +1,56 @@
+# Rust
+target/
+Cargo.lock
+
 # Nix
 result
 result-*
 .direnv/
 
-# Node.js
-node_modules/
-npm-debug.log
-yarn-error.log
-yarn-debug.log
+# FoundationDB
+.fdb_include/
+data/foundationdb/
+*.fdb
 
-# Foundry
-cache/
-out/
-forge-cache/
-broadcast/
-
-# Solidity
-artifacts/
-typechain/
-typechain-types/
-
-# VSCode
-.vscode/
-
-# macOS
-.DS_Store
-.AppleDouble
-.LSOverride
-
-# UFO
-/tmp/osmosis-source*
-/benchmark_results/
-
-# Rust build artifacts
-target/
-
-# Runtime data
+# Blockchain Data & Logs  
 data/
 logs/
-.sqlx/ # Keep sqlx offline data for verification
-crates/storage/src/migrations/
-
-# Testing and logs
 *.log
-test_run.log
 
-# Project specific
-*.env
-.env
-.env.local
-
-# Cache files
-.cache/
-cache/
-*.backup
-*.bak
-*.tmp
-*.old
-
-# Working files
-work/
-lib/
-.cursor/
-
-# Database
+# Environment & Config
+.env*
 .db_env
-postgres_data/
-.sqlx/ # Uncomment if you want to ignore sqlx offline query data
 
-# Temp directories
-$TMPDIR/
-$CARGO_TARGET_DIR/
+# Cache & Temporary Files
+cache/
+.cache/
 tmp/
-/tmp/
+temp/
+*.tmp
+*.bak
+*.backup
 
-# Reth Source (if cloned locally)
-/reth-src/
+# Foundry (Ethereum)
+out/
+broadcast/
+forge-cache/
 
-# Valence
-valence-protocol/
-infra/
-cosmos.nix/
-
-# Editor and IDE files
+# IDE & Editors
+.vscode/
+.cursor/
+.claude/
+.idea/
 *.swp
 *.swo
 *~
-.#*
-\#*#
-.vimrc.local
 
-# OS-specific files
+# OS Specific
+.DS_Store
 Thumbs.db
-ehthumbs.db
-Desktop.ini
 
-# Compiled output
-*.exe
-*.dll
-*.dylib
-*.so
-
-# Profiling and debugging
-*.profraw
-perf.data*
-flamegraph.svg
-callgrind.out.*
-
-# Generated code directories
-generated/
-e2e/generated/
-
-# Test artifacts and outputs
+# Testing
 test_outputs/
-test_data/
-fixtures/generated/
-**/test_*.db
-**/test_*.sqlite
+test_run.log
 
-# Temporary test directories
-tmp/
-temp/
-**/tmp/
-**/temp/
-
-# Database temporary files
-pgsql_temp_*
-rocksdb_temp_*
-*.db-shm
-*.db-wal
-
-# Nix temporary files
-.nix-channels
-.nix-defexpr
-.nix-profile
-
-# Performance and profiling outputs
-*.heap
-*.perf
-*.pprof
-*.cpuprofile
-*.memprofile
-perf.data*
-massif.out.*
-
-# Lock files for temporary setups
-*.lock
-*.pid
-
-# Additional build artifacts
-build-info/
-dist/
-pkg/
-
-# IDE and editor temporary files
-.idea/
-*.iml
-.project
-.classpath
-.settings/
-*.code-workspace
-
-# OS-specific temporary files
-.Spotlight-V100
-.Trashes
-
-# Additional log files
-*.log.*
-log/
-
-# Backup files
-*.backup.*
-*~backup
-
-# Development database files
-*.development.db
-*.test.db
-dev.db
-test.db
+# Working
+work/

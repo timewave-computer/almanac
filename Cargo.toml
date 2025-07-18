@@ -1,35 +1,25 @@
 [workspace]
 resolver = "2"
 members = [
-    # Infrastructure - Core system components
-    "crates/infrastructure/core",
-    "crates/infrastructure/storage",
-    "crates/infrastructure/coordination",
-    "crates/infrastructure/query",
-    "crates/infrastructure/monitoring",
-    "crates/infrastructure/caching",
-    "crates/infrastructure/chains",
+    # Core components
+    "crates/almanac-core",
+    "crates/almanac-api",
+    "crates/almanac-storage",
+    "crates/almanac-eventbus",
+    "crates/almanac-config",
+    "crates/almanac-chains",
+    "crates/almanac-consensus",
+    "crates/almanac-indexing",
+    "crates/almanac-testing",
     
-    # Chains - Blockchain-specific integrations
-    "crates/chains/cosmos",
-    "crates/chains/ethereum",
     
-    # Services - User-facing services
-    "crates/services/api",
-    "crates/services/query",
-    "crates/services/indexing",
-    
-    # Development - Development and testing tools
-    "crates/development/benchmarks",
-    "crates/development/testing",
-    "crates/development/tools",
+    # Chain-specific node binaries
+    "crates/almanac-nodes/ethereum",
+    "crates/almanac-nodes/cosmos",
+    # "crates/almanac-nodes/solana",  # Temporarily disabled due to dependency issues
     
     # E2E tests
     "e2e",
-    
-    # New API crates
-    "crates/api-core",
-    "crates/api-http",
 ]
 
 # Note: Workspace manifests don't support features.
@@ -66,8 +56,7 @@ thiserror = "1.0.50"
 anyhow = "1.0"
 
 # Storage
-sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "macros", "chrono", "uuid", "json"] }
-rocksdb = "0.21"
+foundationdb = { version = "0.8", features = ["embedded-fdb-include"] }
 
 # API
 axum = { version = "0.7", features = ["macros"] }
@@ -84,6 +73,12 @@ num_cpus = "1.16.0"
 uuid = { version = "1.4", features = ["v4", "serde"] }
 bytes = "1.4"
 base64 = "0.22"
+serde_yaml = "0.9"
+
+# Traverse dependencies
+traverse-core = { git = "https://github.com/timewave-computer/traverse", rev = "78b85c8e3714d04a17dd01151a03a43d6b53a768" }
+traverse-cosmos = { git = "https://github.com/timewave-computer/traverse", rev = "78b85c8e3714d04a17dd01151a03a43d6b53a768" }
+traverse-valence = { git = "https://github.com/timewave-computer/traverse", rev = "78b85c8e3714d04a17dd01151a03a43d6b53a768" }
 
 [profile.release]
 opt-level = 3

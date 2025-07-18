@@ -36,10 +36,10 @@ run_test_suite() {
     ((TOTAL_SUITES++))
     
     if eval "$command"; then
-        echo -e "${GREEN}✓ $name passed${NC}"
+        echo -e "${GREEN}$name passed${NC}"
         ((PASSED_SUITES++))
     else
-        echo -e "${RED}✗ $name failed${NC}"
+        echo -e "${RED}$name failed${NC}"
         ((FAILED_SUITES++))
         FAILED_TESTS="$FAILED_TESTS\n  - $name"
     fi

@@ -103,7 +103,7 @@
           };
 
           # Forge from Foundry toolchain
-          forge = pkgs.foundry-bin;
+          forge = pkgs.foundry;
         };
 
         devshells.default = {

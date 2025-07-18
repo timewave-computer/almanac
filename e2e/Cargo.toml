@@ -9,6 +9,13 @@ name = "test-runner"
 path = "src/main.rs"
 
 [dependencies]
+# Almanac crates
+almanac-core = { path = "../crates/almanac-core" }
+almanac-storage = { path = "../crates/almanac-storage" }
+almanac-chains = { path = "../crates/almanac-chains", features = ["ethereum"] }
+almanac-eventbus = { path = "../crates/almanac-eventbus" }
+almanac-api = { path = "../crates/almanac-api" }
+
 # Test framework
 tokio = { version = "1.0", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
@@ -36,12 +43,9 @@ toml = "0.8"
 # HTTP client for fetching test data
 reqwest = { version = "0.11", features = ["json"] }
 
-# Database testing (optional)
-sqlx = { version = "0.7", features = ["postgres", "runtime-tokio-rustls"], optional = true }
-
 [dev-dependencies]
 criterion = "0.5"
 
 [features]
 default = []
-database-tests = ["sqlx"] 
+fdb = ["almanac-storage/fdb"] 

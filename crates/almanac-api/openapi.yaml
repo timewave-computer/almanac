@@ -1,0 +1,628 @@
+openapi: 3.0.3
+info:
+  title: Almanac API
+  description: Cross-chain event indexer and processor API
+  version: 1.0.0
+  contact:
+    name: Timewave
+    url: https://github.com/timewave-computer/almanac
+  license:
+    name: MIT OR Apache-2.0
+    
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+  - url: https://api.almanac.timewave.computer
+    description: Production server
+
+tags:
+  - name: Health
+    description: Health check endpoints
+  - name: Events
+    description: Event query endpoints
+  - name: Chains
+    description: Chain-specific endpoints
+  - name: Admin
+    description: Administrative endpoints (requires authentication)
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      description: Returns the health status of the API service
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: "ok"
+                version: "1.0.0"
+                
+  /liveness:
+    get:
+      summary: Liveness probe
+      description: Kubernetes liveness probe endpoint
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: ["alive"]
+                    
+  /readiness:
+    get:
+      summary: Readiness probe
+      description: Kubernetes readiness probe endpoint
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: ["ready"]
+        '503':
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+                
+  /api/v1/events:
+    get:
+      summary: List events
+      description: Query events with optional filtering and pagination
+      tags:
+        - Events
+      parameters:
+        - name: chain
+          in: query
+          description: Filter by blockchain
+          schema:
+            type: string
+            example: "ethereum"
+        - name: from_block
+          in: query
+          description: Starting block number (inclusive)
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+        - name: to_block
+          in: query
+          description: Ending block number (inclusive)
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+        - name: event_type
+          in: query
+          description: Filter by event type
+          schema:
+            type: string
+            example: "Transfer"
+        - name: address
+          in: query
+          description: Filter by contract address
+          schema:
+            type: string
+            example: "0x1234..."
+        - name: limit
+          in: query
+          description: Maximum number of events to return
+          schema:
+            type: integer
+            default: 100
+            minimum: 1
+            maximum: 1000
+        - name: offset
+          in: query
+          description: Number of events to skip
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        '200':
+          description: List of events
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventListResponse'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+                
+  /api/v1/events/{id}:
+    get:
+      summary: Get event by ID
+      description: Retrieve a specific event by its unique identifier
+      tags:
+        - Events
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Event ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Event details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventResponse'
+        '404':
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+                
+  /api/v1/chains/{chain}/events:
+    get:
+      summary: List events for a specific chain
+      description: Query events for a specific blockchain
+      tags:
+        - Chains
+      parameters:
+        - name: chain
+          in: path
+          required: true
+          description: Blockchain identifier
+          schema:
+            type: string
+            example: "ethereum"
+        - name: from_block
+          in: query
+          description: Starting block number (inclusive)
+          schema:
+            type: integer
+            format: int64
+        - name: to_block
+          in: query
+          description: Ending block number (inclusive)
+          schema:
+            type: integer
+            format: int64
+        - name: event_type
+          in: query
+          description: Filter by event type
+          schema:
+            type: string
+        - name: address
+          in: query
+          description: Filter by contract address
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum number of events to return
+          schema:
+            type: integer
+            default: 100
+        - name: offset
+          in: query
+          description: Number of events to skip
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: List of events for the chain
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventListResponse'
+                
+  /api/v1/chains/{chain}/latest-block:
+    get:
+      summary: Get latest block for a chain
+      description: Returns the latest indexed block number for a specific blockchain
+      tags:
+        - Chains
+      parameters:
+        - name: chain
+          in: path
+          required: true
+          description: Blockchain identifier
+          schema:
+            type: string
+            example: "ethereum"
+      responses:
+        '200':
+          description: Latest block information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LatestBlockResponse'
+        '404':
+          description: Chain not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+                
+  /admin/keys:
+    get:
+      summary: List API keys
+      description: List all API keys (requires authentication)
+      tags:
+        - Admin
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: List of API keys
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyListResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+                
+    post:
+      summary: Create API key
+      description: Create a new API key (requires authentication)
+      tags:
+        - Admin
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateApiKeyRequest'
+      responses:
+        '200':
+          description: Created API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateApiKeyResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+                
+  /admin/keys/{key}:
+    delete:
+      summary: Delete API key
+      description: Delete an API key (requires authentication)
+      tags:
+        - Admin
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: key
+          in: path
+          required: true
+          description: API key to delete
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Key deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+        '404':
+          description: Key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+                
+    patch:
+      summary: Update API key
+      description: Update an API key's configuration (requires authentication)
+      tags:
+        - Admin
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: key
+          in: path
+          required: true
+          description: API key to update
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateApiKeyRequest'
+      responses:
+        '200':
+          description: Updated API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyResponse'
+        '404':
+          description: Key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
+      
+  schemas:
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - version
+      properties:
+        status:
+          type: string
+          enum: ["ok", "degraded"]
+        version:
+          type: string
+          
+    ErrorResponse:
+      type: object
+      required:
+        - success
+        - error
+      properties:
+        success:
+          type: boolean
+          default: false
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+              
+    Event:
+      type: object
+      required:
+        - id
+        - chain
+        - block_number
+        - event_type
+        - timestamp
+        - data
+      properties:
+        id:
+          type: string
+          description: Unique event identifier
+        chain:
+          type: string
+          description: Blockchain identifier
+        block_number:
+          type: integer
+          format: int64
+          description: Block number where event occurred
+        event_type:
+          type: string
+          description: Type of event
+        timestamp:
+          type: string
+          format: date-time
+          description: Event timestamp
+        data:
+          type: string
+          format: byte
+          description: Base64-encoded event data
+          
+    EventResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          default: true
+        data:
+          $ref: '#/components/schemas/Event'
+        version:
+          type: string
+          
+    EventListResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          default: true
+        data:
+          type: object
+          required:
+            - items
+            - total
+            - page
+            - per_page
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/Event'
+            total:
+              type: integer
+              description: Total number of events matching the query
+            page:
+              type: integer
+              description: Current page (0-based)
+            per_page:
+              type: integer
+              description: Number of items per page
+        version:
+          type: string
+          
+    LatestBlockResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          default: true
+        data:
+          type: object
+          required:
+            - chain
+            - latest_block
+          properties:
+            chain:
+              type: string
+            latest_block:
+              type: integer
+              format: int64
+        version:
+          type: string
+          
+    ApiKeyInfo:
+      type: object
+      required:
+        - name
+        - enabled
+        - key_prefix
+      properties:
+        name:
+          type: string
+          description: Human-readable name for the key
+        rate_limit:
+          type: integer
+          description: Requests per minute limit
+        enabled:
+          type: boolean
+          description: Whether the key is active
+        key_prefix:
+          type: string
+          description: First 8 characters of the key for identification
+          
+    ApiKeyResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          default: true
+        data:
+          $ref: '#/components/schemas/ApiKeyInfo'
+        version:
+          type: string
+          
+    ApiKeyListResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          default: true
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApiKeyInfo'
+        version:
+          type: string
+          
+    CreateApiKeyRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: Human-readable name for the key
+        rate_limit:
+          type: integer
+          description: Requests per minute limit
+          minimum: 1
+          
+    CreateApiKeyResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          default: true
+        data:
+          type: object
+          required:
+            - key
+            - name
+          properties:
+            key:
+              type: string
+              description: The generated API key (only shown once)
+            name:
+              type: string
+            rate_limit:
+              type: integer
+        version:
+          type: string
+          
+    UpdateApiKeyRequest:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+          description: Enable or disable the key
+        rate_limit:
+          type: integer
+          description: New rate limit
+          minimum: 1

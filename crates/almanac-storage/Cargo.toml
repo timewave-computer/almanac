@@ -1,0 +1,52 @@
+[package]
+name = "almanac-storage"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+description = "Storage layer for Almanac with FoundationDB backend"
+
+[features]
+default = []
+fdb = ["foundationdb"]
+
+[dependencies]
+# Core types
+almanac-core = { path = "../almanac-core" }
+
+# Async runtime
+tokio = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+
+# Serialization
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+serde_bytes = { workspace = true }
+bincode = { workspace = true }
+rmp-serde = { version = "1.1" }  # MessagePack for tuple serialization
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# FoundationDB
+foundationdb = { version = "0.8", optional = true, features = ["embedded-fdb-include"] }
+
+# Utilities
+uuid = { workspace = true, features = ["v4", "serde"] }
+bytes = { workspace = true }
+sha2 = { version = "0.10" }  # For layout commitments
+sha3 = { version = "0.10" }  # For mapping slot calculation
+
+# Logging
+tracing = { workspace = true }
+
+# Time
+chrono = { workspace = true, features = ["serde"] }
+
+[dev-dependencies]
+tempfile = "3.9"
+rand = "0.8"
+criterion = { version = "0.5", features = ["async_tokio"] }

@@ -37,6 +37,19 @@
             # Use the newer fetch method for git dependencies
             useFetchCargoVendor = true;
             cargoHash = "sha256-Q7Enw2pwZB7kzdf/tde/Q/dZhiDCUp19YWd2UY0Hq8w=";
+            
+            # Override cargo build to ensure cdylib is built
+            buildPhase = ''
+              runHook preBuild
+              
+              # Build both rlib and cdylib as specified in Cargo.toml
+              cargo build --release
+              
+              runHook postBuild
+            '';
+            
+            # Disable the automatic cargo install
+            dontCargoInstall = true;
 
             nativeBuildInputs = lib.optionals pkgs.stdenv.isDarwin [
               pkgs.darwin.cctools
@@ -53,8 +66,33 @@
               export MACOSX_DEPLOYMENT_TARGET="11.0"
             '';
 
-            postInstall = ''
-              cp target/${pkgs.stdenv.hostPlatform.config}/release/libwasmvm.${if pkgs.stdenv.isDarwin then "dylib" else "so"} $out/lib/
+            # Use a simple, clean install phase
+            installPhase = ''
+              runHook preInstall
+              
+              # Create output directories
+              mkdir -p $out/lib $out/include
+              
+              # Install the library file  
+              EXT="${if pkgs.stdenv.isDarwin then "dylib" else "so"}"
+              cp target/release/libwasmvm.$EXT $out/lib/
+              
+              # Create a simple pkg-config file for the library
+              mkdir -p $out/lib/pkgconfig
+              cat > $out/lib/pkgconfig/wasmvm.pc << EOF
+              prefix=$out
+              exec_prefix=\''${prefix}
+              libdir=\''${exec_prefix}/lib
+              includedir=\''${prefix}/include
+
+              Name: wasmvm
+              Description: WebAssembly VM for Cosmos chains
+              Version: ${version}
+              Libs: -L\''${libdir} -lwasmvm
+              Cflags: -I\''${includedir}
+              EOF
+              
+              runHook postInstall
             '';
 
             doCheck = false;

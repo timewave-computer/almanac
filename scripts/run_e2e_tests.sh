@@ -28,15 +28,15 @@ print_header() {
 }
 
 print_success() {
-    echo -e "${GREEN}✓ $1${NC}"
+    echo -e "${GREEN}$1${NC}"
 }
 
 print_error() {
-    echo -e "${RED}❌ $1${NC}"
+    echo -e "${RED}$1${NC}"
 }
 
 print_warning() {
-    echo -e "${YELLOW}⚠ $1${NC}"
+    echo -e "${YELLOW}$1${NC}"
 }
 
 print_info() {
@@ -192,9 +192,9 @@ exit_code=\$?
 
 echo ""
 if [[ \$exit_code -eq 0 ]]; then
-    echo -e "${GREEN}🎉 All tests completed successfully!${NC}"
+    echo -e "${GREEN}All tests completed successfully!${NC}"
 else
-    echo -e "${RED}💥 Some tests failed (exit code: \$exit_code)${NC}"
+    echo -e "${RED}Some tests failed (exit code: \$exit_code)${NC}"
 fi
 
 exit \$exit_code

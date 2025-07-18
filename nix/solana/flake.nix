@@ -271,90 +271,109 @@
         };
 
         # Setup script for Solana environment (from zero.nix)
-        setup-solana = pkgs.writeShellScriptBin "setup-solana" ''
-          set -e
-          
-          echo "Setting up Solana development environment..."
-          echo "Platform tools v${platform-tools-version} location: ${solana-node}"
-          echo "Solana CLI v${sol-version} location: ${solana-node}"
-          echo "Anchor CLI v${anchor-version} location: ${anchor}"
-          
-          # Create cache directories with proper permissions
-          SOLANA_CACHE_DIR="$HOME/.cache/solana"
-          mkdir -p "$SOLANA_CACHE_DIR/v${platform-tools-version}/cargo" "$SOLANA_CACHE_DIR/v${platform-tools-version}/rustup"
-          mkdir -p "$SOLANA_CACHE_DIR/releases" "$SOLANA_CACHE_DIR/config"
-          chmod -R 755 "$SOLANA_CACHE_DIR"
-          
-          echo "Solana development environment setup complete!"
-        '';
+        # Platform-specific setup script (only on supported platforms)
+        setup-solana = if (pkgs.stdenv.system != "aarch64-linux") then
+          pkgs.writeShellScriptBin "setup-solana" ''
+            set -e
+            
+            echo "Setting up Solana development environment..."
+            echo "Platform tools v${platform-tools-version} location: ${solana-node}"
+            echo "Solana CLI v${sol-version} location: ${solana-node}"
+            echo "Anchor CLI v${anchor-version} location: ${anchor}"
+            
+            # Create cache directories with proper permissions
+            SOLANA_CACHE_DIR="$HOME/.cache/solana"
+            mkdir -p "$SOLANA_CACHE_DIR/v${platform-tools-version}/cargo" "$SOLANA_CACHE_DIR/v${platform-tools-version}/rustup"
+            mkdir -p "$SOLANA_CACHE_DIR/releases" "$SOLANA_CACHE_DIR/config"
+            chmod -R 755 "$SOLANA_CACHE_DIR"
+            
+            echo "Solana development environment setup complete!"
+          ''
+        else
+          pkgs.writeShellScriptBin "setup-solana" ''
+            echo "Solana node is not available on aarch64-linux (ARM64 Linux)"
+            echo "Available tools: anchor CLI for smart contract development"
+            echo "For full Solana functionality, use x86_64-linux, x86_64-darwin, or aarch64-darwin"
+          '';
 
-        # Wrapper for anchor that uses platform tools and nightly rust for IDL generation (from zero.nix)
-        anchor-wrapper = pkgs.writeShellScriptBin "anchor" ''
-          set -e
+        # Platform-specific anchor wrapper
+        anchor-wrapper = if (pkgs.stdenv.system != "aarch64-linux") then
+          pkgs.writeShellScriptBin "anchor" ''
+            set -e
+            
+            # Set up platform tools environment for SBF compilation  
+            export PLATFORM_TOOLS_DIR=${solana-node}/platform-tools
+            export SBF_SDK_PATH=${solana-node}/platform-tools
+            export PATH="${solana-node}/platform-tools/rust/bin:${solana-node}/bin:$PATH"
           
-          # Set up platform tools environment for SBF compilation  
-          export PLATFORM_TOOLS_DIR=${solana-node}/platform-tools
-          export SBF_SDK_PATH=${solana-node}/platform-tools
-          export PATH="${solana-node}/platform-tools/rust/bin:${solana-node}/bin:$PATH"
-          
-          # Set required environment variables
-          export SOURCE_DATE_EPOCH="${commonEnv.SOURCE_DATE_EPOCH}" 
-          export RUST_BACKTRACE=1
-          export PROTOC=${pkgs.protobuf}/bin/protoc
-          
-          # Platform-specific environment variables
-          ${lib.optionalString pkgs.stdenv.isDarwin ''
-            export MACOSX_DEPLOYMENT_TARGET="${darwinDeploymentTarget}"
-            export CARGO_BUILD_TARGET="${if pkgs.stdenv.isAarch64 then "aarch64" else "x86_64"}-apple-darwin"
-            export RUSTFLAGS="-C link-arg=-undefined -C link-arg=dynamic_lookup"
-          ''}
-          ${lib.optionalString pkgs.stdenv.isLinux ''
-            export CARGO_BUILD_TARGET="${if pkgs.stdenv.isAarch64 then "aarch64" else "x86_64"}-unknown-linux-gnu"
-          ''}
-          
-          # Critical: Set cargo/rustup cache directories to prevent redownloading
-          export CARGO_HOME="$HOME/.cache/solana/v${platform-tools-version}/cargo"
-          export RUSTUP_HOME="$HOME/.cache/solana/v${platform-tools-version}/rustup"
-          
-          # Ensure cache directories exist
-          mkdir -p "$CARGO_HOME" "$RUSTUP_HOME"
-          
-          # Check if this is for IDL generation and use nightly rust
-          case " $@ " in
-            *" idl "*)
-              export PATH="${nightly-rust}/bin:${solana-node}/bin:$PATH"
-              export RUSTC="${nightly-rust}/bin/rustc"
-              export CARGO="${nightly-rust}/bin/cargo"
-              ;;
-          esac
-          
-          # Run anchor with platform tools environment
-          exec "${anchor}/bin/anchor" "$@"
-        '';
+            # Set required environment variables
+            export SOURCE_DATE_EPOCH="${commonEnv.SOURCE_DATE_EPOCH}" 
+            export RUST_BACKTRACE=1
+            export PROTOC=${pkgs.protobuf}/bin/protoc
+            
+            # Platform-specific environment variables
+            ${lib.optionalString pkgs.stdenv.isDarwin ''
+              export MACOSX_DEPLOYMENT_TARGET="${darwinDeploymentTarget}"
+              export CARGO_BUILD_TARGET="${if pkgs.stdenv.isAarch64 then "aarch64" else "x86_64"}-apple-darwin"
+              export RUSTFLAGS="-C link-arg=-undefined -C link-arg=dynamic_lookup"
+            ''}
+            ${lib.optionalString pkgs.stdenv.isLinux ''
+              export CARGO_BUILD_TARGET="${if pkgs.stdenv.isAarch64 then "aarch64" else "x86_64"}-unknown-linux-gnu"
+            ''}
+            
+            # Critical: Set cargo/rustup cache directories to prevent redownloading
+            export CARGO_HOME="$HOME/.cache/solana/v${platform-tools-version}/cargo"
+            export RUSTUP_HOME="$HOME/.cache/solana/v${platform-tools-version}/rustup"
+            
+            # Ensure cache directories exist
+            mkdir -p "$CARGO_HOME" "$RUSTUP_HOME"
+            
+            # Check if this is for IDL generation and use nightly rust
+            case " $@ " in
+              *" idl "*)
+                export PATH="${nightly-rust}/bin:${solana-node}/bin:$PATH"
+                export RUSTC="${nightly-rust}/bin/rustc"
+                export CARGO="${nightly-rust}/bin/cargo"
+                ;;
+            esac
+            
+            # Run anchor with platform tools environment
+            exec "${anchor}/bin/anchor" "$@"
+          ''
+        else
+          pkgs.writeShellScriptBin "anchor" ''
+            # Fallback anchor wrapper for unsupported platforms
+            exec "${anchor}/bin/anchor" "$@"
+          '';
 
         # Combined solana development environment
         solana-tools = pkgs.symlinkJoin {
           name = "solana-tools";
           paths = [
-            solana-node
             anchor-wrapper
             setup-solana
+          ] ++ lib.optionals (pkgs.stdenv.system != "aarch64-linux") [
+            solana-node
           ];
         };
 
       in {
         packages = {
-          inherit solana-node anchor setup-solana nightly-rust anchor-wrapper solana-tools;
+          inherit anchor setup-solana nightly-rust anchor-wrapper solana-tools;
+        } // lib.optionalAttrs (pkgs.stdenv.system != "aarch64-linux") {
+          inherit solana-node;
         };
 
         devshells.default = {
           name = "solana-development";
           
           commands = [
+          ] ++ lib.optionals (pkgs.stdenv.system != "aarch64-linux") [
             {
               package = self'.packages.solana-node;
               help = "Solana CLI and test validator";
             }
+          ] ++ [
             {
               package = self'.packages.anchor-wrapper;
               help = "Anchor framework for Solana development";

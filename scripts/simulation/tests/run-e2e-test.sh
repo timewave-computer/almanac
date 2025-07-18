@@ -34,25 +34,25 @@ echo -e "${BLUE}Step 4: Running integration tests...${NC}"
 check_services() {
     # Check if Anvil is running
     if curl -s -X POST -H "Content-Type: application/json" --data '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' http://localhost:8545 > /dev/null; then
-        echo -e "${GREEN}✓ Ethereum node (Anvil) is running${NC}"
+        echo -e "${GREEN}PASSED Ethereum node (Anvil) is running${NC}"
     else
-        echo -e "${RED}✗ Ethereum node (Anvil) is not running${NC}"
+        echo -e "${RED}FAILED Ethereum node (Anvil) is not running${NC}"
         return 1
     fi
 
     # Check if wasmd is running
     if curl -s http://localhost:26657/status > /dev/null; then
-        echo -e "${GREEN}✓ CosmWasm node (wasmd) is running${NC}"
+        echo -e "${GREEN}PASSED CosmWasm node (wasmd) is running${NC}"
     else
-        echo -e "${RED}✗ CosmWasm node (wasmd) is not running${NC}"
+        echo -e "${RED}FAILED CosmWasm node (wasmd) is not running${NC}"
         return 1
     fi
 
     # Check if PostgreSQL is running
     if nix develop --command bash -c "pg_isready -h localhost -p 5432" > /dev/null 2>&1; then
-        echo -e "${GREEN}✓ PostgreSQL is running${NC}"
+        echo -e "${GREEN}PASSED PostgreSQL is running${NC}"
     else
-        echo -e "${RED}✗ PostgreSQL is not running${NC}"
+        echo -e "${RED}FAILED PostgreSQL is not running${NC}"
         return 1
     fi
 
@@ -71,9 +71,9 @@ nix develop --command bash -c "cargo test -p tests --features postgres -- --noca
 
 # Check if the test succeeded
 if [ ${PIPESTATUS[0]} -eq 0 ]; then
-    echo -e "${GREEN}✓ Cross-chain E2E test succeeded${NC}"
+    echo -e "${GREEN}PASSED Cross-chain E2E test succeeded${NC}"
 else
-    echo -e "${RED}✗ Cross-chain E2E test failed. Check logs/e2e-test.log for details.${NC}"
+    echo -e "${RED}FAILED Cross-chain E2E test failed. Check logs/e2e-test.log for details.${NC}"
     exit 1
 fi
 
@@ -83,9 +83,9 @@ nix develop --command bash -c "cargo test -p tests --features postgres -- --noca
 
 # Check if the test succeeded
 if [ ${PIPESTATUS[0]} -eq 0 ]; then
-    echo -e "${GREEN}✓ Valence contract integration test succeeded${NC}"
+    echo -e "${GREEN}PASSED Valence contract integration test succeeded${NC}"
 else
-    echo -e "${RED}✗ Valence contract integration test failed. Check logs/e2e-test.log for details.${NC}"
+    echo -e "${RED}FAILED Valence contract integration test failed. Check logs/e2e-test.log for details.${NC}"
     exit 1
 fi
 

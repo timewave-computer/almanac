@@ -7,11 +7,8 @@ enable_http = true
 
 
 [storage]
-rocksdb_path = "./data/rocks_dev"
-postgres_url = "postgres://postgres:postgres@localhost/indexer_dev"
-rocksdb_create_if_missing = true
-postgres_max_connections = 10
-postgres_migrate = true
+foundationdb_cluster_file = "/usr/local/etc/foundationdb/fdb.cluster"
+foundationdb_namespace = "almanac_dev"
 
 [ethereum]
 rpc_url = "http://localhost:8545"
@@ -36,4 +33,14 @@ console = true
 [metrics]
 enable = true
 host = "127.0.0.1"
-port = 9090 
+port = 9090
+
+[auth]
+# External authentication service configuration
+service_url = "http://localhost:8888/v1/auth"
+# Request timeout in milliseconds
+timeout_ms = 5000
+# Cache TTL for validated tokens in seconds
+cache_ttl_seconds = 300
+# Enable authentication (set to false to bypass auth)
+enabled = true 

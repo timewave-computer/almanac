@@ -144,28 +144,28 @@ nix develop --command cargo run --manifest-path e2e/Cargo.toml
 ```
 Almanac CLI End-to-End Test Suite
 ==================================================
-✓ Almanac binary ready
-✓ Test fixtures ready
+Almanac binary ready
+Test fixtures ready
 
 Running test suites...
 
-📚 Comprehensive CLI Tests (All Documented Commands)
-  ✓ 127/127 tests passed (100.0%)
+Comprehensive CLI Tests (All Documented Commands)
+  127/127 tests passed (100.0%)
 
-🌌 Cosmos CLI Tests
-  ✓ 23/23 tests passed (100.0%)
+Cosmos CLI Tests
+  23/23 tests passed (100.0%)
 
-⚡ Ethereum CLI Tests
-  ✓ 25/25 tests passed (100.0%)
+Ethereum CLI Tests
+  25/25 tests passed (100.0%)
 
-🎉 All tests passed!
+All tests passed!
 ```
 
 ### Failure Output
 
 ```
-📚 Comprehensive CLI Tests (All Documented Commands)
-  ⚠ 125/127 tests passed, 2 failed (98.4%)
+Comprehensive CLI Tests (All Documented Commands)
+  125/127 tests passed, 2 failed (98.4%)
     Failed tests:
       - cosmos_doc_basic_example
       - eth_invalid_address
@@ -271,13 +271,13 @@ e2e/test_outputs/
 
 The comprehensive test suite covers:
 
-- ✅ **100% of documented CLI commands**
-- ✅ **All examples from README.md**
-- ✅ **All examples from docs/cosmos_cli_reference.md**
-- ✅ **All examples from docs/ethereum_cli_reference.md**
-- ✅ **Error conditions from troubleshooting guides**
-- ✅ **All supported chains and networks**
-- ✅ **All feature combinations**
-- ✅ **Edge cases and boundary conditions**
+- **100% of documented CLI commands**
+- **All examples from README.md**
+- **All examples from docs/cosmos_cli_reference.md**
+- **All examples from docs/ethereum_cli_reference.md**
+- **Error conditions from troubleshooting guides**
+- **All supported chains and networks**
+- **All feature combinations**
+- **Edge cases and boundary conditions**
 
 This ensures that all documented functionality actually works and that the documentation examples are accurate and up-to-date. 

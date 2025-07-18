@@ -32,21 +32,21 @@ run_crate_tests() {
     echo -e "${YELLOW}Testing $crate...${NC}"
     
     if cargo test -p "$crate" --no-fail-fast 2>&1; then
-        echo -e "${GREEN}✓ $crate tests passed${NC}"
+        echo -e "${GREEN}PASSED $crate tests${NC}"
         ((PASSED_TESTS++))
     else
-        echo -e "${RED}✗ $crate tests failed${NC}"
+        echo -e "${RED}FAILED $crate tests${NC}"
         ((FAILED_TESTS++))
     fi
     ((TOTAL_TESTS++))
     echo ""
 }
 
-# Check if PostgreSQL is running
-echo "Checking database connection..."
-if ! pg_isready -q; then
-    echo -e "${RED}Error: PostgreSQL is not running${NC}"
-    echo "Please run 'init_databases' first"
+# Check if FoundationDB is running
+echo "Checking FoundationDB connection..."
+if ! fdbcli --exec status >/dev/null 2>&1; then
+    echo -e "${RED}Error: FoundationDB is not running${NC}"
+    echo "Please ensure FoundationDB is installed and running"
     exit 1
 fi
 
@@ -81,10 +81,10 @@ if ! curl -sf http://localhost:8080/health >/dev/null 2>&1; then
     # Test health endpoint
     echo -n "Testing /health endpoint... "
     if curl -sf http://localhost:8080/health | jq -e '.status == "ok"' >/dev/null; then
-        echo -e "${GREEN}✓${NC}"
+        echo -e "${GREEN}PASSED${NC}"
         ((PASSED_TESTS++))
     else
-        echo -e "${RED}✗${NC}"
+        echo -e "${RED}FAILED${NC}"
         ((FAILED_TESTS++))
     fi
     ((TOTAL_TESTS++))
@@ -92,10 +92,10 @@ if ! curl -sf http://localhost:8080/health >/dev/null 2>&1; then
     # Test events endpoint
     echo -n "Testing /api/v1/events endpoint... "
     if curl -sf http://localhost:8080/api/v1/events | jq -e '.success == true' >/dev/null; then
-        echo -e "${GREEN}✓${NC}"
+        echo -e "${GREEN}PASSED${NC}"
         ((PASSED_TESTS++))
     else
-        echo -e "${RED}✗${NC}"
+        echo -e "${RED}FAILED${NC}"
         ((FAILED_TESTS++))
     fi
     ((TOTAL_TESTS++))

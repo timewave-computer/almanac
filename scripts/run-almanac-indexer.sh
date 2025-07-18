@@ -60,8 +60,8 @@ nix run ./nix/almanac-indexer.nix -- $ARGS
 
 # Check exit code
 if [ $? -eq 0 ]; then
-  echo -e "${GREEN}✓ Almanac indexer completed successfully${NC}"
+  echo -e "${GREEN}Almanac indexer completed successfully${NC}"
 else
-  echo -e "${RED}✗ Almanac indexer encountered an error${NC}"
+  echo -e "${RED}Almanac indexer encountered an error${NC}"
   exit 1
 fi 

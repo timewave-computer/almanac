@@ -1,0 +1,39 @@
+# Solana node configuration
+
+[chain]
+id = "solana-mainnet"
+confirmations = 32  # ~12.8 seconds
+
+[rpc]
+url = "https://api.mainnet-beta.solana.com"
+# For better performance, use a dedicated RPC like:
+# url = "https://solana-api.projectserum.com"
+# url = "https://rpc.ankr.com/solana"
+max_retries = 3
+timeout_secs = 30
+
+[storage]
+[storage.fdb]
+# Leave empty to use default cluster file
+cluster_file = "/etc/foundationdb/fdb.cluster"
+namespace = "almanac/solana-mainnet"
+
+[indexing]
+# Start from latest, specific slot number, or "latest"
+start_slot = "latest"
+batch_size = 25  # Smaller batches due to Solana's fast slot time
+max_concurrent_batches = 2
+reindex_on_startup = false
+
+[consensus]
+# Solana uses Tower BFT
+fork_choice = "tower_bft"
+max_reorg_depth = 32  # Solana has shallow reorgs
+
+[consensus.finality_levels]
+confirmed = 32   # ~12.8 seconds
+finalized = 64   # ~25.6 seconds
+
+[monitoring]
+enable_metrics = true
+enable_tracing = true

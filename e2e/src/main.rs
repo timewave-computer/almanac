@@ -37,19 +37,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Ensure Almanac binary exists
     println!("Checking Almanac binary...");
     if let Err(e) = ensure_almanac_binary(&mut config).await {
-        eprintln!("❌ {}", format!("Failed to setup Almanac binary: {}", e).red());
+        eprintln!("{}", format!("Failed to setup Almanac binary: {}", e).red());
         return Err(e.into());
     }
-    println!("✓ {}", "Almanac binary ready".green());
+    println!("{}", "Almanac binary ready".green());
 
     // Setup test fixtures
     println!("Setting up test fixtures...");
     let fixtures_dir = test_env.fixtures_dir();
     if let Err(e) = setup_fixtures(&fixtures_dir) {
-        eprintln!("❌ {}", format!("Failed to setup fixtures: {}", e).red());
+        eprintln!("{}", format!("Failed to setup fixtures: {}", e).red());
         return Err(e.into());
     }
-    println!("✓ {}", "Test fixtures ready".green());
+    println!("{}", "Test fixtures ready".green());
 
     // Run all test suites
     let mut all_results = TestSuiteResults::default();
@@ -58,7 +58,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Basic CLI tests
     if should_run_test("basic", test_filter) {
-        println!("\n{}", "🧪 Basic CLI Tests".cyan().bold());
+        println!("\n{}", "Basic CLI Tests".cyan().bold());
         let results = tests::basic::run_basic_cli_tests(&config).await;
         print_suite_results("Basic CLI", &results);
         for result in results.results {
@@ -68,7 +68,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Comprehensive CLI tests - covering all documented commands
     if should_run_test("comprehensive", test_filter) {
-        println!("\n{}", "📚 Comprehensive CLI Tests (All Documented Commands)".cyan().bold());
+        println!("\n{}", "Comprehensive CLI Tests (All Documented Commands)".cyan().bold());
         let results = tests::cli_comprehensive::run_comprehensive_cli_tests(&config, &test_env).await;
         print_suite_results("Comprehensive CLI", &results);
         for result in results.results {
@@ -78,7 +78,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Cosmos CLI tests
     if should_run_test("cosmos", test_filter) {
-        println!("\n{}", "🌌 Cosmos CLI Tests".cyan().bold());
+        println!("\n{}", "Cosmos CLI Tests".cyan().bold());
         let results = tests::cosmos::run_cosmos_cli_tests(&config, &test_env).await;
         print_suite_results("Cosmos CLI", &results);
         for result in results.results {
@@ -88,7 +88,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Ethereum CLI tests
     if should_run_test("ethereum", test_filter) {
-        println!("\n{}", "⚡ Ethereum CLI Tests".cyan().bold());
+        println!("\n{}", "Ethereum CLI Tests".cyan().bold());
         let results = tests::ethereum::run_ethereum_cli_tests(&config, &test_env).await;
         print_suite_results("Ethereum CLI", &results);
         for result in results.results {
@@ -98,7 +98,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Configuration tests
     if should_run_test("config", test_filter) {
-        println!("\n{}", "⚙️  Configuration Tests".cyan().bold());
+        println!("\n{}", "Configuration Tests".cyan().bold());
         let results = tests::config::run_config_tests(&config, &test_env).await;
         print_suite_results("Configuration", &results);
         for result in results.results {
@@ -108,11 +108,45 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Code generation validation tests
     if should_run_test("validation", test_filter) {
-        println!("\n{}", "✅ Code Generation Validation Tests".cyan().bold());
+        println!("\n{}", "Code Generation Validation Tests".cyan().bold());
         let results = tests::validation::run_validation_tests(&config, &test_env).await;
         print_suite_results("Validation", &results);
         for result in results.results {
             all_results.add_result(result);
+        }
+    }
+
+    // Multi-chain simulation E2E test
+    if should_run_test("multi-chain-simulation", test_filter) {
+        println!("\n{}", "Multi-Chain Simulation E2E Test".cyan().bold());
+        println!("   This test requires a full simulation environment with:");
+        println!("   - Solana test validator");
+        println!("   - Ethereum/Anvil node");
+        println!("   - Neutron Cosmos node");
+        println!("   - FoundationDB cluster");
+        println!("   - Almanac indexer and API");
+        
+        match tests::multi_chain_simulation_e2e::run_multi_chain_simulation_e2e_test().await {
+            Ok(()) => {
+                println!("  {}", "Multi-chain simulation test passed".green());
+                all_results.add_result(almanac_e2e_tests::TestResult {
+                    name: "multi_chain_simulation".to_string(),
+                    success: true,
+                    output: "Multi-chain simulation test completed successfully".to_string(),
+                    duration: std::time::Duration::from_secs(0), // Placeholder
+                    error: None,
+                });
+            }
+            Err(e) => {
+                println!("  {} Multi-chain simulation test failed: {}", "FAILED".red(), e);
+                all_results.add_result(almanac_e2e_tests::TestResult {
+                    name: "multi_chain_simulation".to_string(),
+                    success: false,
+                    output: String::new(),
+                    duration: std::time::Duration::from_secs(0), // Placeholder
+                    error: Some(format!("Multi-chain simulation test failed: {}", e)),
+                });
+            }
         }
     }
 
@@ -123,7 +157,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if all_results.failure_count() > 0 {
         std::process::exit(1);
     } else {
-        println!("\n🎉 {}", "All tests passed!".green().bold());
+        println!("\n{}", "All tests passed!".green().bold());
         std::process::exit(0);
     }
 }
@@ -143,10 +177,10 @@ fn print_suite_results(_suite_name: &str, results: &TestSuiteResults) {
     
     if failed == 0 {
         println!("  {} {}/{} tests passed ({:.1}%)", 
-                "✓".green(), passed, total, results.success_rate() * 100.0);
+                "PASSED".green(), passed, total, results.success_rate() * 100.0);
     } else {
         println!("  {} {}/{} tests passed, {} failed ({:.1}%)", 
-                "⚠".yellow(), passed, total, failed, results.success_rate() * 100.0);
+                "FAILED".yellow(), passed, total, failed, results.success_rate() * 100.0);
     }
     
     if results.results.iter().any(|r| !r.success) {

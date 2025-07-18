@@ -44,33 +44,33 @@ echo -e "${BLUE}Final check: Verifying all services are running...${NC}"
 
 # Check PostgreSQL
 if nix develop --command bash -c "pg_isready -h localhost -p 5432" > /dev/null 2>&1; then
-    echo -e "${GREEN}✓ PostgreSQL is running${NC}"
+    echo -e "${GREEN}PASSED PostgreSQL is running${NC}"
 else
-    echo -e "${RED}✗ PostgreSQL is not running${NC}"
+    echo -e "${RED}FAILED PostgreSQL is not running${NC}"
     exit 1
 fi
 
 # Check RocksDB directories
 if [ -d "$(pwd)/data/rocksdb" ]; then
-    echo -e "${GREEN}✓ RocksDB directories are set up${NC}"
+    echo -e "${GREEN}PASSED RocksDB directories are set up${NC}"
 else
-    echo -e "${RED}✗ RocksDB directories are not set up${NC}"
+    echo -e "${RED}FAILED RocksDB directories are not set up${NC}"
     exit 1
 fi
 
 # Check Anvil
 if curl -s -X POST -H "Content-Type: application/json" --data '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' http://localhost:8545 > /dev/null; then
-    echo -e "${GREEN}✓ Ethereum node (Anvil) is running${NC}"
+    echo -e "${GREEN}PASSED Ethereum node (Anvil) is running${NC}"
 else
-    echo -e "${RED}✗ Ethereum node (Anvil) is not running${NC}"
+    echo -e "${RED}FAILED Ethereum node (Anvil) is not running${NC}"
     exit 1
 fi
 
 # Check wasmd
 if curl -s http://localhost:26657/status > /dev/null; then
-    echo -e "${GREEN}✓ CosmWasm node (wasmd) is running${NC}"
+    echo -e "${GREEN}PASSED CosmWasm node (wasmd) is running${NC}"
 else
-    echo -e "${RED}✗ CosmWasm node (wasmd) is not running${NC}"
+    echo -e "${RED}FAILED CosmWasm node (wasmd) is not running${NC}"
     exit 1
 fi
 

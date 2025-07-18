@@ -258,30 +258,30 @@ check_health() {
     
     # Check main API
     if response=$(curl -sf "$api_url"); then
-        echo -e "${GREEN}✓ API Health: OK${NC}"
+        echo -e "${GREEN}API Health: OK${NC}"
         echo "  Response: $response"
     else
-        echo -e "${RED}✗ API Health: FAILED${NC}"
+        echo -e "${RED}API Health: FAILED${NC}"
         echo "  Could not reach $api_url"
     fi
     
     # Check metrics endpoint
     if curl -sf "$metrics_url" > /dev/null; then
-        echo -e "${GREEN}✓ Metrics: OK${NC}"
+        echo -e "${GREEN}Metrics: OK${NC}"
         echo "  Endpoint: $metrics_url"
     else
-        echo -e "${YELLOW}⚠ Metrics: Not available${NC}"
+        echo -e "${YELLOW}Metrics: Not available${NC}"
     fi
     
     # Check database connection
     if [ -n "${DATABASE_URL:-}" ]; then
         if psql "$DATABASE_URL" -c "SELECT 1" &> /dev/null; then
-            echo -e "${GREEN}✓ Database: Connected${NC}"
+            echo -e "${GREEN}Database: Connected${NC}"
         else
-            echo -e "${RED}✗ Database: Connection failed${NC}"
+            echo -e "${RED}Database: Connection failed${NC}"
         fi
     else
-        echo -e "${YELLOW}⚠ Database: Not configured${NC}"
+        echo -e "${YELLOW}Database: Not configured${NC}"
     fi
 }
 
@@ -312,9 +312,9 @@ validate_config() {
     # Test port availability
     for port in $API_PORT $METRICS_PORT; do
         if nc -z localhost $port 2>/dev/null; then
-            echo -e "${YELLOW}⚠ Port $port is already in use${NC}"
+            echo -e "${YELLOW}Port $port is already in use${NC}"
         else
-            echo -e "${GREEN}✓ Port $port is available${NC}"
+            echo -e "${GREEN}Port $port is available${NC}"
         fi
     done
     

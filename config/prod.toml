@@ -4,14 +4,10 @@
 host = "0.0.0.0"  # Listen on all interfaces
 port = 8080
 enable_http = true
-enable_graphql = true
 
 [storage]
-rocksdb_path = "/var/lib/indexer/rocks"
-postgres_url = "postgres://indexer:${POSTGRES_PASSWORD}@postgres.internal:5432/indexer_prod"
-rocksdb_create_if_missing = true
-postgres_max_connections = 50
-postgres_migrate = false  # In production, migrations should be run separately
+foundationdb_cluster_file = "/usr/local/etc/foundationdb/fdb.cluster"
+foundationdb_namespace = "almanac_prod"
 
 [ethereum]
 rpc_url = "${ETH_RPC_URL}"

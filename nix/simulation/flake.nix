@@ -49,12 +49,17 @@
         # Node configuration generator
         nodeConfigGenerator = pkgs.writeShellApplication {
           name = "sim-config";
-          runtimeInputs = [ pkgs.jq pkgs.coreutils ];
+          runtimeInputs = [ pkgs.jq pkgs.coreutils pkgs.envsubst ];
           text = ''
             # Generate configuration for simulation environment
             
             CHAINS="''${1:-ethereum,cosmos,fdb}"  # Default chains to run
             OUTPUT_DIR="''${2:-./config/simulation}"
+            
+            # Set up environment variables
+            DATA_DIR="$PWD/data"
+            LOGS_DIR="$PWD/logs"
+            CONFIG_DIR="$PWD/config"
             
             echo "Generating simulation configuration..."
             echo "Chains: $CHAINS"
@@ -62,7 +67,98 @@
             
             mkdir -p "$OUTPUT_DIR"
             
-            # Generate main simulation config
+            # Generate consolidated TOML configuration
+            cat > "$CONFIG_DIR/simulation.toml" << EOF
+            # Almanac Simulation Configuration
+            # Consolidated configuration for local multi-chain simulation environment
+            
+            [simulation]
+            name = "almanac-local-cluster"
+            chains = [$(echo "$CHAINS" | sed 's/,/", "/g' | sed 's/^/"/' | sed 's/$/"/')]
+            
+            [almanac]
+            name = "local-simulation"
+            api_port = 3000
+            api_log_file = "$LOGS_DIR/almanac-api.log"
+            
+            [storage]
+            backend = "foundationdb"
+            cluster_file = "$DATA_DIR/fdb.cluster"
+            
+            [services.foundationdb]
+            enabled = $(echo "$CHAINS" | grep -q "fdb" && echo "true" || echo "false")
+            cluster_file = "$DATA_DIR/fdb.cluster"
+            data_dir = "$DATA_DIR/foundationdb"
+            log_dir = "$LOGS_DIR/foundationdb"
+            
+            [services.ethereum]
+            enabled = $(echo "$CHAINS" | grep -q "ethereum" && echo "true" || echo "false")
+            node_type = "anvil"
+            rpc_port = 8545
+            ws_port = 8546
+            chain_id = 31337
+            data_dir = "$DATA_DIR/ethereum"
+            log_file = "$LOGS_DIR/anvil.log"
+            
+            [services.cosmos]
+            enabled = $(echo "$CHAINS" | grep -q "cosmos" && echo "true" || echo "false")
+            node_type = "neutron"
+            rpc_port = 26657
+            grpc_port = 9090
+            api_port = 1317
+            chain_id = "test-1"
+            data_dir = "$DATA_DIR/cosmos"
+            log_file = "$LOGS_DIR/neutron.log"
+            
+            [services.solana]
+            enabled = $(echo "$CHAINS" | grep -q "solana" && echo "true" || echo "false")
+            node_type = "test-validator"
+            rpc_port = 8899
+            ws_port = 8900
+            data_dir = "$DATA_DIR/solana"
+            log_file = "$LOGS_DIR/solana.log"
+            EOF
+            
+            # Add chain-specific configurations to TOML
+            if echo "$CHAINS" | grep -q "ethereum"; then
+              cat >> "$CONFIG_DIR/simulation.toml" << EOF
+            
+            [[chains.ethereum]]
+            name = "ethereum-local"
+            rpc_url = "http://localhost:8545"
+            ws_url = "ws://localhost:8546"
+            chain_id = 31337
+            starting_block = 1
+            batch_size = 100
+            EOF
+            fi
+            
+            if echo "$CHAINS" | grep -q "cosmos"; then
+              cat >> "$CONFIG_DIR/simulation.toml" << EOF
+            
+            [[chains.cosmos]]
+            name = "cosmos-local"
+            rpc_url = "http://localhost:26657"
+            grpc_url = "http://localhost:9090"
+            chain_id = "test-1"
+            starting_block = 1
+            batch_size = 100
+            EOF
+            fi
+            
+            if echo "$CHAINS" | grep -q "solana"; then
+              cat >> "$CONFIG_DIR/simulation.toml" << EOF
+            
+            [[chains.solana]]
+            name = "solana-local"
+            rpc_url = "http://localhost:8899"
+            ws_url = "ws://localhost:8900"
+            starting_slot = 1
+            batch_size = 100
+            EOF
+            fi
+            
+            # Generate main simulation config (for legacy compatibility)
             cat > "$OUTPUT_DIR/simulation.json" << EOF
             {
               "simulation": {
@@ -105,75 +201,23 @@
                 }
               },
               "almanac": {
-                "indexer_config": "$CONFIG_DIR/almanac-indexer.toml",
+                "indexer_config": "$CONFIG_DIR/simulation.toml",
                 "api_port": 3000,
                 "api_log_file": "$LOGS_DIR/almanac-api.log"
               }
             }
             EOF
             
-            # Generate Almanac indexer configuration
-            cat > "$OUTPUT_DIR/almanac-indexer.toml" << EOF
-            [almanac]
-            name = "local-simulation"
-            
-            [storage]
-            backend = "foundationdb"
-            cluster_file = "$DATA_DIR/fdb.cluster"
-            
-            [chains]
-            EOF
-            
-            # Add chain-specific configurations
-            if echo "$CHAINS" | grep -q "ethereum"; then
-              cat >> "$OUTPUT_DIR/almanac-indexer.toml" << EOF
-            
-            [[chains.ethereum]]
-            name = "ethereum-local"
-            rpc_url = "http://localhost:8545"
-            ws_url = "ws://localhost:8546"
-            chain_id = 31337
-            starting_block = 1
-            batch_size = 100
-            
-            EOF
-            fi
-            
-            if echo "$CHAINS" | grep -q "cosmos"; then
-              cat >> "$OUTPUT_DIR/almanac-indexer.toml" << EOF
-            
-            [[chains.cosmos]]
-            name = "cosmos-local"
-            rpc_url = "http://localhost:26657"
-            grpc_url = "http://localhost:9090"
-            chain_id = "test-1"
-            starting_block = 1
-            batch_size = 100
-            
-            EOF
-            fi
-            
-            if echo "$CHAINS" | grep -q "solana"; then
-              cat >> "$OUTPUT_DIR/almanac-indexer.toml" << EOF
-            
-            [[chains.solana]]
-            name = "solana-local"
-            rpc_url = "http://localhost:8899"
-            ws_url = "ws://localhost:8900"
-            starting_slot = 1
-            batch_size = 100
-            
-            EOF
-            fi
-            
             echo "Configuration generated successfully in $OUTPUT_DIR"
+            echo "Consolidated TOML configuration: $CONFIG_DIR/simulation.toml"
+            echo "Legacy JSON configuration: $OUTPUT_DIR/simulation.json"
           '';
         };
 
         # Individual node launchers
         ethereumLauncher = pkgs.writeShellApplication {
           name = "sim-ethereum";
-          runtimeInputs = [ ethereum-packages.forge pkgs.curl pkgs.jq ];
+          runtimeInputs = [ ethereum-packages.forge pkgs.curl pkgs.jq pkgs.envsubst ];
           text = ''
             # Launch Ethereum node (Anvil)
             
@@ -189,7 +233,6 @@
             # Read configuration
             ETH_ENABLED=$(jq -r '.services.ethereum.enabled' "$CONFIG_FILE")
             RPC_PORT=$(jq -r '.services.ethereum.rpc_port' "$CONFIG_FILE")
-            WS_PORT=$(jq -r '.services.ethereum.ws_port' "$CONFIG_FILE")
             CHAIN_ID=$(jq -r '.services.ethereum.chain_id' "$CONFIG_FILE")
             DATA_DIR=$(jq -r '.services.ethereum.data_dir' "$CONFIG_FILE" | envsubst)
             LOG_FILE=$(jq -r '.services.ethereum.log_file' "$CONFIG_FILE" | envsubst)
@@ -232,11 +275,11 @@
                 
                 # Wait for node to be ready
                 echo "Waiting for Ethereum node to be ready..."
-                for i in {1..30}; do
+                for ((i=1; i<=30; i++)); do
                   if curl -s -X POST -H "Content-Type: application/json" \
                      --data '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' \
                      "http://localhost:$RPC_PORT" > /dev/null; then
-                    echo "✓ Ethereum node is ready"
+                    echo "Ethereum node is ready"
                     break
                   fi
                   sleep 1
@@ -248,7 +291,7 @@
                 if [ -f "$PID_FILE" ]; then
                   kill "$(cat "$PID_FILE")" 2>/dev/null || true
                   rm -f "$PID_FILE"
-                  echo "✓ Ethereum node stopped"
+                  echo "Ethereum node stopped"
                 else
                   echo "Ethereum node not running"
                 fi
@@ -256,17 +299,17 @@
                 
               "status")
                 if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
-                  echo "✓ Ethereum node is running (PID: $(cat "$PID_FILE"))"
+                  echo "Ethereum node is running (PID: $(cat "$PID_FILE"))"
                   # Test RPC
                   if curl -s -X POST -H "Content-Type: application/json" \
                      --data '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' \
                      "http://localhost:$RPC_PORT" > /dev/null; then
-                    echo "✓ RPC is responding"
+                    echo "RPC is responding"
                   else
-                    echo "✗ RPC not responding"
+                    echo "RPC not responding"
                   fi
                 else
-                  echo "✗ Ethereum node is not running"
+                  echo "Ethereum node is not running"
                 fi
                 ;;
                 
@@ -280,7 +323,7 @@
 
         cosmosLauncher = pkgs.writeShellApplication {
           name = "sim-cosmos";
-          runtimeInputs = [ cosmos-packages.neutron pkgs.curl pkgs.jq ];
+          runtimeInputs = [ cosmos-packages.neutron pkgs.curl pkgs.jq pkgs.envsubst ];
           text = ''
             # Launch Cosmos node (Neutron)
             
@@ -361,9 +404,9 @@
                 
                 # Wait for node to be ready
                 echo "Waiting for Cosmos node to be ready..."
-                for i in {1..60}; do
+                for ((i=1; i<=60; i++)); do
                   if curl -s "http://localhost:$RPC_PORT/status" > /dev/null; then
-                    echo "✓ Cosmos node is ready"
+                    echo "Cosmos node is ready"
                     break
                   fi
                   sleep 2
@@ -375,7 +418,7 @@
                 if [ -f "$PID_FILE" ]; then
                   kill "$(cat "$PID_FILE")" 2>/dev/null || true
                   rm -f "$PID_FILE"
-                  echo "✓ Cosmos node stopped"
+                  echo "Cosmos node stopped"
                 else
                   echo "Cosmos node not running"
                 fi
@@ -383,15 +426,15 @@
                 
               "status")
                 if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
-                  echo "✓ Cosmos node is running (PID: $(cat "$PID_FILE"))"
+                  echo "Cosmos node is running (PID: $(cat "$PID_FILE"))"
                   # Test RPC
                   if curl -s "http://localhost:$RPC_PORT/status" > /dev/null; then
-                    echo "✓ RPC is responding"
+                    echo "RPC is responding"
                   else
-                    echo "✗ RPC not responding"
+                    echo "RPC not responding"
                   fi
                 else
-                  echo "✗ Cosmos node is not running"
+                  echo "Cosmos node is not running"
                 fi
                 ;;
                 
@@ -407,7 +450,7 @@
         solanaLauncher = if (pkgs.stdenv.system != "aarch64-linux") then
           pkgs.writeShellApplication {
             name = "sim-solana";
-            runtimeInputs = [ solana-packages.solana-tools pkgs.curl pkgs.jq ];
+            runtimeInputs = [ solana-packages.solana-tools pkgs.curl pkgs.jq pkgs.envsubst ];
             text = ''
               # Launch Solana node (Test Validator)
               
@@ -423,7 +466,7 @@
               # Read configuration
               SOLANA_ENABLED=$(jq -r '.services.solana.enabled' "$CONFIG_FILE")
               RPC_PORT=$(jq -r '.services.solana.rpc_port' "$CONFIG_FILE")
-              WS_PORT=$(jq -r '.services.solana.ws_port' "$CONFIG_FILE")
+              # WS_PORT=$(jq -r '.services.solana.ws_port' "$CONFIG_FILE")  # Currently unused
               DATA_DIR=$(jq -r '.services.solana.data_dir' "$CONFIG_FILE" | envsubst)
               LOG_FILE=$(jq -r '.services.solana.log_file' "$CONFIG_FILE" | envsubst)
               
@@ -463,11 +506,11 @@
                   
                   # Wait for node to be ready
                   echo "Waiting for Solana node to be ready..."
-                  for i in {1..30}; do
+                  for ((i=1; i<=30; i++)); do
                     if curl -s -X POST -H "Content-Type: application/json" \
                        --data '{"jsonrpc":"2.0","method":"getHealth","id":1}' \
                        "http://localhost:$RPC_PORT" > /dev/null; then
-                      echo "✓ Solana node is ready"
+                      echo "Solana node is ready"
                       break
                     fi
                     sleep 2
@@ -479,7 +522,7 @@
                   if [ -f "$PID_FILE" ]; then
                     kill "$(cat "$PID_FILE")" 2>/dev/null || true
                     rm -f "$PID_FILE"
-                    echo "✓ Solana node stopped"
+                    echo "Solana node stopped"
                   else
                     echo "Solana node not running"
                   fi
@@ -487,17 +530,17 @@
                   
                 "status")
                   if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
-                    echo "✓ Solana node is running (PID: $(cat "$PID_FILE"))"
+                    echo "Solana node is running (PID: $(cat "$PID_FILE"))"
                     # Test RPC
                     if curl -s -X POST -H "Content-Type: application/json" \
                        --data '{"jsonrpc":"2.0","method":"getHealth","id":1}' \
                        "http://localhost:$RPC_PORT" > /dev/null; then
-                      echo "✓ RPC is responding"
+                      echo "RPC is responding"
                     else
-                      echo "✗ RPC not responding"
+                      echo "RPC not responding"
                     fi
                   else
-                    echo "✗ Solana node is not running"
+                    echo "Solana node is not running"
                   fi
                   ;;
                   
@@ -518,6 +561,180 @@
             '';
           };
 
+        # Almanac API launcher
+        almanacApiLauncher = pkgs.writeShellApplication {
+          name = "sim-almanac-api";
+          runtimeInputs = [ pkgs.curl pkgs.jq pkgs.envsubst ];
+          text = ''
+            # Launch Almanac API server
+            
+            ACTION="''${1:-start}"  # start, stop, status
+            CONFIG_FILE="''${2:-./config/simulation/simulation.json}"
+            
+            if [ ! -f "$CONFIG_FILE" ]; then
+              echo "Error: Configuration file not found: $CONFIG_FILE"
+              echo "Run 'sim-config' first to generate configuration"
+              exit 1
+            fi
+            
+            # Read configuration
+            API_PORT=$(jq -r '.almanac.api_port' "$CONFIG_FILE")
+            API_LOG_FILE=$(jq -r '.almanac.api_log_file' "$CONFIG_FILE" | envsubst)
+            
+            PID_FILE="/tmp/sim-almanac-api.pid"
+            
+            case "$ACTION" in
+              "start")
+                echo "Starting Almanac API server..."
+                
+                # Create log directory
+                mkdir -p "$(dirname "$API_LOG_FILE")"
+                
+                # Check if already running
+                if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+                  echo "Almanac API is already running (PID: $(cat "$PID_FILE"))"
+                  exit 0
+                fi
+                
+                # Set environment variables for API
+                export API_HOST="0.0.0.0"
+                export API_PORT="$API_PORT"
+                export STORAGE_BACKEND="foundationdb"
+                export FDB_CLUSTER_FILE="$PWD/data/fdb.cluster"
+                export FDB_NAMESPACE="almanac"
+                export ENABLE_CORS="true"
+                export CORS_ORIGINS="*"
+                export RUST_LOG="almanac_api=info,tower_http=debug"
+                
+                # Start API server
+                cargo run --bin almanac-api --features fdb \
+                  > "$API_LOG_FILE" 2>&1 &
+                
+                echo $! > "$PID_FILE"
+                echo "Almanac API started (PID: $!)"
+                echo "API: http://localhost:$API_PORT"
+                echo "Logs: $API_LOG_FILE"
+                
+                # Wait for API to be ready
+                echo "Waiting for Almanac API to be ready..."
+                for ((i=1; i<=30; i++)); do
+                  if curl -s "http://localhost:$API_PORT/health" > /dev/null; then
+                    echo "Almanac API is ready"
+                    break
+                  fi
+                  sleep 1
+                done
+                ;;
+                
+              "stop")
+                echo "Stopping Almanac API..."
+                if [ -f "$PID_FILE" ]; then
+                  kill "$(cat "$PID_FILE")" 2>/dev/null || true
+                  rm -f "$PID_FILE"
+                  echo "Almanac API stopped"
+                else
+                  echo "Almanac API not running"
+                fi
+                ;;
+                
+              "status")
+                if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+                  echo "Almanac API is running (PID: $(cat "$PID_FILE"))"
+                  # Test API health
+                  if curl -s "http://localhost:$API_PORT/health" > /dev/null; then
+                    echo "API health check passed"
+                  else
+                    echo "API health check failed"
+                  fi
+                else
+                  echo "Almanac API is not running"
+                fi
+                ;;
+                
+              *)
+                echo "Usage: sim-almanac-api {start|stop|status} [config_file]"
+                exit 1
+                ;;
+            esac
+          '';
+        };
+
+        # Almanac indexer launcher
+        almanacIndexerLauncher = pkgs.writeShellApplication {
+          name = "sim-almanac-indexer";
+          runtimeInputs = [ pkgs.curl pkgs.jq pkgs.envsubst ];
+          text = ''
+            # Launch Almanac indexer service
+            
+            ACTION="''${1:-start}"  # start, stop, status
+            CONFIG_FILE="''${2:-./config/simulation/simulation.json}"
+            
+            if [ ! -f "$CONFIG_FILE" ]; then
+              echo "Error: Configuration file not found: $CONFIG_FILE"
+              echo "Run 'sim-config' first to generate configuration"
+              exit 1
+            fi
+            
+            # Read configuration
+            INDEXER_CONFIG=$(jq -r '.almanac.indexer_config' "$CONFIG_FILE" | envsubst)
+            
+            PID_FILE="/tmp/sim-almanac-indexer.pid"
+            LOG_FILE="$PWD/logs/almanac-indexer.log"
+            
+            case "$ACTION" in
+              "start")
+                echo "Starting Almanac indexer service..."
+                
+                # Create log directory
+                mkdir -p "$(dirname "$LOG_FILE")"
+                
+                # Check if already running
+                if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+                  echo "Almanac indexer is already running (PID: $(cat "$PID_FILE"))"
+                  exit 0
+                fi
+                
+                # Set environment variables for indexer
+                export RUST_LOG="almanac_indexing=info,almanac_core=debug"
+                export ALMANAC_CONFIG="$INDEXER_CONFIG"
+                
+                # Start indexer service
+                cargo run --bin almanac-indexing --features fdb \
+                  > "$LOG_FILE" 2>&1 &
+                
+                echo $! > "$PID_FILE"
+                echo "Almanac indexer started (PID: $!)"
+                echo "Config: $INDEXER_CONFIG"
+                echo "Logs: $LOG_FILE"
+                ;;
+                
+              "stop")
+                echo "Stopping Almanac indexer..."
+                if [ -f "$PID_FILE" ]; then
+                  kill "$(cat "$PID_FILE")" 2>/dev/null || true
+                  rm -f "$PID_FILE"
+                  echo "Almanac indexer stopped"
+                else
+                  echo "Almanac indexer not running"
+                fi
+                ;;
+                
+              "status")
+                if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+                  echo "Almanac indexer is running (PID: $(cat "$PID_FILE"))"
+                else
+                  echo "Almanac indexer is not running"
+                fi
+                ;;
+                
+              *)
+                echo "Usage: sim-almanac-indexer {start|stop|status} [config_file]"
+                exit 1
+                ;;
+            esac
+          '';
+        };
+
         # Main simulation orchestrator
         simulationOrchestrator = pkgs.writeShellApplication {
           name = "sim-cluster";
@@ -526,9 +743,12 @@
             ethereumLauncher
             cosmosLauncher
             solanaLauncher
+            almanacApiLauncher
+            almanacIndexerLauncher
             fdb-packages.fdb-manage
             pkgs.curl
             pkgs.jq
+            pkgs.envsubst
           ];
           text = ''
             # Almanac Simulation Cluster Orchestrator
@@ -545,7 +765,7 @@
                 # Generate configuration
                 sim-config "$CHAINS" "./config/simulation"
                 
-                echo "✓ Simulation cluster initialized"
+                echo "Simulation cluster initialized"
                 echo "Configuration: $CONFIG_FILE"
                 echo ""
                 echo "Next steps:"
@@ -583,7 +803,15 @@
                 # Wait for background processes
                 wait
                 
-                echo "✓ All services started"
+                # Start Almanac services after blockchain nodes are ready
+                echo "Starting Almanac services..."
+                sim-almanac-api start "$CONFIG_FILE" &
+                sim-almanac-indexer start "$CONFIG_FILE" &
+                
+                # Wait for Almanac services
+                wait
+                
+                echo "All services started"
                 echo ""
                 echo "Service endpoints:"
                 jq -e '.services.ethereum.enabled == true' "$CONFIG_FILE" > /dev/null && \
@@ -592,12 +820,17 @@
                   echo "  Cosmos RPC: http://localhost:$(jq -r '.services.cosmos.rpc_port' "$CONFIG_FILE")"
                 jq -e '.services.solana.enabled == true' "$CONFIG_FILE" > /dev/null && \
                   echo "  Solana RPC: http://localhost:$(jq -r '.services.solana.rpc_port' "$CONFIG_FILE")"
+                echo "  Almanac API: http://localhost:$(jq -r '.almanac.api_port' "$CONFIG_FILE")"
                 echo ""
                 echo "Logs directory: ./logs/"
                 ;;
                 
               "stop")
                 echo "Stopping Almanac simulation cluster..."
+                
+                # Stop Almanac services first
+                sim-almanac-indexer stop "$CONFIG_FILE" || true
+                sim-almanac-api stop "$CONFIG_FILE" || true
                 
                 # Stop blockchain nodes
                 sim-ethereum stop "$CONFIG_FILE" || true
@@ -607,7 +840,7 @@
                 # Stop FoundationDB last
                 fdb-manage stop || true
                 
-                echo "✓ All services stopped"
+                echo "All services stopped"
                 ;;
                 
               "status")
@@ -615,7 +848,7 @@
                 echo ""
                 
                 if [ ! -f "$CONFIG_FILE" ]; then
-                  echo "✗ Not initialized (run 'sim-cluster init')"
+                  echo "Not initialized (run 'sim-cluster init')"
                   exit 1
                 fi
                 
@@ -623,9 +856,9 @@
                 if jq -e '.services.foundationdb.enabled == true' "$CONFIG_FILE" > /dev/null; then
                   echo -n "FoundationDB: "
                   if fdb-manage status > /dev/null 2>&1; then
-                    echo "✓ Running"
+                    echo "Running"
                   else
-                    echo "✗ Not running"
+                    echo "Not running"
                   fi
                 fi
                 
@@ -633,6 +866,10 @@
                 sim-ethereum status "$CONFIG_FILE"
                 sim-cosmos status "$CONFIG_FILE"
                 sim-solana status "$CONFIG_FILE"
+                
+                # Check Almanac services
+                sim-almanac-api status "$CONFIG_FILE"
+                sim-almanac-indexer status "$CONFIG_FILE"
                 ;;
                 
               "logs")
@@ -668,11 +905,29 @@
                       echo "Solana log file not found: $LOG_FILE"
                     fi
                     ;;
+                  "api"|"almanac-api")
+                    LOG_FILE=$(jq -r '.almanac.api_log_file' "$CONFIG_FILE" | envsubst)
+                    if [ -f "$LOG_FILE" ]; then
+                      tail -f "$LOG_FILE"
+                    else
+                      echo "Almanac API log file not found: $LOG_FILE"
+                    fi
+                    ;;
+                  "indexer"|"almanac-indexer")
+                    LOG_FILE="$PWD/logs/almanac-indexer.log"
+                    if [ -f "$LOG_FILE" ]; then
+                      tail -f "$LOG_FILE"
+                    else
+                      echo "Almanac indexer log file not found: $LOG_FILE"
+                    fi
+                    ;;
                   "all"|*)
                     echo "Available logs:"
                     echo "  sim-cluster logs ethereum"
                     echo "  sim-cluster logs cosmos"
                     echo "  sim-cluster logs solana"
+                    echo "  sim-cluster logs api"
+                    echo "  sim-cluster logs indexer"
                     ;;
                 esac
                 ;;
@@ -688,7 +943,7 @@
               start                 Start all configured services
               stop                  Stop all services
               status                Check status of all services
-              logs [service]        Show logs for a service (ethereum|cosmos|solana|all)
+              logs [service]        Show logs for a service (ethereum|cosmos|solana|api|indexer|all)
               help                  Show this help message
 
             Available chains:
@@ -697,11 +952,17 @@
               solana                Solana test validator (where supported)
               fdb                   FoundationDB
 
+            Services:
+              api                   Almanac API server
+              indexer               Almanac indexing service
+
             Examples:
               sim-cluster init ethereum,fdb          # Ethereum + FoundationDB only
               sim-cluster init cosmos,solana,fdb     # Cosmos + Solana + FoundationDB
               sim-cluster start                      # Start all configured services
               sim-cluster logs ethereum              # Show Ethereum logs
+              sim-cluster logs api                   # Show Almanac API logs
+              sim-cluster logs indexer               # Show Almanac indexer logs
 
             Configuration is stored in: ./config/simulation/
             EOF
@@ -712,7 +973,7 @@
 
       in {
         packages = {
-          inherit nodeConfigGenerator ethereumLauncher cosmosLauncher solanaLauncher simulationOrchestrator;
+          inherit nodeConfigGenerator ethereumLauncher cosmosLauncher solanaLauncher almanacApiLauncher almanacIndexerLauncher simulationOrchestrator;
           
           # Main entry point
           sim-cluster = simulationOrchestrator;
@@ -720,6 +981,8 @@
           sim-ethereum = ethereumLauncher;
           sim-cosmos = cosmosLauncher;
           sim-solana = solanaLauncher;
+          sim-almanac-api = almanacApiLauncher;
+          sim-almanac-indexer = almanacIndexerLauncher;
         };
 
         apps = {
