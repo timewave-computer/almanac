@@ -25,7 +25,6 @@ cargo run --bin almanac -- run --config config/prod.toml
 
 The production configuration file uses environment variables for sensitive data:
 
-- `POSTGRES_PASSWORD`: Password for PostgreSQL database
 - `ETH_RPC_URL`: Ethereum RPC endpoint URL
 - `COSMOS_RPC_URL`: Cosmos RPC endpoint URL
 
@@ -34,10 +33,10 @@ Make sure these environment variables are set before running the indexer with th
 ## Configuration Sections
 
 ### API
-Controls the HTTP and GraphQL API endpoints.
+Controls the HTTP API endpoints.
 
 ### Storage
-Configures RocksDB and PostgreSQL storage backends.
+Configures FoundationDB storage backend.
 
 ### Ethereum
 Ethereum chain adapter configuration.

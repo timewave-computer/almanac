@@ -1,239 +1,342 @@
-# Almanac: Cross-Chain Indexer
+# Almanac
 
-A performant indexer designed to track Valence, Causality and associated contract state across multiple chains. Almanac currently supports Ethereum and Cosmos chains using Sam's branch of the `valence-domain-clients` library.
+A high-performance, multi-chain blockchain indexing and querying system built in Rust with FoundationDB as the primary storage backend.
 
-The system includes a comprehensive causality indexing module that provides Sparse Merkle Tree (SMT) based tracking of causal relationships between events, resources, and entities across blockchain domains.
+## Overview
 
-![](./almanac.png)
-
-## Project Overview
-
-Almanac enables tracking Valence programs and the state associated with related contracts across different blockchains. The system employs a hybrid storage architecture using RocksDB for high-performance paths and PostgreSQL for complex queries.
-
-Key features:
-- Multi-chain support: EVM chains (Ethereum, Polygon, Base) and Cosmos chains (Noble, Osmosis, Neutron)
-- Hybrid storage: RocksDB for performance, PostgreSQL for complex queries
-- Valence contract tracking: Account creation, processor state, authorization grants, library deployments
-- **Contract code generation**: Automatic generation of type-safe client code from contract ABIs and schemas
-- Causality indexing: Content-addressed entity tracking with SMT-based proof generation
-- Advanced blockchain features: Chain reorganization handling, block finality tracking, determinism classification
-- Cross-chain debugging: Multi-chain traces and causal relationship tracking
-
-## Contract Code Generation
-
-Almanac includes powerful code generation capabilities that automatically create everything needed to integrate smart contracts into your indexer:
-
-### Cosmos Code Generation
-Generate comprehensive integration code from CosmWasm contract schemas:
-
-```bash
-# Generate from Valence Base Account contract
-almanac cosmos generate-contract valence_base_account_schema.json \
-  --address cosmos1... \
-  --chain cosmoshub-4 \
-  --features client,storage,api
-```
-
-**Features:**
-- Type-safe client code for contract interactions
-- Database schemas for event indexing (PostgreSQL + RocksDB)
-- REST and GraphQL API endpoints
-- WebSocket subscriptions for real-time events
-- Database migrations and test templates
-
-**Documentation:**
-- [Cosmos Codegen Overview](docs/cosmos_codegen.md)
-- [Valence Base Account Integration Example](examples/cosmos/valence_base_account.md)
-- [Integration Tutorial](docs/cosmos_integration_tutorial.md)
-- [CLI Reference](docs/cosmos_cli_reference.md)
-
-### Ethereum Code Generation
-Generate comprehensive integration code from Ethereum contract ABIs:
-
-```bash
-# Generate from ERC20 token contract
-almanac ethereum generate-contract usdc_abi.json \
-  --address 0xA0b86a33E6dc39C9c6D7C7CcF9C2e5C2c8C0b0 \
-  --chain 1 \
-  --features client,storage,api
-```
-
-**Features:**
-- Type-safe contract interaction methods
-- Event parsing and indexing infrastructure
-- Database schemas and storage models
-- REST and GraphQL API generation
-- Gas estimation and transaction management
-- Support for proxy contracts and complex types
-
-**Documentation:**
-- [Ethereum Codegen Overview](docs/ethereum_codegen.md)
-- [USDC Integration Example](examples/ethereum/erc20_token.md)
-- [Integration Tutorial](docs/ethereum_integration_tutorial.md)
-- [CLI Reference](docs/ethereum_cli_reference.md)
-
-**Generated Code Structure:**
-```
-generated/
-├── client/          # Contract interaction code
-├── storage/         # Database models and schemas
-├── api/            # REST and GraphQL endpoints
-├── migrations/     # Database migration files
-└── tests/          # Integration test templates
-```
-
-## Getting Started
-
-Clone the repository and enter the development environment:
-
-```bash
-git clone <repository-url>
-cd almanac
-nix develop
-```
-
-The development shell provides:
-- Rust toolchain and crate2nix for reproducible builds
-- PostgreSQL database server and RocksDB
-- Foundry (anvil, forge, cast) for Ethereum development
-- All required system libraries and build tools
-
-Available commands:
-- `init_databases` - Initialize and start databases
-- `stop_databases` - Stop PostgreSQL server  
-- `generate_cargo_nix` - Generate Cargo.nix for Nix builds
-- `run_almanac_tests` - Run the test suite
-
-## Build and Run
-
-Generate the Nix build configuration:
-```bash
-generate_cargo_nix
-```
-
-Build components using Nix:
-```bash
-# Build the main almanac binary
-nix build .#indexer-api
-
-# Build specific workspace crates
-nix build .#indexer-core
-nix build .#indexer-ethereum
-nix build .#indexer-cosmos
-```
-
-## Development Workflows
-
-Select and run development workflows:
-
-```bash
-cd nix/environments
-nix run .  # Interactive menu
-```
-
-Or run specific workflows directly:
-```bash
-# Ethereum development workflows
-nix run ./nix/environments#anvil-workflow
-nix run ./nix/environments#reth-workflow
-
-# Cosmos development workflow
-nix run ./nix/environments#cosmwasm-workflow
-
-# Run all workflows
-nix run ./nix/environments#all-workflows
-```
-
-For more details, see the [workflows documentation](nix/environments/README.md).
-
-## Testing
-
-Run tests using Nix commands:
-
-```bash
-# Integration tests
-nix run .#test-ethereum-adapter-anvil
-nix run .#test-cosmos-adapter
-nix run .#cross-chain-e2e-test
-
-# Comprehensive test suite
-run_almanac_tests
-
-# Unit tests (in dev shell)
-cargo test --package indexer-ethereum
-cargo test --package indexer-cosmos
-cargo test --package indexer-causality
-```
-
-## Available Nix Commands
-
-Cosmos:
-- `nix run .#wasmd-node` - Start local wasmd node
-- `nix run .#test-cosmos-adapter` - Test cosmos adapter
-
-Ethereum:
-- `nix run .#start-anvil` - Start Anvil test node
-- `nix run .#start-reth` - Start Reth node
-- `nix run .#test-ethereum-adapter-anvil` - Test against Anvil
-- `nix run .#test-ethereum-adapter-reth` - Test against Reth
+Almanac is a distributed blockchain data indexing platform designed to efficiently track, store, and query events across multiple blockchain networks. It provides real-time indexing capabilities with strong consistency guarantees through FoundationDB's ACID transactions.
 
 ## Architecture
 
+The system is built around several core components organized in a modular crate structure:
+
+### Core Crates
+
+- **[`almanac-core`](crates/almanac-core/)** - Core types, traits, and abstractions for events, storage, and filtering
+- **[`almanac-storage`](crates/almanac-storage/)** - Storage layer with FoundationDB backend and memory implementations  
+- **[`almanac-indexing`](crates/almanac-indexing/)** - Event ingestion pipeline with batch processing and validation
+- **[`almanac-api`](crates/almanac-api/)** - REST API server with authentication and rate limiting
+- **[`almanac-chains`](crates/almanac-chains/)** - Chain adapters for different blockchain protocols
+- **[`almanac-consensus`](crates/almanac-consensus/)** - Consensus and finality handling logic
+- **[`almanac-eventbus`](crates/almanac-eventbus/)** - Event bus system for internal communication
+- **[`almanac-config`](crates/almanac-config/)** - Configuration management
+- **[`almanac-testing`](crates/almanac-testing/)** - Testing utilities and fixtures
+
+### Chain Support
+
+Almanac supports multiple blockchain networks through dedicated node services:
+
+- **[`almanac-ethereum`](crates/nodes/almanac-ethereum/)** - Ethereum indexing node
+- **[`almanac-cosmos`](crates/nodes/almanac-cosmos/)** - Cosmos indexing node
+- **[`almanac-solana`](crates/nodes/almanac-solana/)** - Solana indexing node (WIP)
+
+Each chain adapter implements the [`ChainAdapter`](crates/almanac-chains/src/adapters/) trait, providing a unified interface for blockchain integration.
+
+## Features
+
+- **Multi-chain Support** - Index events from Ethereum, Cosmos, and Solana networks
+- **FoundationDB Storage** - ACID transactions with strong consistency guarantees
+- **Real-time Indexing** - Low-latency event processing with configurable batch sizes
+- **REST API** - Comprehensive API for querying indexed data
+- **Authentication** - API key-based authentication with configurable permissions
+- **Rate Limiting** - Built-in rate limiting to protect against abuse
+- **Reorg Handling** - Automatic blockchain reorganization detection and handling
+- **Distributed Architecture** - Designed for horizontal scaling across multiple nodes
+- **Nix Integration** - Complete Nix flake for reproducible builds and deployments
+- **Health Monitoring** - Built-in health checks and Prometheus metrics
+
+## Storage Backend
+
+Almanac uses FoundationDB as its primary storage backend, providing:
+
+- **ACID Transactions** - Strong consistency across all operations
+- **Horizontal Scaling** - Automatic sharding and replication
+- **Tuple Space Model** - Efficient key-value storage with complex queries
+- **Change Tracking** - Built-in change streams for real-time updates
+- **Storage Proofs** - Cryptographic proofs for data integrity
+
+The storage layer also includes a memory backend for testing and development.
+
+## Configuration
+
+Configuration is managed through TOML files with environment-specific overrides:
+
+- [`config/dev.toml`](config/dev.toml) - Development configuration
+- [`config/prod.toml`](config/prod.toml) - Production configuration  
+- [`config/test.toml`](config/test.toml) - Test configuration
+- [`config/cosmos.toml`](config/cosmos.toml) - Cosmos-specific settings
+- [`config/ethereum.toml`](config/ethereum.toml) - Ethereum-specific settings
+- [`config/solana.toml`](config/solana.toml) - Solana-specific settings
+
+## Development Setup
+
+### Prerequisites
+
+- Rust 1.75+
+- FoundationDB 7.1+
+- Nix
+
+### Using Nix
+
+```bash
+# Enter development shell
+nix develop
+
+# Build all crates
+cargo build
+
+# Run tests
+cargo test
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         Cross-Chain Indexer                               │
-│                                                                            │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐           │
-│  │Chain        │ │Indexing     │ │Storage      │ │Query        │           │
-│  │Adapters     │ │Pipeline     │ │Layer        │ │Engine       │           │
-│  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘           │
-│                                                                            │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐           │
-│  │Code         │ │Cross-Chain  │ │Causality    │ │Extension    │           │
-│  │Generation   │ │Aggregator   │ │Indexer      │ │Framework    │           │
-│  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘           │
-│                                                                            │
-│  Contract Code Generation System:                                         │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐           │
-│  │ABI/Schema   │ │Type-Safe    │ │Database     │ │API          │           │
-│  │Parser       │ │Client Gen   │ │Schema Gen   │ │Generation   │           │
-│  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘           │
-└─────────────────────────────────────────────────────────────────────────────┘
+
+### Manual Setup
+
+1. Install FoundationDB:
+   ```bash
+   # macOS
+   brew install foundationdb
+
+   # Linux - see FoundationDB documentation
+   ```
+
+2. Build the project:
+   ```bash
+   cargo build --release
+   ```
+
+3. Run tests:
+   ```bash
+   cargo test
+   ```
+
+## Running Services
+
+### API Server
+
+```bash
+# Development
+cargo run --bin almanac-api
+
+# Production
+./target/release/almanac-api
 ```
 
-### Storage Design
+The API server supports both memory and FoundationDB storage backends, configured via environment variables:
 
-```
-┌─────────────────────────────────────────────────┐
-│              Hybrid Storage Layer               │
-└───────────────┬─────────────────────┬───────────┘
-                │                     │
-    ┌───────────▼────────┐   ┌────────▼──────────┐
-    │  RocksDB Layer     │   │  PostgreSQL Layer │
-    │  (Performance)     │   │   (Rich Queries)  │
-    └────────────────────┘   └───────────────────┘
+```bash
+export STORAGE_BACKEND=foundationdb  # or memory
+export FDB_CLUSTER_FILE=/path/to/fdb.cluster
+export FDB_NAMESPACE=almanac
+export API_HOST=127.0.0.1
+export API_PORT=8080
 ```
 
-## Performance Targets
+### Indexing Nodes
 
-- Block processing latency < 500ms
-- Event indexing latency < 1 second from block finality
-- RocksDB read latency < 50ms (99th percentile)
-- PostgreSQL query latency < 500ms (95th percentile)
-- Support for 100+ concurrent read queries
+```bash
+# Ethereum indexing
+cargo run --bin almanac-ethereum --config config/ethereum.toml
 
-## Troubleshooting
+# Cosmos indexing  
+cargo run --bin almanac-cosmos --config config/cosmos.toml
 
-Check log files if workflows fail:
-- Anvil logs: `logs/anvil.log`
-- Reth logs: `logs/reth.log`
-- wasmd logs: `logs/wasmd.log`
-- PostgreSQL logs: `data/postgres/postgres.log`
+# Solana indexing (when available)
+cargo run --bin almanac-solana --config config/solana.toml
+```
 
-For contract code generation issues, see the troubleshooting guides:
-- [Cosmos Troubleshooting](docs/cosmos_troubleshooting.md)
-- [Ethereum Troubleshooting](docs/ethereum_troubleshooting.md)
+### Using Helper Scripts
 
-## Credit
+The project includes several helper scripts in the [`scripts/`](scripts/) directory:
 
-Cover image from [Gaine's New-York pocket almanack for the year 1789](https://www.loc.gov/resource/rbc0001.2022madison98629)
+```bash
+# Setup development environment
+./scripts/setup-dev-env.sh
+
+# Run all tests
+./scripts/run-all-tests.sh
+
+# Test API functionality
+./scripts/test-api.sh
+
+# Monitor API health
+./scripts/monitor-api-health.sh
+
+# Manage API service
+./scripts/manage-api-service.sh
+```
+
+## API Usage
+
+The REST API provides endpoints for querying indexed blockchain data:
+
+### Authentication
+
+```bash
+# Set API key (if authentication is enabled)
+export API_KEY="your-api-key"
+```
+
+### Query Events
+
+```bash
+# Get events for a specific contract
+curl -X GET "http://localhost:8080/events?contract_address=0x..." \
+  -H "Authorization: Bearer $API_KEY"
+
+# Query events with filters
+curl -X GET "http://localhost:8080/events?from_block=1000000&to_block=1000100" \
+  -H "Authorization: Bearer $API_KEY"
+
+# Get events by chain
+curl -X GET "http://localhost:8080/events?chain=ethereum" \
+  -H "Authorization: Bearer $API_KEY"
+```
+
+### Storage and Semantics
+
+```bash
+# Get semantic metadata
+curl -X GET "http://localhost:8080/semantics/CONTRACT_ADDRESS" \
+  -H "Authorization: Bearer $API_KEY"
+
+# Get contract layout
+curl -X GET "http://localhost:8080/layout/CHAIN/CONTRACT" \
+  -H "Authorization: Bearer $API_KEY"
+
+# Query storage proofs
+curl -X GET "http://localhost:8080/storage/proof/CHAIN/CONTRACT?block=12345" \
+  -H "Authorization: Bearer $API_KEY"
+```
+
+### Health Monitoring
+
+```bash
+# API health check
+curl http://localhost:8080/health
+
+# Node health (varies by port)
+curl http://localhost:9092/health  # Ethereum node
+curl http://localhost:9093/health  # Cosmos node
+```
+
+## Deployment
+
+### Nix Deployment
+
+```bash
+# Build production image
+nix build .#almanac-api
+
+# Use NixOS modules
+# See nix/modules/almanac-api.nix for configuration options
+```
+
+### Manual Deployment
+
+1. Build release binaries:
+   ```bash
+   cargo build --release --features fdb
+   ```
+
+2. Set up FoundationDB cluster
+
+3. Configure environment variables
+
+4. Run services with appropriate configurations
+
+## Testing
+
+The project includes comprehensive testing at multiple levels:
+
+### Unit Tests
+```bash
+# Run all tests
+cargo test
+
+# Test specific crates
+cargo test --package almanac-storage
+cargo test --package almanac-api
+```
+
+### Integration Tests
+```bash
+# Run integration tests
+cargo test --package almanac-chains --features ethereum,cosmos -- --ignored
+
+# E2E tests
+cargo test --package e2e
+```
+
+### Performance Tests
+```bash
+# Run benchmarks (when available)
+cargo bench
+```
+
+## Monitoring
+
+Almanac includes built-in monitoring and observability:
+
+- **Health Checks** - Service health endpoints at `/health` and `/ready`
+- **Metrics** - Prometheus-compatible metrics on port 9090
+- **Logging** - Structured logging with configurable levels
+- **Alerting** - Alert rules for common failure scenarios (see [`monitoring/`](monitoring/))
+
+## Configuration
+
+### Environment Variables
+
+Key environment variables for configuration:
+
+```bash
+# Storage
+STORAGE_BACKEND=foundationdb|memory
+FDB_CLUSTER_FILE=/path/to/fdb.cluster
+FDB_NAMESPACE=almanac
+
+# API
+API_HOST=127.0.0.1
+API_PORT=8080
+ADMIN_API_KEY=your-admin-key
+RATE_LIMIT_PER_MINUTE=100
+
+# Logging
+RUST_LOG=info
+RUST_BACKTRACE=1
+```
+
+### Chain Configuration
+
+Each chain requires specific configuration in its TOML file:
+
+```toml
+[chain]
+id = "ethereum-mainnet"
+confirmations = 6
+
+[rpc]
+url = "https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY"
+timeout_secs = 30
+max_retries = 3
+
+[indexing]
+start_block = 18000000
+batch_size = 100
+max_concurrent_batches = 5
+
+[storage.fdb]
+cluster_file = "/etc/foundationdb/fdb.cluster"
+```
+
+## Documentation
+
+- [Architecture Overview](docs/architecture.md)
+- [FoundationDB Implementation](docs/foundationdb-implementation.md)
+- [Chain Adapter Guide](docs/chain-adapter-guide.md)
+- [Integration Guide](docs/integration.md)
+- [Running Guide](docs/running.md)
+- [Testing Guide](docs/testing.md)
+
+---
+
+*Cover image from [Gaine's New-York pocket almanack for the year 1789](https://www.loc.gov/resource/rbc0001.2022madison98629)*

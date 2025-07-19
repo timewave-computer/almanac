@@ -1,0 +1,45 @@
+[package]
+name = "ethereum"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "almanac-node-ethereum"
+path = "src/main.rs"
+
+[dependencies]
+# Core almanac dependencies
+almanac-core = { path = "../../almanac-core" }
+almanac-chains = { path = "../../almanac-chains", features = ["ethereum"] }
+almanac-consensus = { path = "../../almanac-consensus" }
+almanac-indexing = { path = "../../almanac-indexing" }
+almanac-storage = { path = "../../almanac-storage" }
+almanac-config = { path = "../../almanac-config" }
+
+# Async runtime
+tokio = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# CLI
+clap = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = "0.8"
+
+# Metrics
+prometheus = "0.13"
+axum = { workspace = true }
+
+# Utils
+hex = { workspace = true }

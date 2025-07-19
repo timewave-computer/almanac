@@ -1,39 +1,67 @@
 # Test environment configuration
 
-[api]
-host = "127.0.0.1"
-port = 8081
-enable_http = true
-enable_graphql = true
+[simulation]
+name = "almanac-test-cluster"
+chains = ["ethereum", "cosmos", "fdb"]
+
+[almanac]
+name = "test-environment"
+api_port = 8081
+api_log_file = "./logs/almanac-api-test.log"
 
 [storage]
-rocksdb_path = "./data/rocks_test"
-postgres_url = "postgres://postgres:postgres@localhost/indexer_test"
-rocksdb_create_if_missing = true
-postgres_max_connections = 5
-postgres_migrate = true
+backend = "foundationdb"
+cluster_file = "/usr/local/etc/foundationdb/fdb.cluster"
 
-[ethereum]
-rpc_url = "http://localhost:8545"
-chain_id = "1337" # Anvil local chain
-start_block = 0
-batch_size = 25
-polling_interval_ms = 500
-finality_blocks = 0
+[storage.fdb]
+cluster_file = "/usr/local/etc/foundationdb/fdb.cluster"
+namespace = "almanac_test"
 
-[cosmos]
-rpc_url = "http://localhost:26657"
+[services.foundationdb]
+enabled = true
+cluster_file = "/usr/local/etc/foundationdb/fdb.cluster"
+data_dir = "./data/foundationdb-test"
+log_dir = "./logs/foundationdb-test"
+
+[services.ethereum]
+enabled = true
+node_type = "anvil"
+rpc_port = 8545
+ws_port = 8546
+chain_id = "1337"
+data_dir = "./data/ethereum-test"
+log_file = "./logs/anvil-test.log"
+
+[services.cosmos]
+enabled = true
+node_type = "neutron"
+rpc_port = 26657
+grpc_port = 9090
+api_port = 1317
 chain_id = "ufo-test-1"
-start_block = 0
+data_dir = "./data/cosmos-test"
+log_file = "./logs/neutron-test.log"
+
+[services.solana]
+enabled = false
+node_type = "test-validator"
+rpc_port = 8899
+ws_port = 8900
+data_dir = "./data/solana-test"
+log_file = "./logs/solana-test.log"
+
+[[chains.ethereum]]
+name = "ethereum-test"
+rpc_url = "http://localhost:8545"
+ws_url = "ws://localhost:8546"
+chain_id = 1337
+starting_block = 0
 batch_size = 25
-polling_interval_ms = 500
 
-[logging]
-level = "info"
-file = "./logs/indexer_test.log"
-console = true
-
-[metrics]
-enable = true
-host = "127.0.0.1"
-port = 9091 
+[[chains.cosmos]]
+name = "cosmos-test"
+rpc_url = "http://localhost:26657"
+grpc_url = "http://localhost:9090"
+chain_id = "ufo-test-1"
+starting_block = 0
+batch_size = 25 

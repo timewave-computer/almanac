@@ -44,8 +44,8 @@ if [ -z "${VALENCE_REGISTRY_ADDRESS}" ] || [ -z "${VALENCE_GATEWAY_ADDRESS}" ]; 
 fi
 
 echo -e "${GREEN}Found contract addresses:${NC}"
-echo -e "${GREEN}• Registry: ${VALENCE_REGISTRY_ADDRESS}${NC}"
-echo -e "${GREEN}• Gateway: ${VALENCE_GATEWAY_ADDRESS}${NC}"
+echo -e "${GREEN}Registry: ${VALENCE_REGISTRY_ADDRESS}${NC}"
+echo -e "${GREEN}Gateway: ${VALENCE_GATEWAY_ADDRESS}${NC}"
 
 # Check if Anvil is running
 if ! curl -s -X POST -H "Content-Type: application/json" --data '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' "${ANVIL_URL}" > /dev/null; then
@@ -61,7 +61,7 @@ if [ "$CHAIN_ID_HEX" != "0x7a69" ]; then
     exit 1
 fi
 
-echo -e "${GREEN}✓ Anvil node is running at ${ANVIL_URL}${NC}"
+echo -e "${GREEN}Anvil node is running at ${ANVIL_URL}${NC}"
 
 # Check if PostgreSQL is running
 if ! nix develop --command bash -c 'pg_isready -h localhost -p 5432 -U postgres' > /dev/null 2>&1; then
@@ -70,7 +70,7 @@ if ! nix develop --command bash -c 'pg_isready -h localhost -p 5432 -U postgres'
     exit 1
 fi
 
-echo -e "${GREEN}✓ PostgreSQL is running${NC}"
+echo -e "${GREEN}PostgreSQL is running${NC}"
 
 # Check if RocksDB has been set up
 if [ ! -d "data/rocksdb" ]; then
@@ -79,7 +79,7 @@ if [ ! -d "data/rocksdb" ]; then
     exit 1
 fi
 
-echo -e "${GREEN}✓ RocksDB is set up${NC}"
+echo -e "${GREEN}RocksDB is set up${NC}"
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -118,7 +118,7 @@ cat > config.json << EOL
 }
 EOL
 
-echo -e "${GREEN}✓ Created indexer configuration${NC}"
+echo -e "${GREEN}Created indexer configuration${NC}"
 
 # Check if almanac-indexer is built in the cargo workspace
 if [ -f "target/debug/almanac-indexer" ]; then
@@ -174,7 +174,7 @@ nix develop --command bash -c "
     exit 1
 }
 
-echo -e "${GREEN}✓ Indexing of Ethereum Valence contracts on Anvil completed${NC}"
+echo -e "${GREEN}Indexing of Ethereum Valence contracts on Anvil completed${NC}"
 echo -e "${BLUE}Log file available at: ${LOG_FILE}${NC}"
 echo -e "${BLUE}To query the indexed data, you can use the almanac-indexer query CLI or connect directly to PostgreSQL${NC}"
 echo -e "${BLUE}=== Indexing Complete ===${NC}" 

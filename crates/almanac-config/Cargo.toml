@@ -1,0 +1,28 @@
+[package]
+name = "almanac-config"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+description = "Configuration management for Almanac"
+
+[dependencies]
+# Core types
+almanac-core = { path = "../almanac-core" }
+
+# Serialization
+serde = { workspace = true, features = ["derive"] }
+toml = "0.8"
+
+# Error handling
+thiserror = { workspace = true }
+
+# File system
+notify = "6.0"
+
+# Logging
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.9"

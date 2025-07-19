@@ -1,0 +1,36 @@
+# Cosmos node configuration
+
+[chain]
+id = "cosmoshub-4"
+confirmations = 2
+
+[rpc]
+url = "https://rpc.cosmos.network"
+# Backup URLs can be configured in the binary
+max_retries = 3
+timeout_secs = 30
+
+[storage]
+[storage.fdb]
+# Leave empty to use default cluster file
+cluster_file = "/etc/foundationdb/fdb.cluster"
+namespace = "almanac/cosmoshub-4"
+
+[indexing]
+# Start from latest, specific block number, or "latest"
+start_block = "latest"
+batch_size = 50
+max_concurrent_batches = 3
+reindex_on_startup = false
+
+[consensus]
+fork_choice = "tendermint_bft"
+max_reorg_depth = 10
+
+[consensus.finality_levels]
+confirmed = 1
+finalized = 2
+
+[monitoring]
+enable_metrics = true
+enable_tracing = true

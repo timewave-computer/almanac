@@ -1,39 +1,66 @@
 # Development environment configuration
 
-[api]
-host = "127.0.0.1"
-port = 8080
-enable_http = true
-enable_graphql = true
+[simulation]
+name = "almanac-dev-cluster"
+chains = ["ethereum", "cosmos", "fdb"]
+
+[almanac]
+name = "development"
+api_port = 8080
+api_log_file = "./logs/almanac-api-dev.log"
 
 [storage]
-rocksdb_path = "./data/rocks_dev"
-postgres_url = "postgres://postgres:postgres@localhost/indexer_dev"
-rocksdb_create_if_missing = true
-postgres_max_connections = 10
-postgres_migrate = true
+backend = "foundationdb"
 
-[ethereum]
-rpc_url = "http://localhost:8545"
-chain_id = "1337" # Anvil local chain
-start_block = 0
-batch_size = 50
-polling_interval_ms = 1000
-finality_blocks = 0
+[storage.fdb]
+cluster_file = "/usr/local/etc/foundationdb/fdb.cluster"
+namespace = "almanac_dev"
 
-[cosmos]
-rpc_url = "http://localhost:26657"
+[services.foundationdb]
+enabled = true
+cluster_file = "/usr/local/etc/foundationdb/fdb.cluster"
+data_dir = "./data/foundationdb-dev"
+log_dir = "./logs/foundationdb-dev"
+
+[services.ethereum]
+enabled = true
+node_type = "anvil"
+rpc_port = 8545
+ws_port = 8546
+chain_id = "1337"
+data_dir = "./data/ethereum-dev"
+log_file = "./logs/anvil-dev.log"
+
+[services.cosmos]
+enabled = true
+node_type = "neutron"
+rpc_port = 26657
+grpc_port = 9090
+api_port = 1317
 chain_id = "ufo-local-1"
-start_block = 0
+data_dir = "./data/cosmos-dev"
+log_file = "./logs/neutron-dev.log"
+
+[services.solana]
+enabled = false
+node_type = "test-validator"
+rpc_port = 8899
+ws_port = 8900
+data_dir = "./data/solana-dev"
+log_file = "./logs/solana-dev.log"
+
+[[chains.ethereum]]
+name = "ethereum-dev"
+rpc_url = "http://localhost:8545"
+ws_url = "ws://localhost:8546"
+chain_id = 1337
+starting_block = 0
 batch_size = 50
-polling_interval_ms = 1000
 
-[logging]
-level = "debug"
-file = "./logs/indexer_dev.log"
-console = true
-
-[metrics]
-enable = true
-host = "127.0.0.1"
-port = 9090 
+[[chains.cosmos]]
+name = "cosmos-dev"
+rpc_url = "http://localhost:26657"
+grpc_url = "http://localhost:9090"
+chain_id = "ufo-local-1"
+starting_block = 0
+batch_size = 50 

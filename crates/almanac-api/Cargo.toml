@@ -1,0 +1,73 @@
+[package]
+name = "almanac-api"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+description = "HTTP API server for Almanac"
+
+[[bin]]
+name = "almanac-api"
+path = "src/main.rs"
+
+[features]
+default = []
+fdb = ["almanac-storage/fdb"]
+
+[dependencies]
+# Core types
+almanac-core = { path = "../almanac-core" }
+almanac-storage = { path = "../almanac-storage" }
+
+# Web framework
+axum = { workspace = true }
+tower = { workspace = true, features = ["util"] }
+tower-http = { workspace = true, features = ["cors", "trace", "timeout", "request-id", "limit"] }
+
+# Async runtime
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal"] }
+async-trait = { workspace = true }
+
+# Serialization
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+
+# Logging and tracing
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter", "json"] }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Time handling
+chrono = { workspace = true, features = ["serde"] }
+
+# UUID for request IDs
+uuid = { workspace = true, features = ["v4", "serde"] }
+
+# Encoding
+hex = { workspace = true }
+base64 = { workspace = true }
+
+# HTTP client for auth service
+reqwest = { version = "0.11", features = ["json"] }
+
+# HTTP types
+http = "1.0"
+
+# Authentication
+jsonwebtoken = "9.2"
+argon2 = "0.5"
+
+# OpenAPI documentation
+utoipa = { version = "5.0", features = ["axum_extras", "chrono", "uuid"] }
+utoipa-swagger-ui = { version = "8.0", features = ["axum"] }
+
+[dev-dependencies]
+# Testing
+axum-test = "18.0.0-rc3"
+tower = { workspace = true, features = ["util"] }
+hyper = { version = "1.0", features = ["full"] }

@@ -59,8 +59,8 @@ cargo run --bin almanac -- --config config/test_config.toml
    - "MOON" tokens (CW-20 on Cosmos)
 
 3. **Monitoring Processes**
-   - Process 1: Monitors Ethereum → triggers Cosmos actions
-   - Process 2: Monitors Cosmos → triggers Ethereum actions
+   - Process 1: Monitors Ethereum -> triggers Cosmos actions
+   - Process 2: Monitors Cosmos -> triggers Ethereum actions
 
 ## Detailed Test Procedure
 
@@ -228,7 +228,7 @@ def check_earth_token_burn():
     }
     
     try:
-        response = requests.post(f"{INDEXER_URL}/graphql", json=query)
+        response = requests.post(f"{INDEXER_URL}/rest", json=query)
         data = response.json()
         
         if 'data' in data and 'ethereum' in data['data'] and 'tokenTransfers' in data['data']['ethereum']:
@@ -331,7 +331,7 @@ def check_moon_token_burn():
     }
     
     try:
-        response = requests.post(f"{INDEXER_URL}/graphql", json=query)
+        response = requests.post(f"{INDEXER_URL}/rest", json=query)
         data = response.json()
         
         if 'data' in data and 'cosmos' in data['data'] and 'tokenTransfers' in data['data']['cosmos']:
@@ -430,8 +430,7 @@ The test is considered successful if:
 1. **Indexer sync issues**: Ensure the indexer is properly detecting and processing events from both chains
 2. **Chain connectivity**: Verify that both chain nodes are running and accessible
 3. **Transaction failures**: Check for sufficient gas, authorization issues, or contract errors
-4. **GraphQL queries**: Test queries directly against the indexer API to verify correct syntax
-5. **Log collection**: Capture logs from all components for post-test analysis
+4. **Log collection**: Capture logs from all components for post-test analysis
 
 ## Test Automation
 

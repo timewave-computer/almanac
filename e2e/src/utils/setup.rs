@@ -117,7 +117,7 @@ pub async fn ensure_almanac_binary(config: &mut TestConfig) -> Result<(), E2EErr
     // Verify the binary was created
     check_almanac_binary(config)?;
     
-    println!("✓ Almanac binary built successfully");
+    println!("Almanac binary built successfully");
     Ok(())
 }
 
