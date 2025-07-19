@@ -1,5 +1,7 @@
 # Almanac
 
+![](./almanac.png)
+
 A high-performance, multi-chain blockchain indexing and querying system built in Rust with FoundationDB as the primary storage backend.
 
 ## Overview
