@@ -1,6 +1,6 @@
 //! Basic CLI functionality tests
 
-use almanac_e2e_tests::{TestConfig, TestResult, TestSuiteResults};
+use almanac_e2e_tests::{TestConfig, TestOutcome, TestSuiteResults};
 use almanac_e2e_tests::utils::run_cli_command;
 
 pub async fn run_basic_cli_tests(config: &TestConfig) -> TestSuiteResults {
@@ -29,7 +29,7 @@ pub async fn run_basic_cli_tests(config: &TestConfig) -> TestSuiteResults {
     // Note: This should fail, but we expect it to fail gracefully
     if !result.success {
         // Convert failure to success if it fails as expected
-        let success_result = TestResult::success(
+        let success_result = TestOutcome::success(
             "invalid_command_fails_gracefully".to_string(),
             result.duration,
             "Invalid command fails as expected".to_string()

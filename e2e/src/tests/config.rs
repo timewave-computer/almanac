@@ -1,6 +1,6 @@
 //! Configuration management tests
 
-use almanac_e2e_tests::{TestConfig, TestResult, TestSuiteResults};
+use almanac_e2e_tests::{TestConfig, TestOutcome, TestSuiteResults};
 use almanac_e2e_tests::utils::run_cli_command;
 use almanac_e2e_tests::utils::setup::TestEnvironment;
 use almanac_e2e_tests::utils::validation::validate_toml_config;
@@ -40,14 +40,14 @@ pub async fn run_config_tests(config: &TestConfig, test_env: &TestEnvironment) -
             let has_ethereum = content.contains("[ethereum]");
             
             if has_cosmos && has_ethereum {
-                let sections_result = TestResult::success(
+                let sections_result = TestOutcome::success(
                     "config_init_sections".to_string(),
                     std::time::Duration::from_millis(1),
                     "Config file contains expected sections".to_string()
                 );
                 results.add_result(sections_result);
             } else {
-                let sections_result = TestResult::failure(
+                let sections_result = TestOutcome::failure(
                     "config_init_sections".to_string(),
                     std::time::Duration::from_millis(1),
                     format!("Missing sections - cosmos: {}, ethereum: {}", has_cosmos, has_ethereum)
@@ -91,7 +91,7 @@ invalid_field = "this should not exist"
     
     // Convert expected failure to success
     if !result.success {
-        let success_result = TestResult::success(
+        let success_result = TestOutcome::success(
             "config_validate_invalid_fails_gracefully".to_string(),
             result.duration,
             "Invalid config validation fails as expected".to_string()
@@ -136,14 +136,14 @@ invalid_field = "this should not exist"
             let has_new_output_dir = content.contains("output_dir = \"./new_output\"");
             
             if has_new_output_dir {
-                let update_result = TestResult::success(
+                let update_result = TestOutcome::success(
                     "config_update_validation".to_string(),
                     std::time::Duration::from_millis(1),
                     "Config update applied successfully".to_string()
                 );
                 results.add_result(update_result);
             } else {
-                let update_result = TestResult::failure(
+                let update_result = TestOutcome::failure(
                     "config_update_validation".to_string(),
                     std::time::Duration::from_millis(1),
                     "Config update was not applied correctly".to_string()

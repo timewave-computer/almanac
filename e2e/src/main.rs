@@ -129,7 +129,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         match tests::multi_chain_simulation_e2e::run_multi_chain_simulation_e2e_test().await {
             Ok(()) => {
                 println!("  {}", "Multi-chain simulation test passed".green());
-                all_results.add_result(almanac_e2e_tests::TestResult {
+                all_results.add_result(almanac_e2e_tests::TestOutcome {
                     name: "multi_chain_simulation".to_string(),
                     success: true,
                     output: "Multi-chain simulation test completed successfully".to_string(),
@@ -139,7 +139,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             Err(e) => {
                 println!("  {} Multi-chain simulation test failed: {}", "FAILED".red(), e);
-                all_results.add_result(almanac_e2e_tests::TestResult {
+                all_results.add_result(almanac_e2e_tests::TestOutcome {
                     name: "multi_chain_simulation".to_string(),
                     success: false,
                     output: String::new(),

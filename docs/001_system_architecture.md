@@ -14,47 +14,51 @@ Almanac is a high-performance, multi-chain blockchain indexing system built with
 
 ## System Architecture
 
-Almanac uses a distributed architecture where chain-specific nodes connect to a shared FoundationDB data layer:
+Almanac uses a distributed microservices architecture where chain-specific indexing nodes and an API server connect to a shared FoundationDB data layer:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                         External Clients                        │
-└─────────────────────────────────────────────────────────────────┘
-                                 │
-                                 ▼
+│         • Web Apps  • CLI Tools  • Dashboards                   │
+└─────────────────────────┬───────────────────────────────────────┘
+                          │
+                          ▼ HTTP/WebSocket
 ┌─────────────────────────────────────────────────────────────────┐
-│                     almanac-api (Load Balanced)                 │
+│                     almanac-api                                 │
 │  • HTTP API Server        • WebSocket Support                   │
 │  • Authentication         • Rate Limiting                       │
 │  • OpenAPI Documentation  • Response Caching                    │
-└─────────────────────────────────────────────────────────────────┘
-                                 │
-                                 ▼
+│  • Read-only operations   • Query optimization                  │
+└─────────────────────────┬───────────────────────────────────────┘
+                          │ Reads
+                          ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                  FoundationDB Cluster (Shared Storage)          │
+│                  FoundationDB Cluster                           │
 │  • Distributed ACID transactions                                │
 │  • Automatic replication and sharding                           │
 │  • Multi-dimensional tuple indexing                             │
-└─────────────────────────────────────────────────────────────────┘
-                                 ▲
-       ┌─────────────────────────┼─────────────────────────┐
-       │                         │                         │
-┌──────▼──────────┐     ┌────────▼────────┐     ┌─────────▼────────┐
-│ almanac-ethereum│     │ almanac-cosmos  │     │ almanac-solana   │
-│  (2-3 replicas) │     │ (2-3 replicas)  │     │ (2-3 replicas)   │
-├─────────────────┤     ├─────────────────┤     ├──────────────────┤
-│ • Event indexing│     │ • Event indexing│     │ • Event indexing │
-│ • Reorg handling│     │ • BFT consensus │     │ • PoH validation │
-│ • State proofs  │     │ • IBC tracking  │     │ • Program data   │
-│ • EVM traces    │     │ • Module events │     │ • Account updates│
-└─────────────────┘     └─────────────────┘     └──────────────────┘
-        │                        │                        │
-        ▼                        ▼                        ▼
+│  • 13 keyspaces for multi-chain data                            │
+└─────────────────────────▲───────────────────────────────────────┘
+                          │ Writes
+       ┌──────────────────┼───────────────────┐
+       │                  │                   │
+┌──────▼──────────┐ ┌─────▼──────────┐ ┌──────▼──────────┐
+│ almanac-ethereum│ │almanac-cosmos  │ │almanac-solana   │
+│     :9091       │ │     :9092      │ │    :9093        │
+├─────────────────┤ ├────────────────┤ ├─────────────────┤
+│ • Event indexing│ │• Event indexing│ │• Account data   │
+│ • Reorg handling│ │• BFT consensus │ │• PoH validation │
+│ • State proofs  │ │• IBC tracking  │ │• Program logs   │
+│ • EVM traces    │ │• Module events │ │• Slot tracking  │
+│ • Health :9091  │ │• Health :9092  │ │• Health :9093   │
+│ • Metrics       │ │• Metrics       │ │• Metrics        │
+└─────────────────┘ └────────────────┘ └─────────────────┘
+        │                    │                  │
+        ▼ RPC                ▼ RPC              ▼ RPC
 ┌─────────────────────────────────────────────────────────────────┐
-│                    valence-domain-clients                       │
-│  • Standardized blockchain RPC interfaces                       │
-│  • Connection pooling and failover                              │
-│  • Type-safe client implementations                             │
+│                      Blockchain Networks                        │
+│  • Ethereum/Anvil       • Cosmos/Neutron      • Solana          │
+│  • :8545                • :26657               • :8899          │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -111,21 +115,37 @@ Persistent storage layer:
 
 ### Blockchain Integration
 
-#### Chain-Specific Binaries
-Each blockchain has its own binary to avoid dependency conflicts:
-- **almanac-ethereum**: Ethereum-specific node using valence-domain-client-ethereum
-- **almanac-cosmos**: Cosmos chains using valence-domain-client-cosmos  
-- **almanac-solana**: Solana using valence-domain-client-solana
-- **Feature flags**: Each binary built with only required dependencies
-- **Shared storage**: All nodes write to the same FoundationDB namespace
+#### Distributed Services Architecture
+Almanac uses separate chain-specific indexing services that connect to shared storage:
+- **almanac-ethereum**: Dedicated Ethereum indexing node (:9091)
+- **almanac-cosmos**: Dedicated Cosmos indexing node (:9092)  
+- **almanac-solana**: Dedicated Solana indexing node (:9093)
+- **almanac-api**: Read-only API server for client queries (:8080)
+- **Shared FoundationDB**: All services use the same FoundationDB cluster with namespace isolation
+
+#### Service Responsibilities
+
+**Chain Indexing Nodes**:
+- **Event Processing**: Index blockchain events and state changes
+- **Consensus Handling**: Manage chain-specific finality and reorganizations
+- **Storage Writing**: Write normalized data to FoundationDB
+- **Health Monitoring**: Provide health and metrics endpoints
+- **Independent Deployment**: Each service can be scaled and deployed separately
+
+**API Server**:
+- **Query Processing**: Handle client queries and API requests
+- **Authentication**: Manage API keys and rate limiting
+- **Data Aggregation**: Combine data from multiple chains
+- **WebSocket Support**: Real-time event streaming
+- **Read-Only**: Does not perform indexing or write to storage
 
 #### almanac-chains
-Core blockchain abstraction layer:
-- **ChainAdapter trait**: Unified interface implemented by each chain binary
+Core blockchain abstraction layer shared across services:
+- **ChainAdapter trait**: Unified interface implemented by each chain service
 - **ChainDataIR**: Normalized intermediate representation for all chains
 - **State extraction**: Merkle proofs and storage slot tracking
 - **Event normalization**: Consistent event format across chains
-- **Connection management**: RPC pooling via valence-domain-clients
+- **Connection management**: RPC pooling and failover handling
 
 #### almanac-consensus
 Consensus and finality management:
@@ -196,12 +216,12 @@ Testing utilities and fixtures:
 
 ## Key Design Decisions
 
-### Distributed Node Architecture
-- **Isolation**: Chain-specific binaries prevent dependency conflicts
-- **Scalability**: Independent scaling per blockchain
-- **Resilience**: Chain failures don't affect other chains
-- **Flexibility**: Different resource allocation per chain
-- **Shared State**: FoundationDB provides consistent view across nodes
+### Distributed Services Architecture
+- **Service Isolation**: Each blockchain has a dedicated indexing service
+- **Independent Scaling**: Scale chain indexers independently based on throughput
+- **Fault Tolerance**: Failure of one chain doesn't affect others
+- **Resource Optimization**: Chain-specific resource allocation and tuning
+- **Deployment Flexibility**: Deploy and update services independently
 
 ### FoundationDB as Shared Storage
 - **ACID Guarantees**: Consistent state across all nodes
@@ -210,12 +230,12 @@ Testing utilities and fixtures:
 - **Tuple Layer**: Efficient multi-dimensional indexing
 - **Namespace Isolation**: Logical separation between chains
 
-### Chain-Specific Binaries
-- **No Feature Conflicts**: Each binary has only required dependencies
-- **Optimized Builds**: Smaller binaries, faster compilation
-- **Independent Updates**: Update one chain without affecting others
-- **Resource Isolation**: CPU/memory limits per chain
-- **Simplified Debugging**: Clear separation of concerns
+### Modular Chain Services
+- **Service-Based**: Each chain has its own binary and service
+- **Trait-Based**: Uniform ChainAdapter interface across all blockchain implementations
+- **Pluggable**: Easy to add new blockchain support with new service
+- **Type-Safe**: Leverages Rust's type system for correctness
+- **Configurable**: Runtime configuration for different networks per service
 
 ### Event-Driven Architecture
 - **Decoupling**: Components communicate via events

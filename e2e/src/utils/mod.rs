@@ -4,7 +4,9 @@ pub mod setup;
 pub mod fixtures;
 pub mod validation;
 
-use crate::{E2EError, TestConfig, TestResult};
+// Re-export commonly used types
+pub use crate::{E2EError, TestConfig, TestResult, TestOutcome};
+
 use anyhow::Result;
 use assert_cmd::Command;
 use std::path::Path;
@@ -15,7 +17,7 @@ pub async fn run_cli_command(
     config: &TestConfig,
     args: &[&str],
     test_name: &str,
-) -> TestResult {
+) -> TestOutcome {
     let start = Instant::now();
     
     let mut cmd = Command::new(&config.almanac_binary);
@@ -32,9 +34,9 @@ pub async fn run_cli_command(
             let stderr = String::from_utf8_lossy(&output.stderr).to_string();
             
             if output.status.success() {
-                TestResult::success(test_name.to_string(), duration, stdout)
+                TestOutcome::success(test_name.to_string(), duration, stdout)
             } else {
-                TestResult::failure(
+                TestOutcome::failure(
                     test_name.to_string(),
                     duration,
                     format!("Command failed with exit code {:?}\nStderr: {}", output.status.code(), stderr)
@@ -43,7 +45,7 @@ pub async fn run_cli_command(
         }
         Err(e) => {
             let duration = start.elapsed();
-            TestResult::failure(
+            TestOutcome::failure(
                 test_name.to_string(),
                 duration,
                 format!("Failed to execute command: {}", e)
@@ -69,14 +71,14 @@ pub fn dir_exists_and_not_empty<P: AsRef<Path>>(path: P) -> bool {
 pub async fn validate_rust_compilation<P: AsRef<Path>>(
     project_dir: P,
     test_name: &str,
-) -> Result<TestResult, E2EError> {
+) -> Result<TestOutcome, E2EError> {
     let start = Instant::now();
     let project_dir = project_dir.as_ref();
     
     // Check if Cargo.toml exists
     let cargo_toml = project_dir.join("Cargo.toml");
     if !cargo_toml.exists() {
-        return Ok(TestResult::failure(
+        return Ok(TestOutcome::failure(
             test_name.to_string(),
             start.elapsed(),
             "No Cargo.toml found in generated project".to_string()
@@ -96,16 +98,16 @@ pub async fn validate_rust_compilation<P: AsRef<Path>>(
             let stderr = String::from_utf8_lossy(&output.stderr).to_string();
             
             if output.status.success() {
-                Ok(TestResult::success(test_name.to_string(), duration, stdout))
+                Ok(TestOutcome::success(test_name.to_string(), duration, stdout))
             } else {
-                Ok(TestResult::failure(
+                Ok(TestOutcome::failure(
                     test_name.to_string(),
                     duration,
                     format!("Compilation failed:\nStdout: {}\nStderr: {}", stdout, stderr)
                 ))
             }
         }
-        Err(e) => Ok(TestResult::failure(
+        Err(e) => Ok(TestOutcome::failure(
             test_name.to_string(),
             start.elapsed(),
             format!("Failed to run cargo check: {}", e)
@@ -114,7 +116,7 @@ pub async fn validate_rust_compilation<P: AsRef<Path>>(
 }
 
 /// Format test results for display
-pub fn format_test_results(results: &[TestResult]) -> String {
+pub fn format_test_results(results: &[TestOutcome]) -> String {
     use colored::*;
     
     let mut output = String::new();
@@ -146,7 +148,7 @@ pub fn format_test_results(results: &[TestResult]) -> String {
 }
 
 /// Print test summary
-pub fn print_test_summary(results: &[TestResult]) {
+pub fn print_test_summary(results: &[TestOutcome]) {
     use colored::*;
     
     let total = results.len();

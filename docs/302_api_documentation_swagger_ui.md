@@ -6,7 +6,7 @@ The Almanac API includes comprehensive Swagger UI documentation that provides in
 
 ## Quick Start
 
-### Using Nix (Recommended)
+### Using Nix
 
 The simplest way to start the Swagger UI server is using the Nix flake:
 
@@ -29,11 +29,11 @@ nix run .#swagger-ui -- 8080 127.0.0.1 config/prod.toml
 If you prefer to run the server manually:
 
 ```bash
-# Run the script directly
-./scripts/swagger-ui-server.sh
+# Use the new nix command instead of the legacy script
+nix run .#swagger-ui
 
-# Or with custom parameters
-./scripts/swagger-ui-server.sh 8080 127.0.0.1 config/dev.toml
+# Or with custom parameters (via nix)
+nix run .#swagger-ui -- 8080 127.0.0.1 config/dev.toml
 
 # Build as a package
 nix build .#swagger-ui
@@ -118,7 +118,7 @@ curl http://localhost:8080/api/v1/chains/ethereum/latest-block
 The Swagger UI server accepts the following parameters:
 
 ```bash
-./scripts/swagger-ui-server.sh [PORT] [HOST] [CONFIG_FILE]
+nix run .#swagger-ui -- [PORT] [HOST] [CONFIG_FILE]
 ```
 
 - **PORT**: Server port (default: 8080)
@@ -211,4 +211,4 @@ nix develop
 - **Build failures**: Falls back to debug build if release fails
 - **Dependencies**: All handled by Nix automatically
 
-For more information, see the [API Development Guide](./api-development.md).
+For more information, see the [API Integration Examples](./104_api_integration_examples.md).

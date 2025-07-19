@@ -1,6 +1,6 @@
 //! Code generation validation and quality tests
 
-use almanac_e2e_tests::{TestConfig, TestResult, TestSuiteResults};
+use almanac_e2e_tests::{TestConfig, TestOutcome, TestSuiteResults};
 use almanac_e2e_tests::utils::{run_cli_command, validate_rust_compilation};
 use almanac_e2e_tests::utils::setup::{TestEnvironment, create_test_cargo_toml};
 use almanac_e2e_tests::utils::validation::{validate_generated_files, validate_rust_code_patterns, count_generated_code_lines};
@@ -170,7 +170,7 @@ pub async fn run_validation_tests(config: &TestConfig, test_env: &TestEnvironmen
         let compilation_result = validate_rust_compilation(
             &cosmos_compilation_dir,
             "validation_cosmos_compilation"
-        ).await.unwrap_or_else(|_| TestResult::failure(
+        ).await.unwrap_or_else(|_| TestOutcome::failure(
             "validation_cosmos_compilation".to_string(),
             std::time::Duration::from_secs(1),
             "Compilation test setup failed".to_string()
@@ -196,7 +196,7 @@ pub async fn run_validation_tests(config: &TestConfig, test_env: &TestEnvironmen
         let compilation_result = validate_rust_compilation(
             &ethereum_compilation_dir,
             "validation_ethereum_compilation"
-        ).await.unwrap_or_else(|_| TestResult::failure(
+        ).await.unwrap_or_else(|_| TestOutcome::failure(
             "validation_ethereum_compilation".to_string(),
             std::time::Duration::from_secs(1),
             "Compilation test setup failed".to_string()
@@ -207,13 +207,13 @@ pub async fn run_validation_tests(config: &TestConfig, test_env: &TestEnvironmen
     // Test 4: Code metrics and quality
     if let Ok(cosmos_lines) = count_generated_code_lines(&cosmos_output_dir) {
         let metrics_result = if cosmos_lines > 100 {
-            TestResult::success(
+            TestOutcome::success(
                 "validation_cosmos_code_volume".to_string(),
                 std::time::Duration::from_millis(1),
                 format!("Generated {} lines of Cosmos code", cosmos_lines)
             )
         } else {
-            TestResult::failure(
+            TestOutcome::failure(
                 "validation_cosmos_code_volume".to_string(),
                 std::time::Duration::from_millis(1),
                 format!("Generated only {} lines of Cosmos code (expected > 100)", cosmos_lines)
@@ -224,13 +224,13 @@ pub async fn run_validation_tests(config: &TestConfig, test_env: &TestEnvironmen
     
     if let Ok(ethereum_lines) = count_generated_code_lines(&ethereum_output_dir) {
         let metrics_result = if ethereum_lines > 100 {
-            TestResult::success(
+            TestOutcome::success(
                 "validation_ethereum_code_volume".to_string(),
                 std::time::Duration::from_millis(1),
                 format!("Generated {} lines of Ethereum code", ethereum_lines)
             )
         } else {
-            TestResult::failure(
+            TestOutcome::failure(
                 "validation_ethereum_code_volume".to_string(),
                 std::time::Duration::from_millis(1),
                 format!("Generated only {} lines of Ethereum code (expected > 100)", ethereum_lines)
@@ -244,13 +244,13 @@ pub async fn run_validation_tests(config: &TestConfig, test_env: &TestEnvironmen
         if dir.exists() {
             let has_security_issues = check_security_patterns(dir);
             let security_result = if has_security_issues {
-                TestResult::failure(
+                TestOutcome::failure(
                     format!("validation_{}_security", name),
                     std::time::Duration::from_millis(1),
                     format!("Found potential security issues in generated {} code", name)
                 )
             } else {
-                TestResult::success(
+                TestOutcome::success(
                     format!("validation_{}_security", name),
                     std::time::Duration::from_millis(1),
                     format!("No obvious security issues found in generated {} code", name)
@@ -265,13 +265,13 @@ pub async fn run_validation_tests(config: &TestConfig, test_env: &TestEnvironmen
         if dir.exists() {
             let has_docs = check_documentation_patterns(dir);
             let docs_result = if has_docs {
-                TestResult::success(
+                TestOutcome::success(
                     format!("validation_{}_documentation", name),
                     std::time::Duration::from_millis(1),
                     format!("Generated {} code includes documentation", name)
                 )
             } else {
-                TestResult::failure(
+                TestOutcome::failure(
                     format!("validation_{}_documentation", name),
                     std::time::Duration::from_millis(1),
                     format!("Generated {} code lacks proper documentation", name)

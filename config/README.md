@@ -1,24 +1,33 @@
 # Configuration Files
 
-This directory contains the configuration files for different environments:
+This directory contains the configuration files for different environments and chains:
 
+**Environment Configurations:**
 - `dev.toml`: Development environment configuration
 - `test.toml`: Test environment configuration
 - `prod.toml`: Production environment configuration
+
+**Chain-Specific Configurations:**
+- `ethereum.toml`: Ethereum chain indexing configuration
+- `cosmos.toml`: Cosmos chain indexing configuration
+- `solana.toml`: Solana chain indexing configuration
+- `simulation.toml`: Multi-chain simulation environment configuration
 
 ## Usage
 
 Pass the configuration file to the indexer using the `--config` parameter:
 
 ```bash
-# Development
-cargo run --bin almanac -- run --config config/dev.toml
+# Development API server
+nix run .#almanac-api -- --config config/dev.toml
 
-# Test
-cargo run --bin almanac -- run --config config/test.toml
+# Chain-specific indexing nodes
+nix run .#ethereum-node -- --config config/ethereum.toml
+nix run .#cosmos-node -- --config config/cosmos.toml
+nix run .#solana-node -- --config config/solana.toml
 
-# Production
-cargo run --bin almanac -- run --config config/prod.toml
+# Multi-chain simulation
+nix run .#sim-cluster -- --config config/simulation.toml
 ```
 
 ## Environment Variables

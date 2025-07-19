@@ -92,7 +92,7 @@ Configuration values can be overridden with environment variables:
 
 Run tests with:
 ```bash
-cargo test -p almanac-config
+nix develop -c cargo test -p almanac-config
 ```
 
 The test suite covers:

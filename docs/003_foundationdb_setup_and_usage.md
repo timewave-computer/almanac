@@ -24,7 +24,7 @@ This guide covers how to set up and use FoundationDB with the Almanac API.
 First, set up the FoundationDB headers for compilation:
 
 ```bash
-./scripts/setup-fdb-headers.sh
+./scripts/dev/setup-fdb-headers.sh
 source .env.fdb
 ```
 
@@ -88,11 +88,11 @@ For production clusters, modify this to include multiple coordinators.
 ### Build with FDB Support
 
 ```bash
-# Build the API with FDB feature
-cargo build -p almanac-api --features fdb
+# Build the API with FDB feature (use nix)
+nix develop .#fdb --command cargo build -p almanac-api --features fdb
 
 # Run the API
-cargo run -p almanac-api --features fdb
+nix develop .#fdb --command cargo run -p almanac-api --features fdb
 ```
 
 ### Using the Test Script
@@ -100,7 +100,7 @@ cargo run -p almanac-api --features fdb
 A convenience script is provided:
 
 ```bash
-./scripts/test-api-fdb.sh
+./scripts/testing/api-tests.sh --backend fdb
 ```
 
 This script:
@@ -116,7 +116,7 @@ This script:
 
 **Submit Semantic Interpretation:**
 ```bash
-POST /v1/semantics/{chain}/{contract}/{field}
+POST /api/v1/semantics/{chain}/{contract}/{field}
 {
   "developer_id": "developer-123",
   "chain_id": "ethereum-mainnet",
@@ -137,14 +137,14 @@ POST /v1/semantics/{chain}/{contract}/{field}
 
 **Get Semantic Interpretations:**
 ```bash
-GET /v1/semantics/{chain}/{contract}/{field}?trust_policy=permissive
+GET /api/v1/semantics/{chain}/{contract}/{field}?trust_policy=permissive
 ```
 
 ### Contract Layouts
 
 **Submit Layout:**
 ```bash
-POST /v1/layouts
+POST /api/v1/layouts
 {
   "chain_id": "ethereum-mainnet",
   "contract_address": "0x...",
@@ -157,19 +157,19 @@ POST /v1/layouts
 
 **Get Layout:**
 ```bash
-GET /v1/layouts/{chain}/{contract}?trust_policy=strict
+GET /api/v1/layouts/{chain}/{contract}?trust_policy=strict
 ```
 
 **Detect Conflicts:**
 ```bash
-GET /v1/layouts/{chain}/{contract}/conflicts
+GET /api/v1/layouts/{chain}/{contract}/conflicts
 ```
 
 ### Trust Management
 
 **Grant Trust:**
 ```bash
-POST /v1/trust/grant
+POST /api/v1/trust/grant
 {
   "trustor": "alice",
   "trustee": "bob",
@@ -180,19 +180,19 @@ POST /v1/trust/grant
 
 **Check Trust:**
 ```bash
-GET /v1/trust/check/{trustor}/{trustee}?scope_type=global
+GET /api/v1/trust/check/{trustor}/{trustee}?scope_type=global
 ```
 
 **Get Trust Graph:**
 ```bash
-GET /v1/trust/graph/{developer_id}
+GET /api/v1/trust/graph/{developer_id}
 ```
 
 ### Views
 
 **Register View:**
 ```bash
-POST /v1/views
+POST /api/v1/views
 {
   "view_id": "erc20-balances",
   "contract_address": "0x...",
@@ -204,7 +204,7 @@ POST /v1/views
 
 **Query View:**
 ```bash
-GET /v1/views/{view_id}/query?chain={chain}&contract={contract}&block={height}
+GET /api/v1/views/{view_id}/query?chain={chain}&contract={contract}&block={height}
 ```
 
 ## Storage Schema
@@ -257,13 +257,13 @@ Apply trust policies in queries:
 
 ```bash
 # Strict - only trusted developers
-GET /v1/semantics/{chain}/{contract}/{field}?trust_policy=strict&developer_id=alice
+GET /api/v1/semantics/{chain}/{contract}/{field}?trust_policy=strict&developer_id=alice
 
 # Permissive - prefer trusted
-GET /v1/semantics/{chain}/{contract}/{field}?trust_policy=permissive
+GET /api/v1/semantics/{chain}/{contract}/{field}?trust_policy=permissive
 
 # Explicit - specific developer only
-GET /v1/semantics/{chain}/{contract}/{field}?trust_policy=explicit&developer_id=bob
+GET /api/v1/semantics/{chain}/{contract}/{field}?trust_policy=explicit&developer_id=bob
 ```
 
 ## Troubleshooting
@@ -275,7 +275,7 @@ GET /v1/semantics/{chain}/{contract}/{field}?trust_policy=explicit&developer_id=
 error: couldn't read `/usr/local/include/foundationdb/fdb.options`
 ```
 
-Solution: Run `./scripts/setup-fdb-headers.sh`
+Solution: Run `./scripts/dev/setup-fdb-headers.sh`
 
 **FDB Not Available:**
 ```bash
