@@ -42,11 +42,10 @@ use almanac_core::{Event, EventFilter, BlockStatus};
 
 // Create FoundationDB storage
 let fdb_config = FdbConfig {
-    cluster_file: "/etc/foundationdb/fdb.cluster".to_string(),
-    api_version: 720,
-    transaction_timeout_ms: 5000,
-    retry_limit: 3,
-    max_connections: 100,
+    cluster_file: Some("/etc/foundationdb/fdb.cluster".to_string()),
+    namespace: "almanac".to_string(),
+    connection_timeout: 30,
+    max_retries: 3,
 };
 
 let storage = create_storage(StorageBackend::Fdb(fdb_config)).await?;
@@ -94,11 +93,10 @@ let events = storage.get_events(&filter).await?;
 ```rust
 // FoundationDB configuration
 let fdb_config = FdbConfig {
-    cluster_file: "/etc/foundationdb/fdb.cluster".to_string(),
-    api_version: 720,
-    transaction_timeout_ms: 5000,
-    retry_limit: 3,
-    max_connections: 100,
+    cluster_file: Some("/etc/foundationdb/fdb.cluster".to_string()),
+    namespace: "almanac".to_string(),
+    connection_timeout: 30,
+    max_retries: 3,
 };
 
 // Create storage with configuration

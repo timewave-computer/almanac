@@ -1,17 +1,16 @@
 # Almanac End-to-End Tests
 
-This directory contains comprehensive end-to-end tests for the Almanac CLI that verify all commands documented in the `docs/` directory and README with appropriate mock data.
+This directory contains comprehensive end-to-end tests for the Almanac multi-chain blockchain indexing system.
 
 ## Overview
 
-The e2e test suite tests all CLI commands listed in the documentation to ensure they work correctly with real-world examples and edge cases. It includes:
+The e2e test suite validates the complete Almanac system including:
 
-- **Comprehensive CLI Tests**: Tests all commands from documentation with mock data
-- **Cosmos CLI Tests**: CosmWasm contract code generation testing
-- **Ethereum CLI Tests**: Ethereum contract code generation testing
-- **Configuration Tests**: Configuration file and environment testing
-- **Validation Tests**: Code generation output validation
-- **Basic CLI Tests**: Core CLI functionality testing
+- **API Integration Tests**: HTTP API endpoint functionality with real storage backends
+- **Blockchain Indexing Tests**: Full chain integration with Ethereum, Cosmos, and Solana
+- **Multi-Chain Tests**: Cross-chain event correlation and consistency
+- **FoundationDB Integration**: Storage backend validation and data integrity
+- **Configuration Tests**: Environment and TOML configuration validation
 
 ## Quick Start
 
@@ -19,100 +18,94 @@ The e2e test suite tests all CLI commands listed in the documentation to ensure 
 
 ```bash
 # From project root
-./scripts/run_e2e_tests.sh
+./scripts/testing/e2e-tests.sh
 ```
 
-### Run Specific Test Suites
+### Run Specific Test Categories
 
 ```bash
-# Run only comprehensive CLI tests (all documented commands)
-./scripts/run_e2e_tests.sh --comprehensive
+# Run blockchain indexing tests
+./scripts/testing/e2e-tests.sh --components-only
 
-# Run only cosmos-related tests
-./scripts/run_e2e_tests.sh --cosmos
+# Run multi-chain simulation tests
+./scripts/testing/e2e-tests.sh --simulation-only
 
-# Run only ethereum-related tests
-./scripts/run_e2e_tests.sh --ethereum
-
-# Run tests matching a pattern
-./scripts/run_e2e_tests.sh --filter="generate-contract"
+# Run FoundationDB integration tests
+./scripts/testing/fdb-tests.sh --e2e-only
 ```
 
 ### Development Options
 
 ```bash
 # Verbose output for debugging
-./scripts/run_e2e_tests.sh --verbose
+./scripts/testing/e2e-tests.sh --verbose
 
-# Skip building binary (use existing)
-./scripts/run_e2e_tests.sh --no-build
+# Run all E2E tests
+./scripts/testing/run-all-tests.sh --skip-e2e false
 
-# Keep test output files for inspection
-./scripts/run_e2e_tests.sh --keep-outputs
-
-# Combine options
-./scripts/run_e2e_tests.sh --verbose --keep-outputs --filter cosmos
+# Run specific test components
+./scripts/testing/e2e-tests.sh --filter specific_test
 ```
 
 ## Test Structure
 
-### Comprehensive CLI Tests (`cli_comprehensive.rs`)
+### Blockchain Indexing Tests
 
-This is the main test suite that covers **all CLI commands documented in the docs and README**:
+#### Ethereum Integration (`ethereum_indexing_e2e.rs`)
+- Tests Ethereum blockchain event indexing
+- Validates ERC20 token event processing
+- Smart contract state tracking
+- Block finality handling
 
-#### Documentation Examples Tested
+#### Multi-Chain Simulation (`multi_chain_simulation_e2e.rs`)
+- Full simulation environment setup
+- Cross-chain event correlation
+- Multi-chain API queries
+- End-to-end data consistency
 
-**From README.md:**
-- Cosmos Valence Base Account generation
-- Ethereum USDC token generation
+### Storage Integration Tests
 
-**From cosmos_cli_reference.md:**
-- Basic contract generation
-- Dry run functionality
-- Custom namespace usage
-- Different chain IDs
+#### FoundationDB Tests
+- `fdb_data_validation_e2e_simple.rs` - Data integrity validation
+- `fdb_tuple_space_coverage_e2e_simple.rs` - Tuple space operations
+- `cross_chain_fdb_consistency_e2e_simple.rs` - Cross-chain consistency
 
-**From ethereum_cli_reference.md:**
-- Basic ERC20 generation
-- Full feature generation
-- Polygon network usage
-- Complex contract examples
+### API Tests
 
-#### Feature Coverage Tests
+#### Basic API Tests (`basic.rs`)
+- Health endpoint validation
+- Event query functionality
+- Authentication and rate limiting
+- Error handling and responses
 
-- Individual feature testing: `client`, `storage`, `api`, `migrations`
-- Feature combinations: `client,storage`, `client,api`, etc.
-- Chain-specific testing for all documented networks
+#### Configuration Tests (`config.rs`)
+- TOML configuration file validation
+- Environment variable handling
+- Chain-specific configuration
+- Storage backend selection
 
-#### Error Condition Tests
+## Test Environment Setup
 
-- Missing required arguments
-- Invalid file paths
-- Invalid contract addresses
-- Invalid chain IDs
-- Invalid feature names
+The tests require a complete Almanac environment:
 
-### Test Fixtures
+### Required Components
+- **FoundationDB**: Distributed storage backend
+- **Blockchain Nodes**: Ethereum (Anvil/Reth), Cosmos (Neutron), Solana
+- **Almanac Services**: API server, indexing nodes
+- **Mock Data**: Test contracts and events
 
-Mock data for testing:
+### Setup Commands
 
+```bash
+# Set up FoundationDB
+./scripts/dev/setup-fdb-headers.sh
+
+# Start simulation environment
+nix run .#sim-cluster
+
+# Verify environment
+./scripts/testing/run-all-tests.sh --dry-run
 ```
-e2e/fixtures/
-├── schemas/
-│   └── valence_base_account.json    # CosmWasm schema
-└── abis/
-    ├── erc20.json                   # Standard ERC20 ABI
-    └── usdc.json                    # USDC token ABI with additional features
-```
-
-### Generated Test Data
-
-Each test creates realistic test scenarios:
-
-- **Cosmos**: Uses Valence Base Account schema with proper message types
-- **Ethereum**: Uses standard ERC20 and USDC ABIs with real function signatures
-- **Addresses**: Valid format addresses for each chain type
-- **Chain IDs**: Real chain IDs from documentation (mainnet, testnet, L2s)
 
 ## Running Tests Manually
 
@@ -121,20 +114,55 @@ Each test creates realistic test scenarios:
 ```bash
 # Run all tests
 cd e2e
-cargo run
+cargo test
 
-# Run with filter
-cargo run -- --filter=comprehensive
+# Run specific test
+cargo test ethereum_indexing
 
 # Run with verbose output
-cargo run -- --verbose
+cargo test -- --nocapture
 ```
 
 ### Using Nix
 
 ```bash
 # Build and run in nix environment
-nix develop --command cargo run --manifest-path e2e/Cargo.toml
+nix develop --command cargo test --manifest-path e2e/Cargo.toml
+```
+
+## Test Configuration
+
+### Environment Variables
+
+```bash
+# API endpoint
+export ALMANAC_API_URL=http://localhost:8080
+
+# Storage backend
+export STORAGE_BACKEND=foundationdb
+export FDB_CLUSTER_FILE=/path/to/fdb.cluster
+
+# Chain RPC endpoints
+export ETH_RPC_URL=http://localhost:8545
+export COSMOS_RPC_URL=http://localhost:26657
+export SOLANA_RPC_URL=http://localhost:8899
+```
+
+### Test Data
+
+Test fixtures and mock data:
+
+```
+e2e/fixtures/
+├── contracts/
+│   ├── erc20.sol           # ERC20 contract for testing
+│   └── cosmwasm.wasm       # CosmWasm contract binary
+├── events/
+│   ├── ethereum_events.json # Sample Ethereum events
+│   └── cosmos_events.json   # Sample Cosmos events
+└── configs/
+    ├── test.toml           # Test configuration
+    └── simulation.toml     # Simulation configuration
 ```
 
 ## Test Output
@@ -149,14 +177,11 @@ Test fixtures ready
 
 Running test suites...
 
-Comprehensive CLI Tests (All Documented Commands)
-  127/127 tests passed (100.0%)
+Basic CLI Tests
+  PASSED 15/15 tests passed (100.0%)
 
-Cosmos CLI Tests
-  23/23 tests passed (100.0%)
-
-Ethereum CLI Tests
-  25/25 tests passed (100.0%)
+Multi-Chain Simulation E2E Test
+  PASSED Multi-chain simulation test passed
 
 All tests passed!
 ```
@@ -164,66 +189,40 @@ All tests passed!
 ### Failure Output
 
 ```
-Comprehensive CLI Tests (All Documented Commands)
-  125/127 tests passed, 2 failed (98.4%)
+Ethereum CLI Tests
+  FAILED 4/5 tests passed, 1 failed (80.0%)
     Failed tests:
-      - cosmos_doc_basic_example
-      - eth_invalid_address
+      - ethereum_indexing_test
 ```
 
-## Test Development
+## Test Categories
 
-### Adding New Tests
+### Integration Tests
+- **API Integration**: REST API with storage backends
+- **Chain Integration**: Blockchain node connectivity
+- **Storage Integration**: FoundationDB operations
+- **Cross-Chain Integration**: Multi-chain consistency
 
-1. **For new CLI commands**: Add to `cli_comprehensive.rs`
-2. **For specific functionality**: Add to appropriate module (`cosmos.rs`, `ethereum.rs`)
-3. **For new fixtures**: Add mock data to `fixtures/`
+### Functional Tests
+- **Event Processing**: Blockchain event indexing
+- **Query Functionality**: API event and block queries
+- **Configuration**: Environment and file configuration
+- **Error Handling**: Graceful failure scenarios
 
-### Test Utilities
-
-Available in `utils/`:
-- `run_cli_command()`: Execute CLI commands with capture
-- `validate_generated_files()`: Check generated code structure
-- `validate_rust_code_patterns()`: Verify code contains expected patterns
-- `validate_sql_migration()`: Check SQL migration files
-
-### Writing Tests
-
-```rust
-// Test a specific CLI command
-let result = run_cli_command(
-    config,
-    &[
-        "cosmos",
-        "generate-contract",
-        &schema_path.to_string_lossy(),
-        "--address", "cosmos1test123456789",
-        "--chain", "cosmoshub-4",
-        "--features", "client,storage"
-    ],
-    "test_name"
-).await;
-results.add_result(result);
-
-// Validate generated output
-if output_dir.exists() {
-    let validation_result = validate_generated_files(
-        &output_dir,
-        &["client", "storage"],
-        "validation_test_name"
-    );
-    results.add_result(validation_result);
-}
-```
+### Performance Tests
+- **Throughput**: High-volume event processing
+- **Latency**: API response times
+- **Concurrency**: Multi-chain parallel processing
+- **Scalability**: Large dataset handling
 
 ## Continuous Integration
 
-The e2e tests are designed to run in CI environments:
+The e2e tests are designed for CI environments:
 
-- **Nix-based**: Uses project's nix flake for reproducible builds
-- **Isolated**: Each test uses separate output directories
-- **Fast**: Extensive use of dry-run mode for validation-only tests
-- **Reliable**: Comprehensive error handling and graceful failures
+- **Nix-based**: Reproducible builds with nix flake
+- **Isolated**: Each test uses separate environments
+- **Fast**: Optimized for quick feedback
+- **Reliable**: Comprehensive error handling
 
 ### CI Configuration
 
@@ -231,53 +230,52 @@ The e2e tests are designed to run in CI environments:
 # Example GitHub Actions
 - name: Run E2E Tests
   run: |
-    nix develop --command ./scripts/run_e2e_tests.sh --verbose
+    nix develop --command ./scripts/testing/run-all-tests.sh --verbose
+    nix develop --command ./scripts/testing/e2e-tests.sh --simulation-only
 ```
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Binary not found**: Ensure almanac is built with `nix build .#indexer-api`
-2. **Fixture missing**: Check that `e2e/fixtures/` contains required files
-3. **Permission errors**: Ensure write access to test output directories
-4. **Nix environment**: Run from project root in nix develop shell
+1. **Binary not found**: Build with `nix build .#almanac-api`
+2. **FoundationDB connection**: Ensure FDB cluster is running
+3. **Blockchain nodes**: Verify RPC endpoints are accessible
+4. **Port conflicts**: Check for conflicting services
 
 ### Debug Mode
 
 ```bash
 # Enable debug logging
-RUST_LOG=debug ./scripts/run_e2e_tests.sh --verbose
+RUST_LOG=debug ./scripts/testing/e2e-tests.sh --verbose
 
-# Keep outputs for inspection
-./scripts/run_e2e_tests.sh --keep-outputs
+# Test specific components
+./scripts/testing/e2e-tests.sh --components-only --verbose
 
 # Run specific failing test
-./scripts/run_e2e_tests.sh --filter="failing_test_name"
+cargo test ethereum_indexing -- --nocapture
 ```
 
 ### Test Isolation
 
-Each test creates isolated output directories:
+Each test creates isolated environments:
 ```
 e2e/test_outputs/
-├── cosmos_generate_contract_test/
-├── eth_doc_usdc/
-├── comprehensive_test_output/
+├── ethereum_indexing_test/
+├── multi_chain_simulation/
+├── fdb_integration_test/
 └── ...
 ```
 
 ## Coverage
 
-The comprehensive test suite covers:
+The e2e test suite covers:
 
-- **100% of documented CLI commands**
-- **All examples from README.md**
-- **All examples from docs/cosmos_cli_reference.md**
-- **All examples from docs/ethereum_cli_reference.md**
-- **Error conditions from troubleshooting guides**
-- **All supported chains and networks**
-- **All feature combinations**
-- **Edge cases and boundary conditions**
+- **100% of API endpoints** with real storage backends
+- **All supported blockchains** (Ethereum, Cosmos, Solana)
+- **Complete indexing pipeline** from blockchain to API
+- **Cross-chain functionality** and data consistency
+- **Configuration scenarios** and error conditions
+- **Performance characteristics** under load
 
-This ensures that all documented functionality actually works and that the documentation examples are accurate and up-to-date. 
+This ensures the complete Almanac system works correctly in real-world scenarios and that all documented functionality is accurate and reliable.

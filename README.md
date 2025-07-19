@@ -1,5 +1,7 @@
 # Almanac
 
+![](./almanac.png)
+
 A high-performance, multi-chain blockchain indexing and querying system built in Rust with FoundationDB as the primary storage backend.
 
 ## Overview
@@ -26,11 +28,11 @@ The system is built around several core components organized in a modular crate 
 
 Almanac supports multiple blockchain networks through dedicated node services:
 
-- **[`almanac-ethereum`](crates/nodes/almanac-ethereum/)** - Ethereum indexing node
-- **[`almanac-cosmos`](crates/nodes/almanac-cosmos/)** - Cosmos indexing node
-- **[`almanac-solana`](crates/nodes/almanac-solana/)** - Solana indexing node (WIP)
+- **[`almanac-nodes/ethereum`](crates/almanac-nodes/ethereum/)** - Ethereum indexing node
+- **[`almanac-nodes/cosmos`](crates/almanac-nodes/cosmos/)** - Cosmos indexing node
+- **[`almanac-nodes/solana`](crates/almanac-nodes/solana/)** - Solana indexing node (WIP)
 
-Each chain adapter implements the [`ChainAdapter`](crates/almanac-chains/src/adapters/) trait, providing a unified interface for blockchain integration.
+Each chain adapter implements the [`ChainAdapter`](crates/almanac-chains/src/adapters/traits.rs) trait, providing a unified interface for blockchain integration.
 
 ## Features
 
@@ -83,31 +85,11 @@ Configuration is managed through TOML files with environment-specific overrides:
 nix develop
 
 # Build all crates
-cargo build
+nix build
 
 # Run tests
-cargo test
+nix flake check
 ```
-
-### Manual Setup
-
-1. Install FoundationDB:
-   ```bash
-   # macOS
-   brew install foundationdb
-
-   # Linux - see FoundationDB documentation
-   ```
-
-2. Build the project:
-   ```bash
-   cargo build --release
-   ```
-
-3. Run tests:
-   ```bash
-   cargo test
-   ```
 
 ## Running Services
 
@@ -115,10 +97,10 @@ cargo test
 
 ```bash
 # Development
-cargo run --bin almanac-api
+nix run .#almanac-api
 
 # Production
-./target/release/almanac-api
+nix build .#almanac-api && ./result/bin/almanac-api
 ```
 
 The API server supports both memory and FoundationDB storage backends, configured via environment variables:
@@ -135,13 +117,13 @@ export API_PORT=8080
 
 ```bash
 # Ethereum indexing
-cargo run --bin almanac-ethereum --config config/ethereum.toml
+nix run .#ethereum-node -- --config config/ethereum.toml
 
 # Cosmos indexing  
-cargo run --bin almanac-cosmos --config config/cosmos.toml
+nix run .#cosmos-node -- --config config/cosmos.toml
 
 # Solana indexing (when available)
-cargo run --bin almanac-solana --config config/solana.toml
+nix run .#solana-node -- --config config/solana.toml
 ```
 
 ### Using Helper Scripts
@@ -150,19 +132,19 @@ The project includes several helper scripts in the [`scripts/`](scripts/) direct
 
 ```bash
 # Setup development environment
-./scripts/setup-dev-env.sh
+./scripts/dev/setup-dev-env.sh
 
 # Run all tests
-./scripts/run-all-tests.sh
+./scripts/testing/run-all-tests.sh
 
 # Test API functionality
-./scripts/test-api.sh
+./scripts/testing/api-tests.sh
 
 # Monitor API health
-./scripts/monitor-api-health.sh
+./scripts/services/monitor-api-health.sh
 
 # Manage API service
-./scripts/manage-api-service.sh
+./scripts/services/manage-api-service.sh
 ```
 
 ## API Usage
@@ -180,32 +162,34 @@ export API_KEY="your-api-key"
 
 ```bash
 # Get events for a specific contract
-curl -X GET "http://localhost:8080/events?contract_address=0x..." \
-  -H "Authorization: Bearer $API_KEY"
+curl -X GET "http://localhost:8080/api/v1/events?address=0x..." \
+  -H "X-API-Key: $API_KEY"
 
 # Query events with filters
-curl -X GET "http://localhost:8080/events?from_block=1000000&to_block=1000100" \
-  -H "Authorization: Bearer $API_KEY"
+curl -X GET "http://localhost:8080/api/v1/events?from_block=1000000&to_block=1000100" \
+  -H "X-API-Key: $API_KEY"
 
 # Get events by chain
-curl -X GET "http://localhost:8080/events?chain=ethereum" \
-  -H "Authorization: Bearer $API_KEY"
+curl -X GET "http://localhost:8080/api/v1/chains/ethereum/events" \
+  -H "X-API-Key: $API_KEY"
 ```
 
 ### Storage and Semantics
 
 ```bash
-# Get semantic metadata
-curl -X GET "http://localhost:8080/semantics/CONTRACT_ADDRESS" \
-  -H "Authorization: Bearer $API_KEY"
+# Get semantic interpretations
+curl -X GET "http://localhost:8080/api/v1/chains/ethereum/contracts/0x.../semantics/field_name" \
+  -H "X-API-Key: $API_KEY"
 
-# Get contract layout
-curl -X GET "http://localhost:8080/layout/CHAIN/CONTRACT" \
-  -H "Authorization: Bearer $API_KEY"
+# Submit semantic interpretation
+curl -X POST "http://localhost:8080/api/v1/chains/ethereum/contracts/0x.../semantics/field_name" \
+  -H "X-API-Key: $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"interpretation": {"semantic_tags": ["balance"], "confidence": "high"}}'
 
-# Query storage proofs
-curl -X GET "http://localhost:8080/storage/proof/CHAIN/CONTRACT?block=12345" \
-  -H "Authorization: Bearer $API_KEY"
+# Generate traverse request (storage proof)
+curl -X POST "http://localhost:8080/api/v1/traverse/request/ethereum/0x..." \
+  -H "X-API-Key: $API_KEY"
 ```
 
 ### Health Monitoring
@@ -235,7 +219,9 @@ nix build .#almanac-api
 
 1. Build release binaries:
    ```bash
-   cargo build --release --features fdb
+   nix build .#almanac-api
+   nix build .#ethereum-node
+   nix build .#cosmos-node
    ```
 
 2. Set up FoundationDB cluster
@@ -251,26 +237,26 @@ The project includes comprehensive testing at multiple levels:
 ### Unit Tests
 ```bash
 # Run all tests
-cargo test
+nix flake check
 
 # Test specific crates
-cargo test --package almanac-storage
-cargo test --package almanac-api
+nix develop -c cargo test --package almanac-storage
+nix develop -c cargo test --package almanac-api
 ```
 
 ### Integration Tests
 ```bash
 # Run integration tests
-cargo test --package almanac-chains --features ethereum,cosmos -- --ignored
+nix develop -c cargo test --package almanac-chains --features ethereum,cosmos -- --ignored
 
 # E2E tests
-cargo test --package e2e
+nix develop -c cargo test --package e2e
 ```
 
 ### Performance Tests
 ```bash
 # Run benchmarks (when available)
-cargo bench
+nix develop -c cargo bench
 ```
 
 ## Monitoring
@@ -280,7 +266,6 @@ Almanac includes built-in monitoring and observability:
 - **Health Checks** - Service health endpoints at `/health` and `/ready`
 - **Metrics** - Prometheus-compatible metrics on port 9090
 - **Logging** - Structured logging with configurable levels
-- **Alerting** - Alert rules for common failure scenarios (see [`monitoring/`](monitoring/))
 
 ## Configuration
 
@@ -330,12 +315,12 @@ cluster_file = "/etc/foundationdb/fdb.cluster"
 
 ## Documentation
 
-- [Architecture Overview](docs/architecture.md)
-- [FoundationDB Implementation](docs/foundationdb-implementation.md)
-- [Chain Adapter Guide](docs/chain-adapter-guide.md)
-- [Integration Guide](docs/integration.md)
-- [Running Guide](docs/running.md)
-- [Testing Guide](docs/testing.md)
+- [Architecture Overview](docs/001_system_architecture.md)
+- [FoundationDB Implementation](docs/101_foundationdb_tuple_storage_implementation.md)
+- [Chain Adapter Guide](docs/103_blockchain_chain_adapter_development.md)
+- [Integration Guide](docs/104_api_integration_examples.md)
+- [Running Guide](docs/002_running_and_configuration.md)
+- [Testing Guide](docs/201_comprehensive_testing_guide.md)
 
 ---
 

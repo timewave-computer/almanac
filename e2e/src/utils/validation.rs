@@ -1,6 +1,6 @@
 //! Validation utilities for generated code and output files
 
-use crate::{E2EError, TestResult};
+use crate::{E2EError, TestOutcome};
 use std::path::Path;
 use std::fs;
 use walkdir::WalkDir;
@@ -12,12 +12,12 @@ pub fn validate_generated_files<P: AsRef<Path>>(
     output_dir: P,
     features: &[&str],
     test_name: &str,
-) -> TestResult {
+) -> TestOutcome {
     let start = Instant::now();
     let output_dir = output_dir.as_ref();
     
     if !output_dir.exists() {
-        return TestResult::failure(
+        return TestOutcome::failure(
             test_name.to_string(),
             start.elapsed(),
             "Output directory does not exist".to_string()
@@ -94,10 +94,10 @@ pub fn validate_generated_files<P: AsRef<Path>>(
         if !validation_errors.is_empty() {
             error_msg.push_str(&format!("Validation errors: {}", validation_errors.join(", ")));
         }
-        return TestResult::failure(test_name.to_string(), start.elapsed(), error_msg);
+        return TestOutcome::failure(test_name.to_string(), start.elapsed(), error_msg);
     }
     
-    TestResult::success(
+    TestOutcome::success(
         test_name.to_string(),
         start.elapsed(),
         format!("All expected files for features {} were generated", features.join(", "))
@@ -109,13 +109,13 @@ pub fn validate_rust_code_patterns<P: AsRef<Path>>(
     file_path: P,
     expected_patterns: &[&str],
     test_name: &str,
-) -> TestResult {
+) -> TestOutcome {
     let start = Instant::now();
     let file_path = file_path.as_ref();
     
     let content = match fs::read_to_string(file_path) {
         Ok(content) => content,
-        Err(e) => return TestResult::failure(
+        Err(e) => return TestOutcome::failure(
             test_name.to_string(),
             start.elapsed(),
             format!("Failed to read file {:?}: {}", file_path, e)
@@ -138,14 +138,14 @@ pub fn validate_rust_code_patterns<P: AsRef<Path>>(
     }
     
     if !missing_patterns.is_empty() {
-        return TestResult::failure(
+        return TestOutcome::failure(
             test_name.to_string(),
             start.elapsed(),
             format!("Missing patterns in {:?}: {}", file_path, missing_patterns.join(", "))
         );
     }
     
-    TestResult::success(
+    TestOutcome::success(
         test_name.to_string(),
         start.elapsed(),
         format!("All expected patterns found in {:?}", file_path)
@@ -157,12 +157,12 @@ pub fn validate_sql_migration<P: AsRef<Path>>(
     migration_dir: P,
     expected_tables: &[&str],
     test_name: &str,
-) -> TestResult {
+) -> TestOutcome {
     let start = Instant::now();
     let migration_dir = migration_dir.as_ref();
     
     if !migration_dir.exists() {
-        return TestResult::failure(
+        return TestOutcome::failure(
             test_name.to_string(),
             start.elapsed(),
             "Migration directory does not exist".to_string()
@@ -178,7 +178,7 @@ pub fn validate_sql_migration<P: AsRef<Path>>(
         .collect();
     
     if sql_files.is_empty() {
-        return TestResult::failure(
+        return TestOutcome::failure(
             test_name.to_string(),
             start.elapsed(),
             "No SQL migration files found".to_string()
@@ -190,7 +190,7 @@ pub fn validate_sql_migration<P: AsRef<Path>>(
     for sql_file in &sql_files {
         match fs::read_to_string(sql_file.path()) {
             Ok(content) => all_sql_content.push_str(&content),
-            Err(e) => return TestResult::failure(
+            Err(e) => return TestOutcome::failure(
                 test_name.to_string(),
                 start.elapsed(),
                 format!("Failed to read SQL file {:?}: {}", sql_file.path(), e)
@@ -209,14 +209,14 @@ pub fn validate_sql_migration<P: AsRef<Path>>(
     }
     
     if !missing_tables.is_empty() {
-        return TestResult::failure(
+        return TestOutcome::failure(
             test_name.to_string(),
             start.elapsed(),
             format!("Missing table definitions: {}", missing_tables.join(", "))
         );
     }
     
-    TestResult::success(
+    TestOutcome::success(
         test_name.to_string(),
         start.elapsed(),
         format!("All expected tables found in SQL migrations: {}", expected_tables.join(", "))
@@ -253,13 +253,13 @@ pub fn count_generated_code_lines<P: AsRef<Path>>(output_dir: P) -> Result<usize
 }
 
 /// Validate that generated configuration files are valid TOML
-pub fn validate_toml_config<P: AsRef<Path>>(config_path: P, test_name: &str) -> TestResult {
+pub fn validate_toml_config<P: AsRef<Path>>(config_path: P, test_name: &str) -> TestOutcome {
     let start = Instant::now();
     let config_path = config_path.as_ref();
     
     let content = match fs::read_to_string(config_path) {
         Ok(content) => content,
-        Err(e) => return TestResult::failure(
+        Err(e) => return TestOutcome::failure(
             test_name.to_string(),
             start.elapsed(),
             format!("Failed to read config file {:?}: {}", config_path, e)
@@ -267,12 +267,12 @@ pub fn validate_toml_config<P: AsRef<Path>>(config_path: P, test_name: &str) -> 
     };
     
     match toml::from_str::<toml::Value>(&content) {
-        Ok(_) => TestResult::success(
+        Ok(_) => TestOutcome::success(
             test_name.to_string(),
             start.elapsed(),
             format!("Valid TOML configuration: {:?}", config_path)
         ),
-        Err(e) => TestResult::failure(
+        Err(e) => TestOutcome::failure(
             test_name.to_string(),
             start.elapsed(),
             format!("Invalid TOML in {:?}: {}", config_path, e)

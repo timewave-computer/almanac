@@ -431,15 +431,15 @@ EOF
             '' else ""}
             echo ""
             
-            # Change to e2e directory and run tests
-            echo "Changing to e2e directory..."
-            cd e2e
-            
             echo "Running cargo test with release profile and all features..."
+            echo "Package: almanac-e2e-tests"
+            echo "Flags: --include-ignored (runs all tests including those marked with #[ignore])"
             echo ""
             
             # Run the tests with proper error handling
-            if cargo test --release --all-features; then
+            # -p almanac-e2e-tests ensures we run the e2e tests package
+            # --include-ignored runs tests marked with #[ignore]
+            if cargo test -p almanac-e2e-tests --release --all-features -- --include-ignored; then
               echo ""
               echo "=== E2E Tests Completed Successfully ==="
               echo "All tests passed with FoundationDB integration"

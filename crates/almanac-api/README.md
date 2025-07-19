@@ -106,50 +106,52 @@ export DATABASE_URL=postgresql://user:pass@localhost/almanac
 #### Query Events
 ```bash
 # Get recent events from Ethereum
-curl "http://localhost:8080/api/events?chain=ethereum&limit=10"
+curl "http://localhost:8080/api/v1/chains/ethereum/events?limit=10"
 
 # Filter by event type and block range
-curl "http://localhost:8080/api/events?chain=ethereum&event_type=Transfer&from_block=1000&to_block=2000"
+curl "http://localhost:8080/api/v1/events?chain=ethereum&event_type=Transfer&from_block=1000&to_block=2000"
 
 # Get events with specific transaction hash
-curl "http://localhost:8080/api/events?chain=ethereum&tx_hash=0x1234..."
+curl "http://localhost:8080/api/v1/events?chain=ethereum&tx_hash=0x1234..."
 ```
 
 #### Block Information
 ```bash
 # Get latest block for a chain
-curl "http://localhost:8080/api/blocks/ethereum/latest"
+curl "http://localhost:8080/api/v1/chains/ethereum/latest-block"
 
 # Get latest block numbers for all chains
-curl "http://localhost:8080/api/blocks/latest"
+curl "http://localhost:8080/api/v1/chains/*/latest-block"
 ```
 
-#### Layout Management
+#### Semantic Metadata
 ```bash
-# Submit a contract layout
-curl -X POST "http://localhost:8080/api/layouts" \
+# Submit semantic interpretation
+curl -X POST "http://localhost:8080/api/v1/chains/ethereum/contracts/0x1234.../semantics/balance" \
   -H "Content-Type: application/json" \
   -H "X-API-Key: your-api-key" \
   -d '{
-    "chain": "ethereum",
-    "contract": "0x1234...",
-    "developer_id": "dev123",
-    "layout": {
-      "fields": [
-        {"name": "balance", "type": "uint256", "offset": 0},
-        {"name": "owner", "type": "address", "offset": 32}
-      ]
+    "interpretation": {
+      "semantic_tags": ["balance", "token"],
+      "confidence": "high"
     }
   }'
 
-# Get contract layout
-curl "http://localhost:8080/api/layouts/ethereum/0x1234..."
+# Get semantic interpretations
+curl "http://localhost:8080/api/v1/chains/ethereum/contracts/0x1234.../semantics/balance"
 ```
 
-#### Storage Proofs
+#### Traverse Integration (Storage Proofs)
 ```bash
-# Get storage proof for a specific key
-curl "http://localhost:8080/api/storage-proofs/ethereum/0x1234.../1000?storage_key=0x5678..."
+# Generate traverse request for storage proof
+curl -X POST "http://localhost:8080/api/v1/traverse/request/ethereum/0x1234..." \
+  -H "X-API-Key: your-api-key"
+
+# Verify traverse witness
+curl -X POST "http://localhost:8080/api/v1/traverse/verify" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
+  -d '{"witness_data": "..."}'
 ```
 
 ### Client Libraries
@@ -201,40 +203,50 @@ latest_block = await client.blocks.get_latest('ethereum')
 ## API Reference
 
 ### Event Endpoints
-- `GET /api/events` - Query events with filtering
-- `GET /api/events/{event_id}` - Get specific event
-- `GET /api/events/count` - Get event count with filtering
+- `GET /api/v1/events` - Query events with filtering
+- `GET /api/v1/events/{event_id}` - Get specific event
+- `GET /api/v1/chains/{chain}/events` - Query events for specific chain
 
 ### Block Endpoints
-- `GET /api/blocks/{chain}/latest` - Get latest block for chain
-- `GET /api/blocks/latest` - Get latest blocks for all chains
-- `GET /api/blocks/{chain}/{block_number}` - Get specific block
+- `GET /api/v1/chains/{chain}/latest-block` - Get latest block for chain
 
-### Layout Endpoints
-- `POST /api/layouts` - Submit contract layout
-- `GET /api/layouts/{chain}/{contract}` - Get contract layout
-- `GET /api/layouts/{chain}/{contract}/versions` - Get layout versions
+### Semantic Metadata Endpoints
+- `POST /api/v1/chains/{chain}/contracts/{address}/semantics/{field}` - Submit semantic interpretation
+- `GET /api/v1/chains/{chain}/contracts/{address}/semantics/{field}` - Get semantic interpretations
+- `PUT /api/v1/chains/{chain}/contracts/{address}/semantics/{field}` - Update semantic interpretation
+- `DELETE /api/v1/chains/{chain}/contracts/{address}/semantics/{field}` - Delete semantic interpretation
+- `POST /api/v1/chains/{chain}/contracts/{address}/semantics/{field}/resolve` - Resolve semantic conflict
+- `GET /api/v1/semantics/conflicts/{chain}/{contract}` - Get semantic conflicts
 
-### View Endpoints
-- `POST /api/views` - Register custom view
-- `GET /api/views/{view_id}` - Get view definition
-- `PUT /api/views/{view_id}` - Update view definition
-- `DELETE /api/views/{view_id}` - Delete view
-- `POST /api/views/{view_id}/query` - Query view data
+### Traverse Integration Endpoints (Storage Proofs)
+- `POST /api/v1/traverse/request/{chain}/{contract}` - Generate traverse request
+- `POST /api/v1/traverse/verify` - Verify traverse witness
+- `GET /api/v1/traverse/request/{request_id}` - Get traverse request status
+- `GET /api/v1/traverse/requests/{chain}/{contract}` - List traverse requests
+- `GET /api/v1/traverse/witness/{chain}/{contract}/{slot}` - Generate witness for slot
+- `POST /api/v1/traverse/context/{request_id}` - Submit semantic context
 
-### Storage Proof Endpoints
-- `GET /api/storage-proofs/{chain}/{contract}/{block}` - Get storage proof
-- `POST /api/storage-proofs/verify` - Verify storage proof
+### Trust Management Endpoints
+- `POST /api/v1/trust/grant` - Grant trust to developer
+- `POST /api/v1/trust/revoke` - Revoke trust from developer
+- `GET /api/v1/trust/policy/{developer_id}` - Get trust policy
+- `PUT /api/v1/trust/policy/{developer_id}` - Update trust policy
+- `GET /api/v1/trust/relationships` - Get trust relationships
+- `GET /api/v1/trust/check/{trustor}/{trustee}` - Check trust
+- `GET /api/v1/trust/graph/{developer_id}` - Get trust graph
 
-### Trust Endpoints
-- `POST /api/trust/grant` - Grant trust to developer
-- `POST /api/trust/revoke` - Revoke trust from developer
-- `GET /api/trust/{developer_id}` - Get trust relationships
+### Admin Endpoints
+- `POST /admin/keys` - Create API key
+- `GET /admin/keys` - List API keys
+- `DELETE /admin/keys/{key}` - Delete API key
+- `PATCH /admin/keys/{key}` - Update API key
 
 ### System Endpoints
-- `GET /api/health` - Health check
-- `GET /api/metrics` - Prometheus metrics
-- `GET /api/openapi.json` - OpenAPI specification
+- `GET /health` - Health check
+- `GET /liveness` - Liveness probe
+- `GET /readiness` - Readiness probe
+- `GET /swagger-ui` - Interactive API documentation
+- `GET /openapi.json` - OpenAPI specification
 
 ## Error Handling
 
