@@ -2,60 +2,60 @@
 
 ## Test Summary
 
-✅ **All nix commands in the README are correctly structured and available**
+**All nix commands in the README are correctly structured and available**
 
 ## Verification Results
 
-### Core Commands Verified ✅
+### Core Commands Verified
 
 All the main commands documented in the README have been verified to exist in the nix flake:
 
 #### Main Orchestrator
-- `nix run .#sim-cluster` - ✅ Available as app and package
-- `nix run .#sim-config` - ✅ Available as app and package
+- `nix run .#sim-cluster` - Available as app and package
+- `nix run .#sim-config` - Available as app and package
 
 #### Individual Services  
-- `nix run .#sim-ethereum` - ✅ Package exists
-- `nix run .#sim-cosmos` - ✅ Package exists  
-- `nix run .#sim-solana` - ✅ Package exists
-- `nix run .#sim-almanac-api` - ✅ Package exists
-- `nix run .#sim-almanac-indexer` - ✅ Package exists
+- `nix run .#sim-ethereum` - Package exists
+- `nix run .#sim-cosmos` - Package exists  
+- `nix run .#sim-solana` - Package exists
+- `nix run .#sim-almanac-api` - Package exists
+- `nix run .#sim-almanac-indexer` - Package exists
 
-### Command Structure Validation ✅
+### Command Structure Validation
 
 The following command patterns from the README are correctly structured:
 
 ```bash
 # Main orchestrator commands
-nix run .#sim-cluster -- help           ✅
-nix run .#sim-cluster -- init           ✅
-nix run .#sim-cluster -- start          ✅
-nix run .#sim-cluster -- stop           ✅
-nix run .#sim-cluster -- status         ✅
-nix run .#sim-cluster -- logs [service] ✅
+nix run .#sim-cluster -- help           (verified)
+nix run .#sim-cluster -- init           (verified)
+nix run .#sim-cluster -- start          (verified)
+nix run .#sim-cluster -- stop           (verified)
+nix run .#sim-cluster -- status         (verified)
+nix run .#sim-cluster -- logs [service] (verified)
 
 # Configuration generator
-nix run .#sim-config -- [chains] [output-dir] ✅
+nix run .#sim-config -- [chains] [output-dir] (verified)
 
 # Individual blockchain nodes
-nix run .#sim-ethereum -- {start|stop|status} ✅
-nix run .#sim-cosmos -- {start|stop|status}   ✅
-nix run .#sim-solana -- {start|stop|status}   ✅
+nix run .#sim-ethereum -- {start|stop|status} (verified)
+nix run .#sim-cosmos -- {start|stop|status}   (verified)
+nix run .#sim-solana -- {start|stop|status}   (verified)
 
 # Almanac services
-nix run .#sim-almanac-api -- {start|stop|status}     ✅
-nix run .#sim-almanac-indexer -- {start|stop|status} ✅
+nix run .#sim-almanac-api -- {start|stop|status}     (verified)
+nix run .#sim-almanac-indexer -- {start|stop|status} (verified)
 ```
 
-### Platform Support ✅
+### Platform Support
 
 Verified available on all documented platforms:
-- ✅ aarch64-darwin (Apple Silicon Mac)
-- ✅ aarch64-linux  
-- ✅ x86_64-darwin (Intel Mac)
-- ✅ x86_64-linux
+- aarch64-darwin (Apple Silicon Mac)
+- aarch64-linux  
+- x86_64-darwin (Intel Mac)
+- x86_64-linux
 
-### Flake Structure ✅
+### Flake Structure
 
 The nix flake properly exposes:
 - **Apps**: `sim-cluster`, `sim-config` 
@@ -71,22 +71,22 @@ Since building the complete simulation environment requires:
 - External services
 
 The verification focused on:
-1. ✅ **Structural validation**: All packages/apps exist in flake
-2. ✅ **Command syntax**: All documented commands are properly structured  
-3. ✅ **Platform availability**: Commands available on documented platforms
-4. ✅ **Cross-reference**: README commands match flake.nix implementation
+1. **Structural validation**: All packages/apps exist in flake
+2. **Command syntax**: All documented commands are properly structured  
+3. **Platform availability**: Commands available on documented platforms
+4. **Cross-reference**: README commands match flake.nix implementation
 
 ## Limitations
 
 This verification confirms:
-- ✅ All commands exist and are properly structured
-- ✅ Command syntax in README matches implementation
-- ✅ All documented packages are available
+- All commands exist and are properly structured
+- Command syntax in README matches implementation
+- All documented packages are available
 
 This verification does NOT test:
-- ❓ **Runtime functionality**: Actual service startup/operation  
-- ❓ **External dependencies**: FoundationDB, blockchain nodes
-- ❓ **Integration**: Services working together
+- **Runtime functionality**: Actual service startup/operation  
+- **External dependencies**: FoundationDB, blockchain nodes
+- **Integration**: Services working together
 
 ## Recommendation
 

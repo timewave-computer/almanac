@@ -381,14 +381,86 @@ EOF
           '';
         };
 
+        # E2E test runner script with FDB environment
+        e2eTestScript = pkgs.writeShellApplication {
+          name = "run-e2e-tests";
+          runtimeInputs = [ 
+            foundationdb 
+            pkgs.rustc
+            pkgs.cargo
+            pkgs.coreutils 
+          ];
+          text = ''
+            set -euo pipefail
+            
+            PROJECT_ROOT="''${PROJECT_ROOT:-$(pwd)}"
+            
+            # Set up FoundationDB environment variables
+            export FDB_CLUSTER_FILE="$PROJECT_ROOT/data/fdb.cluster"
+            export FDB_NETWORK_OPTION_TLS_CERT_PATH=""
+            export FDB_NETWORK_OPTION_TLS_KEY_PATH=""
+            export FDB_NETWORK_OPTION_TLS_CA_PATH=""
+            export FDB_INCLUDE_DIR="${foundationdb}/include"
+            
+            # Set library path for the current platform
+            ${if isDarwin then ''
+              export DYLD_LIBRARY_PATH="${foundationdb}/lib:''${DYLD_LIBRARY_PATH:-}"
+            '' else if isLinux then ''
+              export LD_LIBRARY_PATH="${foundationdb}/lib:''${LD_LIBRARY_PATH:-}"
+            '' else ""}
+            
+            echo "=== Running Almanac E2E Tests with FoundationDB ==="
+            echo "Platform: ${system}"
+            echo "FoundationDB: ${fdbVersion}"
+            echo "Project root: $PROJECT_ROOT"
+            echo ""
+            
+            # Ensure we're in the project root
+            if [ ! -d "e2e" ]; then
+              echo "Error: e2e directory not found. Please run from the Almanac project root."
+              exit 1
+            fi
+            
+            # Display environment info
+            echo "Environment variables:"
+            echo "  FDB_CLUSTER_FILE=$FDB_CLUSTER_FILE"
+            ${if isDarwin then ''
+              echo "  DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH"
+            '' else if isLinux then ''
+              echo "  LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
+            '' else ""}
+            echo ""
+            
+            # Change to e2e directory and run tests
+            echo "Changing to e2e directory..."
+            cd e2e
+            
+            echo "Running cargo test with release profile and all features..."
+            echo ""
+            
+            # Run the tests with proper error handling
+            if cargo test --release --all-features; then
+              echo ""
+              echo "=== E2E Tests Completed Successfully ==="
+              echo "All tests passed with FoundationDB integration"
+            else
+              echo ""
+              echo "=== E2E Tests Failed ==="
+              echo "Check the output above for error details"
+              exit 1
+            fi
+          '';
+        };
+
       in {
         packages = {
-          inherit foundationdb fdbConfigGenerator fdbInitScript fdbManageScript;
+          inherit foundationdb fdbConfigGenerator fdbInitScript fdbManageScript e2eTestScript;
           
           # Aliases for easier access
           fdb-config-generator = fdbConfigGenerator;
           fdb-init = fdbInitScript;
           fdb-manage = fdbManageScript;
+          run-e2e-tests = e2eTestScript;
           
           # Platform-specific packages (only on Darwin)
         } // lib.optionalAttrs isDarwin {
@@ -410,6 +482,10 @@ EOF
             {
               package = self'.packages.fdb-config-generator;
               help = "Generate FoundationDB configuration files";
+            }
+            {
+              package = self'.packages.run-e2e-tests;
+              help = "Run Almanac E2E tests with FoundationDB";
             }
             {
               package = pkgs.curl;
@@ -438,6 +514,20 @@ EOF
               name = "FDB_NETWORK_OPTION_TLS_CA_PATH";
               value = "";
             }
+            {
+              name = "FDB_INCLUDE_DIR";
+              value = "${foundationdb}/include";
+            }
+          ] ++ lib.optionals isDarwin [
+            {
+              name = "DYLD_LIBRARY_PATH";
+              value = "${foundationdb}/lib:$DYLD_LIBRARY_PATH";
+            }
+          ] ++ lib.optionals isLinux [
+            {
+              name = "LD_LIBRARY_PATH";
+              value = "${foundationdb}/lib:$LD_LIBRARY_PATH";
+            }
           ];
           
           motd = ''
@@ -445,10 +535,12 @@ EOF
             {9}FoundationDB v${fdbVersion} for ${system}{reset}
             
             {13}Quick start:{reset}
-              fdb-manage start   # Initialize and start FoundationDB
-              fdb-manage status  # Check status
-              fdb-manage cli     # Access CLI
+              fdb-manage start     # Initialize and start FoundationDB
+              fdb-manage status    # Check status
+              fdb-manage cli       # Access CLI
+              run-e2e-tests        # Run Almanac E2E tests
               
+            {13}Library paths:{reset} Automatically configured for ${if isDarwin then "DYLD_LIBRARY_PATH (macOS)" else if isLinux then "LD_LIBRARY_PATH (Linux)" else "this platform"}
             {13}Platform:{reset} ${if isLinux then "Linux (full support)" else if isDarwin then "macOS (official binaries)" else "Unsupported"}
           '';
         };

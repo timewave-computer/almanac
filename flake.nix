@@ -365,8 +365,8 @@ EOFFDB
               print_success "Almanac API server is running!"
               echo ""
               echo -e "''${GREEN}Documentation URLs:''${NC}"
-              echo -e "  ''${BLUE}Swagger UI:''${NC}      http://$HOST:$PORT/api/swagger-ui"
-              echo -e "  ''${BLUE}OpenAPI Spec:''${NC}    http://$HOST:$PORT/api/openapi.json"
+              echo -e "  ''${BLUE}Swagger UI:''${NC}      http://$HOST:$PORT/swagger-ui"
+              echo -e "  ''${BLUE}OpenAPI Spec:''${NC}    http://$HOST:$PORT/openapi.json"
               echo -e "  ''${BLUE}ReDoc:''${NC}           http://$HOST:$PORT/api/redoc"
               echo -e "  ''${BLUE}Health Check:''${NC}    http://$HOST:$PORT/health"
               echo ""
@@ -384,10 +384,10 @@ EOFFDB
               # Open browser if available
               if command -v open &> /dev/null; then
                   print_info "Opening Swagger UI in browser..."
-                  open "http://$HOST:$PORT/api/swagger-ui" &
+                  open "http://$HOST:$PORT/swagger-ui" &
               elif command -v xdg-open &> /dev/null; then
                   print_info "Opening Swagger UI in browser..."
-                  xdg-open "http://$HOST:$PORT/api/swagger-ui" &
+                  xdg-open "http://$HOST:$PORT/swagger-ui" &
               fi
               
               print_info "Server is running. Press Ctrl+C to stop."
@@ -445,6 +445,11 @@ EOFFDB
           fdb-manage = {
             type = "app";
             program = "${fdb-packages.fdb-manage}/bin/fdb-manage";
+          };
+          
+          run-e2e-tests = {
+            type = "app";
+            program = "${fdb-packages.run-e2e-tests}/bin/run-e2e-tests";
           };
           
           geth = {

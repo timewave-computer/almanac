@@ -34,13 +34,16 @@ pub enum TupleKeyspace {
     // Lightwave coordination
     LightwaveState = 8,     // Recursive proof coordination
     TrustedCheckpoints = 9, // Network checkpoints
-    CircuitKeys = 10,       // SP1 verification keys
     
     // Chain-specific
-    SolanaAccounts = 11,    // Solana account data
+    SolanaAccounts = 10,    // Solana account data
+    
+    // Network configuration
+    NetworkConfig = 11,     // Blockchain network configuration
+    CircuitKeys = 12,       // SP1 verification keys
     
     // System
-    ChangeTracking = 12,    // State change logs
+    ChangeTracking = 13,    // State change logs
 }
 
 /// Trust-scoped semantic metadata key
@@ -269,6 +272,58 @@ pub struct SolanaAccountValue {
     pub is_writable: bool,
 }
 
+/// Network configuration for Lightwave integration
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NetworkConfigKey {
+    pub chain_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NetworkConfigValue {
+    pub genesis_root: [u8; 32],
+    pub forks: Vec<ForkConfig>,
+    pub consensus_config: ConsensusConfig,
+    pub finality_threshold: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ForkConfig {
+    pub name: String,                    // "altair", "bellatrix", etc.
+    pub epoch: u64,                      // Activation epoch
+    pub fork_version: [u8; 4],          // Fork identifier
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConsensusConfig {
+    pub consensus_type: ConsensusType,
+    pub epoch_duration: Option<u64>,     // Ethereum specific
+    pub slot_duration: Option<u64>,      // Ethereum specific  
+    pub block_time: Option<u64>,         // Tendermint specific
+    pub validator_set_size: Option<u32>, // Tendermint specific
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ConsensusType {
+    EthereumBeacon = 0,
+    Tendermint = 1,
+    SolanaPoH = 2,
+}
+
+/// Circuit verification keys for SP1 integration
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CircuitVKKey {
+    pub circuit_type: String,            // "helios", "tendermint", "recursive"
+    pub version: String,                 // Circuit version
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CircuitVKValue {
+    pub verification_key: String,        // SP1 verification key
+    pub circuit_hash: [u8; 32],         // Circuit commitment
+    pub trusted_setup_ceremony: Option<String>, // Ceremony identifier
+    pub expires_at: Option<u64>,        // Key expiration
+}
+
 /// Tuple storage implementation
 pub struct TupleFdbStorage {
     db: Arc<Database>,
@@ -397,6 +452,25 @@ impl TupleFdbStorage {
         tuple.push(Element::Int(TupleKeyspace::SolanaAccounts as i64));
         tuple.push(Element::Bytes(Bytes::from(key.account_address.to_vec())));
         tuple.push(Element::Int(key.slot as i64));
+        tuple
+    }
+
+    /// Build a tuple key for network configuration
+    pub fn build_network_config_key(&self, key: &NetworkConfigKey) -> Vec<Element<'static>> {
+        let mut tuple = Vec::new();
+        tuple.push(Element::Bytes(Bytes::from(self.namespace.clone().into_bytes())));
+        tuple.push(Element::Int(TupleKeyspace::NetworkConfig as i64));
+        tuple.push(Element::String(key.chain_id.clone().into()));
+        tuple
+    }
+
+    /// Build a tuple key for circuit verification keys
+    pub fn build_circuit_vk_key(&self, key: &CircuitVKKey) -> Vec<Element<'static>> {
+        let mut tuple = Vec::new();
+        tuple.push(Element::Bytes(Bytes::from(self.namespace.clone().into_bytes())));
+        tuple.push(Element::Int(TupleKeyspace::CircuitKeys as i64));
+        tuple.push(Element::String(key.circuit_type.clone().into()));
+        tuple.push(Element::String(key.version.clone().into()));
         tuple
     }
 
@@ -636,5 +710,107 @@ impl TupleFdbStorage {
         }
         
         Ok(checkpoints)
+    }
+
+    /// Store network configuration
+    pub async fn store_network_config(
+        &self,
+        key: NetworkConfigKey,
+        value: NetworkConfigValue,
+    ) -> Result<()> {
+        let tx = self.db.create_trx()?;
+        let tuple_key = self.build_network_config_key(&key);
+        let serialized = bincode::serialize(&value)?;
+        
+        tx.set(&pack(&tuple_key), &serialized);
+        tx.commit().await.map_err(|e| anyhow!("Transaction commit failed: {:?}", e))?;
+        
+        Ok(())
+    }
+
+    /// Get network configuration
+    pub async fn get_network_config(
+        &self,
+        key: &NetworkConfigKey,
+    ) -> Result<Option<NetworkConfigValue>> {
+        let tx = self.db.create_trx()?;
+        let tuple_key = self.build_network_config_key(key);
+        
+        if let Some(value) = tx.get(&pack(&tuple_key), false).await? {
+            let config: NetworkConfigValue = bincode::deserialize(&value)?;
+            Ok(Some(config))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Store circuit verification key
+    pub async fn store_circuit_vk(
+        &self,
+        key: CircuitVKKey,
+        value: CircuitVKValue,
+    ) -> Result<()> {
+        let tx = self.db.create_trx()?;
+        let tuple_key = self.build_circuit_vk_key(&key);
+        let serialized = bincode::serialize(&value)?;
+        
+        tx.set(&pack(&tuple_key), &serialized);
+        tx.commit().await.map_err(|e| anyhow!("Transaction commit failed: {:?}", e))?;
+        
+        Ok(())
+    }
+
+    /// Get circuit verification key
+    pub async fn get_circuit_vk(
+        &self,
+        key: &CircuitVKKey,
+    ) -> Result<Option<CircuitVKValue>> {
+        let tx = self.db.create_trx()?;
+        let tuple_key = self.build_circuit_vk_key(key);
+        
+        if let Some(value) = tx.get(&pack(&tuple_key), false).await? {
+            let vk: CircuitVKValue = bincode::deserialize(&value)?;
+            Ok(Some(vk))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// List all circuit verification keys by type
+    pub async fn list_circuit_vks_by_type(
+        &self,
+        circuit_type: &str,
+    ) -> Result<Vec<(CircuitVKKey, CircuitVKValue)>> {
+        let tx = self.db.create_trx()?;
+        
+        let mut prefix = Vec::new();
+        prefix.push(Element::Bytes(Bytes::from(self.namespace.as_bytes())));
+        prefix.push(Element::Int(TupleKeyspace::CircuitKeys as i64));
+        prefix.push(Element::String(circuit_type.to_string().into()));
+        
+        let prefix_packed = pack(&prefix);
+        // For now, skip range queries and return empty results
+        // TODO: Implement proper range scanning for foundationdb 0.8
+        let results: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
+        
+        let mut vks = Vec::new();
+        
+        for (key, value) in results {
+            let tuple: Vec<Element> = unpack(&key)?;
+            
+            if let (Some(Element::String(circuit_type_elem)), Some(Element::String(version))) = 
+                (tuple.get(2), tuple.get(3)) {
+                
+                let key = CircuitVKKey {
+                    circuit_type: circuit_type_elem.to_string(),
+                    version: version.to_string(),
+                };
+                
+                let val: CircuitVKValue = bincode::deserialize(&value)?;
+                vks.push((key, val));
+            }
+        }
+        
+        Ok(vks)
     }
 }

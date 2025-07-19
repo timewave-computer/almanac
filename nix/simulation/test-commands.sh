@@ -84,13 +84,13 @@ echo "=============================================="
 echo "Test Results: $pass_count/$test_count tests passed"
 
 if [ $pass_count -eq $test_count ]; then
-    echo -e "${GREEN}All tests passed! ✅${NC}"
+    echo -e "${GREEN}All tests passed!${NC}"
     echo ""
     echo "The nix commands in the README are syntactically correct."
     echo "Note: This only tests command structure, not actual functionality."
     echo "To test functionality, you would need to build and run the services."
     exit 0
 else
-    echo -e "${RED}Some tests failed! ❌${NC}"
+    echo -e "${RED}Some tests failed!${NC}"
     exit 1
 fi

@@ -27,7 +27,7 @@ use crate::{
     },
     health::{health_check, liveness, readiness},
     middleware::{log_request, add_headers},
-    openapi::{openapi_spec, swagger_ui, redoc, ApiDoc},
+    openapi::{swagger_ui, redoc, ApiDoc},
     rate_limit::{create_rate_limiter},
     state::AppState,
 };
@@ -56,15 +56,10 @@ pub fn create_router(mut state: AppState) -> Router {
         .route("/liveness", get(liveness))
         .route("/readiness", get(readiness));
     
-    // Documentation routes
+    // Documentation routes (legacy endpoints)
     let doc_routes = Router::new()
-        .route("/openapi.json", get(openapi_spec))
         .route("/docs", get(swagger_ui))
-        .route("/redoc", get(redoc))
-        .merge(
-            utoipa_swagger_ui::SwaggerUi::new("/swagger-ui")
-                .url("/openapi.json", ApiDoc::openapi())
-        );
+        .route("/redoc", get(redoc));
     
     // Admin routes (require authentication)
     let admin_routes = Router::new()
@@ -129,9 +124,13 @@ pub fn create_router(mut state: AppState) -> Router {
         // api_v1_routes = api_v1_routes.layer(from_fn_with_state(state.key_store.clone(), legacy_optional_auth_middleware));
     }
     
-    // Main router
+    // Main router with SwaggerUI at root for proper OpenAPI serving  
     Router::new()
         .merge(health_routes)
+        .merge(
+            utoipa_swagger_ui::SwaggerUi::new("/swagger-ui")
+                .url("/openapi.json", ApiDoc::openapi())
+        )
         .nest("/api", doc_routes)
         .nest("/admin", admin_routes)
         .nest("/api/v1", api_v1_routes)
@@ -199,15 +198,10 @@ pub fn create_test_router(state: AppState) -> Router {
         // .layer(from_fn_with_state(state.rate_limiter.clone(), rate_limit_middleware))
         // .layer(from_fn_with_state(state.key_store.clone(), legacy_optional_auth_middleware));
     
-    // Documentation routes
+    // Documentation routes (legacy endpoints)
     let doc_routes = Router::new()
-        .route("/openapi.json", get(openapi_spec))
         .route("/docs", get(swagger_ui))
-        .route("/redoc", get(redoc))
-        .merge(
-            utoipa_swagger_ui::SwaggerUi::new("/swagger-ui")
-                .url("/openapi.json", ApiDoc::openapi())
-        );
+        .route("/redoc", get(redoc));
     
     Router::new()
         .route("/health", get(health_check))

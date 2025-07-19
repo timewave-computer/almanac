@@ -98,10 +98,10 @@ nix run .#sim-almanac-indexer -- status
 
 | Chain | Description | RPC Port | Additional Ports |
 |-------|-------------|----------|------------------|
-| **ethereum** | Anvil Ethereum node | 8545 | WS: 8546 |
-| **cosmos** | Neutron Cosmos node | 26657 | gRPC: 9090, API: 1317 |
-| **solana** | Solana test validator | 8899 | WS: 8900 |
-| **fdb** | FoundationDB cluster | - | - |
+| ethereum | Anvil Ethereum node | 8545 | WS: 8546 |
+| cosmos | Neutron Cosmos node | 26657 | gRPC: 9090, API: 1317 |
+| solana | Solana test validator | 8899 | WS: 8900 |
+| fdb | FoundationDB cluster | - | - |
 
 ## Service Endpoints
 
@@ -144,10 +144,10 @@ The simulation creates the following directory structure:
 
 | Platform | Ethereum | Cosmos | Solana | FoundationDB |
 |----------|----------|--------|--------|--------------|
-| x86_64-linux | ✅ | ✅ | ✅ | ✅ |
-| aarch64-linux | ✅ | ✅ | ❌* | ✅ |
-| x86_64-darwin | ✅ | ✅ | ✅ | ✅ |
-| aarch64-darwin | ✅ | ✅ | ✅ | ✅ |
+| x86_64-linux | YES | YES | YES | YES |
+| aarch64-linux | YES | YES | NO* | YES |
+| x86_64-darwin | YES | YES | YES | YES |
+| aarch64-darwin | YES | YES | YES | YES |
 
 *Solana test validator is not available on aarch64-linux, but Solana development tools (anchor) are available.
 
