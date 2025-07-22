@@ -58,7 +58,7 @@ nix develop --command cargo build --all --release
 nix develop --command cargo build --all --features fdb
 
 # Build specific crate
-nix develop --command cargo build -p almanac-api --features fdb
+nix develop --command cargo build --bin almanac-api --features fdb
 ```
 
 #### Service Packages
@@ -224,7 +224,7 @@ Type=simple
 User=almanac
 Group=almanac
 WorkingDirectory=/opt/almanac
-ExecStart=/opt/almanac/bin/almanac-ethereum --node-name=ethereum-prod-1 --config=/etc/almanac/ethereum.toml
+ExecStart=/opt/almanac/bin/almanac-node-ethereum --node-name=ethereum-prod-1 --config=/etc/almanac/ethereum.toml
 Restart=always
 RestartSec=15
 
@@ -259,7 +259,7 @@ Type=simple
 User=almanac
 Group=almanac
 WorkingDirectory=/opt/almanac
-ExecStart=/opt/almanac/bin/almanac-cosmos --node-name=cosmos-prod-1 --config=/etc/almanac/cosmos.toml
+ExecStart=/opt/almanac/bin/almanac-node-cosmos --node-name=cosmos-prod-1 --config=/etc/almanac/cosmos.toml
 Restart=always
 RestartSec=15
 

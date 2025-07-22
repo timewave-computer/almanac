@@ -56,8 +56,8 @@ The simulation environment provides a complete multi-chain development cluster:
 ### Basic Simulation Commands
 
 ```bash
-# Initialize simulation with all chains
-nix run .#sim-cluster -- init ethereum,cosmos,solana,fdb
+# Initialize simulation with default chains (ethereum, cosmos, fdb)
+nix run .#sim-cluster -- init
 
 # Start all services
 nix run .#sim-cluster -- start
@@ -143,7 +143,7 @@ The simulation automatically generates configuration files:
 
 2. **Initialize Simulation**:
    ```bash
-   nix run .#sim-cluster -- init ethereum,cosmos,fdb
+   nix run .#sim-cluster -- init
    ```
 
 3. **Start Services**:
@@ -205,7 +205,6 @@ nix run .#sim-cluster -- start
 
 # All chains
 nix run .#sim-cluster -- init ethereum,cosmos,solana,fdb
-nix run .#sim-cluster -- start
 ```
 
 ## Testing Workflows
@@ -242,10 +241,10 @@ nix develop --command cargo test -p almanac-chains --features ethereum,cosmos
 nix run .#run-e2e-tests
 
 # Run specific E2E test module
-nix develop .#fdb --command cargo test -p e2e fdb_data_validation_e2e -- --ignored --nocapture
+nix develop .#fdb --command cargo test -p almanac-tests fdb_data_validation_e2e -- --ignored --nocapture
 
 # Run in FDB environment
-nix develop .#fdb --command cargo test -p e2e
+nix develop .#fdb --command cargo test -p almanac-tests
 ```
 
 ### Test Script Options

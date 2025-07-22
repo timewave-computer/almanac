@@ -87,10 +87,10 @@ rec {
       # File a bug if you depend on any for non-debug work!
       debug = internal.debugCrate { inherit packageId; };
     };
-    "almanac-e2e-tests" = rec {
-      packageId = "almanac-e2e-tests";
+    "almanac-tests" = rec {
+      packageId = "almanac-tests";
       build = internal.buildRustCrateWithFeatures {
-        packageId = "almanac-e2e-tests";
+        packageId = "almanac-tests";
       };
 
       # Debug support which might change between releases.
@@ -1011,8 +1011,8 @@ rec {
         ];
 
       };
-      "almanac-e2e-tests" = rec {
-        crateName = "almanac-e2e-tests";
+      "almanac-tests" = rec {
+        crateName = "almanac-tests";
         version = "0.1.0";
         edition = "2021";
         crateBin = [
@@ -1022,8 +1022,8 @@ rec {
             requiredFeatures = [ ];
           }
         ];
-        src = lib.cleanSourceWith { filter = sourceFilter;  src = ./e2e; };
-        libName = "almanac_e2e_tests";
+        src = lib.cleanSourceWith { filter = sourceFilter;  src = ./tests; };
+        libName = "almanac_tests";
         dependencies = [
           {
             name = "almanac-api";

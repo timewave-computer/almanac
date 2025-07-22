@@ -9,7 +9,7 @@ set -euo pipefail
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-E2E_DIR="${PROJECT_ROOT}/e2e"
+E2E_DIR="${PROJECT_ROOT}/tests"
 cd "$PROJECT_ROOT"
 
 # Colors for output
@@ -138,12 +138,12 @@ run_basic_e2e_tests() {
     print_header "Basic E2E Tests"
     
     if [ "$DRY_RUN" = true ]; then
-        echo "Would run: cargo test --package e2e"
+        echo "Would run: cargo test --package almanac-tests"
         return 0
     fi
     
     echo "Running basic E2E test suite..."
-    if cargo test --package e2e ${VERBOSE:+--verbose} ${TEST_FILTER:+-- --test-filter "$TEST_FILTER"} 2>&1; then
+    if cargo test --package almanac-tests ${VERBOSE:+--verbose} ${TEST_FILTER:+-- --test-filter "$TEST_FILTER"} 2>&1; then
         print_success "Basic E2E tests passed"
         ((PASSED_TESTS++))
     else
@@ -238,7 +238,7 @@ run_simulation_tests() {
         
         # Run the actual multi-chain E2E test
         echo "Running multi-chain integration test..."
-        if cargo test --package e2e multi_chain_simulation ${VERBOSE:+--verbose} 2>&1; then
+        if cargo test --package almanac-tests multi_chain_simulation ${VERBOSE:+--verbose} 2>&1; then
             print_success "Multi-chain simulation test passed"
             ((PASSED_TESTS++))
         else
@@ -280,24 +280,24 @@ build_binaries() {
         exit 1
     fi
     
-    echo "Building e2e tests..."
-    if cargo build --package e2e ${VERBOSE:+--verbose} 2>&1; then
-        print_success "E2E tests built successfully"
+    echo "Building almanac tests..."
+    if cargo build --package almanac-tests ${VERBOSE:+--verbose} 2>&1; then
+        print_success "Almanac tests built successfully"
     else
-        print_error "Failed to build E2E tests"
+        print_error "Failed to build almanac tests"
         exit 1
     fi
 }
 
 cleanup_outputs() {
     if [ "$KEEP_OUTPUTS" = true ]; then
-        print_info "Keeping test outputs in e2e/test_outputs/"
+        print_info "Keeping test outputs in tests/test_outputs/"
         return 0
     fi
     
-    if [ -d "e2e/test_outputs" ]; then
+    if [ -d "tests/test_outputs" ]; then
         echo "Cleaning up test outputs..."
-        rm -rf e2e/test_outputs
+        rm -rf tests/test_outputs
     fi
 }
 

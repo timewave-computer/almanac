@@ -41,11 +41,11 @@ echo -e "${YELLOW}Setting up Nix environment and running the indexer...${NC}"
 # Make sure the script directory exists
 mkdir -p nix
 
-# Check if the Nix script exists
-if [ ! -f "nix/almanac-indexer.nix" ]; then
-  echo -e "${RED}Error: Nix script not found at nix/almanac-indexer.nix${NC}"
-  echo -e "${YELLOW}Please create the script first.${NC}"
-  exit 1
+# Run the indexer binary
+if ! command -v almanac-indexing &> /dev/null; then
+  echo -e "${YELLOW}Building almanac-indexing...${NC}"
+  nix develop --command cargo build -p almanac-indexing --release
+  export PATH="$(pwd)/target/release:$PATH"
 fi
 
 # Build arguments string from all passed arguments
@@ -54,9 +54,9 @@ for arg in "$@"; do
   ARGS="$ARGS $arg"
 done
 
-# Run the indexer using Nix
-echo -e "${GREEN}Running: nix run ./nix/almanac-indexer.nix -- $ARGS${NC}"
-nix run ./nix/almanac-indexer.nix -- $ARGS
+# Run the indexer
+echo -e "${GREEN}Running: almanac-indexing $ARGS${NC}"
+nix develop --command almanac-indexing $ARGS
 
 # Check exit code
 if [ $? -eq 0 ]; then

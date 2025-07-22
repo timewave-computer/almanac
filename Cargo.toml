@@ -18,8 +18,8 @@ members = [
     "crates/almanac-nodes/cosmos",
     # "crates/almanac-nodes/solana",  # Temporarily disabled due to dependency issues
     
-    # E2E tests
-    "e2e",
+    # Test suite
+    "tests",
 ]
 
 # Note: Workspace manifests don't support features.

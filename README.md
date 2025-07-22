@@ -179,17 +179,17 @@ curl -X GET "http://localhost:8080/api/v1/chains/ethereum/events" \
 
 ```bash
 # Get semantic interpretations
-curl -X GET "http://localhost:8080/api/v1/chains/ethereum/contracts/0x.../semantics/field_name" \
+curl -X GET "http://localhost:8080/api/v1/chains/ethereum/contracts/0x.../semantics/field_name" 
   -H "X-API-Key: $API_KEY"
 
 # Submit semantic interpretation
-curl -X POST "http://localhost:8080/api/v1/chains/ethereum/contracts/0x.../semantics/field_name" \
-  -H "X-API-Key: $API_KEY" \
-  -H "Content-Type: application/json" \
+curl -X POST "http://localhost:8080/api/v1/chains/ethereum/contracts/0x.../semantics/field_name" 
+  -H "X-API-Key: $API_KEY" 
+  -H "Content-Type: application/json" 
   -d '{"interpretation": {"semantic_tags": ["balance"], "confidence": "high"}}'
 
 # Generate traverse request (storage proof)
-curl -X POST "http://localhost:8080/api/v1/traverse/request/ethereum/0x..." \
+curl -X POST "http://localhost:8080/api/v1/traverse/request/ethereum/0x..." 
   -H "X-API-Key: $API_KEY"
 ```
 

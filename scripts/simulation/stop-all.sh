@@ -3,7 +3,31 @@
 
 set -e
 
-echo "Stopping all running services..."
+# Define colors for output
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+RED='\033[0;31m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+echo -e "${BLUE}=== Stopping All Services ===${NC}"
+
+# Check if sim-cluster command is available
+if command -v sim-cluster &> /dev/null; then
+    SIM_CMD="sim-cluster"
+else
+    echo -e "${YELLOW}sim-cluster not found, using nix run${NC}"
+    SIM_CMD="nix run .#sim-cluster --"
+fi
+
+# Try to stop using sim-cluster first
+if command -v sim-cluster &> /dev/null || [ -f "flake.nix" ]; then
+    echo -e "${BLUE}Stopping services using sim-cluster...${NC}"
+    $SIM_CMD stop 2>/dev/null || echo -e "${YELLOW}sim-cluster stop failed, falling back to manual cleanup${NC}"
+fi
+
+# Manual cleanup of individual services
+echo -e "${BLUE}Cleaning up individual services...${NC}"
 
 # Stop Anvil node
 if pgrep -f "anvil.*--port 8545" > /dev/null; then
@@ -31,28 +55,31 @@ else
   echo "No Geth node found running"
 fi
 
-# Stop wasmd node
-if pgrep -f "wasmd start" > /dev/null; then
-  echo "Stopping wasmd node..."
-  pkill -f "wasmd start" || echo "Failed to stop wasmd"
+# Stop wasmd/neutrond node
+if pgrep -f "wasmd start\|neutrond start" > /dev/null; then
+  echo "Stopping Cosmos node..."
+  pkill -f "wasmd start|neutrond start" || echo "Failed to stop Cosmos node"
   if [ -f "/tmp/wasmd-almanac.pid" ]; then
     WASMD_PID=$(cat /tmp/wasmd-almanac.pid)
     kill $WASMD_PID 2>/dev/null || echo "Failed to stop wasmd with PID $WASMD_PID"
     rm -f /tmp/wasmd-almanac.pid
   fi
 else
-  echo "No wasmd node found running"
+  echo "No Cosmos node found running"
 fi
 
-# Stop mock-wasmd if running
-if pgrep -f "mock-wasmd" > /dev/null; then
-  echo "Stopping mock-wasmd server..."
-  pkill -f "mock-wasmd" || echo "Failed to stop mock-wasmd"
-  if [ -f "/tmp/mock-wasmd.pid" ]; then
-    MOCK_WASMD_PID=$(cat /tmp/mock-wasmd.pid)
-    kill $MOCK_WASMD_PID 2>/dev/null || echo "Failed to stop mock-wasmd with PID $MOCK_WASMD_PID"
-    rm -f /tmp/mock-wasmd.pid
-  fi
+# Stop Solana node
+if pgrep -f "solana-test-validator" > /dev/null; then
+  echo "Stopping Solana test validator..."
+  pkill -f "solana-test-validator" || echo "Failed to stop Solana"
+else
+  echo "No Solana node found running"
+fi
+
+# Stop FoundationDB
+if pgrep -f "fdbserver" > /dev/null; then
+  echo "Stopping FoundationDB..."
+  pkill -f "fdbserver" || echo "Failed to stop FoundationDB"
 fi
 
 # Stop PostgreSQL
@@ -64,10 +91,15 @@ else
   pg_ctl -D "$DATA_DIR/postgres" stop 2>/dev/null || echo "PostgreSQL was not running or failed to stop"
 fi
 
-# Stop any Almanac indexers
-if pgrep -f "almanac-indexer" > /dev/null; then
-  echo "Stopping Almanac indexers..."
-  pkill -f "almanac-indexer" || echo "Failed to stop almanac-indexer"
+# Stop any Almanac services
+if pgrep -f "almanac-indexing" > /dev/null; then
+  echo "Stopping Almanac indexing service..."
+  pkill -f "almanac-indexing" || echo "Failed to stop almanac-indexing"
 fi
 
-echo "All services stopped successfully" 
+if pgrep -f "almanac-api" > /dev/null; then
+  echo "Stopping Almanac API service..."
+  pkill -f "almanac-api" || echo "Failed to stop almanac-api"
+fi
+
+echo -e "${GREEN}=== All Services Stopped Successfully ===${NC}"

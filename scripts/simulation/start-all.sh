@@ -1,5 +1,5 @@
 #!/bin/bash
-# Purpose: Start all services required for development and testing
+# Purpose: Start all services required for development and testing using Nix simulation environment
 
 set -e
 
@@ -12,71 +12,43 @@ NC='\033[0m' # No Color
 
 echo -e "${BLUE}=== Starting All Services ===${NC}"
 
-# Step 1: Stop any running services first
-echo -e "${BLUE}Step 1: Stopping any running services...${NC}"
-bash simulation/stop-all.sh
+# Determine which chains to start
+CHAINS="${1:-ethereum,cosmos,fdb}"
 
-# Create logs directory
-mkdir -p logs
+echo -e "${YELLOW}Starting simulation environment for chains: $CHAINS${NC}"
 
-# Step 2: Set up PostgreSQL database
-echo -e "${BLUE}Step 2: Setting up PostgreSQL database...${NC}"
-bash simulation/databases/setup-postgres.sh
-
-# Step 3: Create PostgreSQL tables
-echo -e "${BLUE}Step 3: Creating PostgreSQL tables...${NC}"
-bash simulation/databases/create-postgres-tables.sh
-
-# Step 4: Set up RocksDB
-echo -e "${BLUE}Step 4: Setting up RocksDB storage...${NC}"
-bash simulation/databases/setup-rocksdb.sh
-
-# Step 5: Set up Ethereum node (Anvil)
-echo -e "${BLUE}Step 5: Setting up Ethereum node (Anvil)...${NC}"
-bash simulation/ethereum/setup-anvil.sh
-
-# Step 6: Set up CosmWasm node (wasmd)
-echo -e "${BLUE}Step 6: Setting up CosmWasm node (wasmd)...${NC}"
-bash simulation/cosmos/setup-wasmd.sh
-
-# Final check: Verify all services are running
-echo -e "${BLUE}Final check: Verifying all services are running...${NC}"
-
-# Check PostgreSQL
-if nix develop --command bash -c "pg_isready -h localhost -p 5432" > /dev/null 2>&1; then
-    echo -e "${GREEN}PASSED PostgreSQL is running${NC}"
+# Check if sim-cluster command is available
+if command -v sim-cluster &> /dev/null; then
+    SIM_CMD="sim-cluster"
 else
-    echo -e "${RED}FAILED PostgreSQL is not running${NC}"
+    echo -e "${YELLOW}sim-cluster not found, using nix run${NC}"
+    SIM_CMD="nix run .#sim-cluster --"
+fi
+
+# Initialize the simulation environment
+echo -e "${BLUE}Initializing simulation environment...${NC}"
+if $SIM_CMD init "$CHAINS"; then
+    echo -e "${GREEN}Simulation environment initialized${NC}"
+else
+    echo -e "${RED}Failed to initialize simulation environment${NC}"
     exit 1
 fi
 
-# Check RocksDB directories
-if [ -d "$(pwd)/data/rocksdb" ]; then
-    echo -e "${GREEN}PASSED RocksDB directories are set up${NC}"
+# Start all services
+echo -e "${BLUE}Starting all services...${NC}"
+if $SIM_CMD start; then
+    echo -e "${GREEN}All services started successfully${NC}"
+    
+    # Show status
+    echo -e "${BLUE}Service status:${NC}"
+    $SIM_CMD status
 else
-    echo -e "${RED}FAILED RocksDB directories are not set up${NC}"
-    exit 1
-fi
-
-# Check Anvil
-if curl -s -X POST -H "Content-Type: application/json" --data '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' http://localhost:8545 > /dev/null; then
-    echo -e "${GREEN}PASSED Ethereum node (Anvil) is running${NC}"
-else
-    echo -e "${RED}FAILED Ethereum node (Anvil) is not running${NC}"
-    exit 1
-fi
-
-# Check wasmd
-if curl -s http://localhost:26657/status > /dev/null; then
-    echo -e "${GREEN}PASSED CosmWasm node (wasmd) is running${NC}"
-else
-    echo -e "${RED}FAILED CosmWasm node (wasmd) is not running${NC}"
+    echo -e "${RED}Failed to start services${NC}"
     exit 1
 fi
 
 echo -e "${GREEN}=== All Services Started Successfully ===${NC}"
-echo -e "${BLUE}PostgreSQL: running on localhost:5432${NC}"
-echo -e "${BLUE}RocksDB: data directory at $(pwd)/data/rocksdb${NC}"
-echo -e "${BLUE}Ethereum (Anvil): running on http://localhost:8545${NC}"
-echo -e "${BLUE}CosmWasm (wasmd): running on http://localhost:26657${NC}"
-echo -e "${YELLOW}To stop all services, run: bash simulation/stop-all.sh${NC}" 
+echo ""
+echo "To check service status: $SIM_CMD status"
+echo "To view logs: $SIM_CMD logs"
+echo "To stop all services: ./scripts/simulation/stop-all.sh"

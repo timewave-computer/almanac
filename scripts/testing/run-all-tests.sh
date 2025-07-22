@@ -152,7 +152,7 @@ else
             run_test_suite "E2E Tests" "$SCRIPT_DIR/testing/e2e-tests.sh --components-only $VERBOSE_FLAG"
             run_test_suite "Simulation Tests" "$SCRIPT_DIR/testing/e2e-tests.sh --simulation-only $VERBOSE_FLAG"
         else
-            run_test_suite "E2E Tests" "cargo test --package e2e $VERBOSE_FLAG"
+            run_test_suite "E2E Tests" "cargo test --package almanac-tests $VERBOSE_FLAG"
         fi
     fi
 fi

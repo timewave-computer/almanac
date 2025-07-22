@@ -385,7 +385,7 @@ EOF
         cargoNix = import ../../Cargo.nix { inherit pkgs; };
         
         # Build the test runner using crate2nix
-        testRunner = cargoNix.workspaceMembers.almanac-e2e-tests.build.override {
+        testRunner = cargoNix.workspaceMembers.almanac-tests.build.override {
           # Override dependencies for our specific environment
           crateOverrides = pkgs.defaultCrateOverrides // {
             # Add openssl and other system dependencies
@@ -527,7 +527,7 @@ EOF
             echo "Building test runner..."
             
             # Build and run the test runner binary with optional filter
-            if timeout 600 cargo run --release --package almanac-e2e-tests --bin test-runner --all-features -- "$CARGO_ARGS"; then
+            if timeout 600 cargo run --release --package almanac-tests --bin test-runner --all-features -- "$CARGO_ARGS"; then
               echo ""
               echo "=== E2E Tests Completed Successfully ==="
               echo "All requested tests passed with FoundationDB integration"
@@ -565,7 +565,7 @@ EOF
             echo ""
             
             # Check if cosmos simulation files have the right fixes
-            MULTI_CHAIN_FILE="e2e/src/tests/multi_chain_simulation_e2e.rs"
+            MULTI_CHAIN_FILE="tests/src/e2e/multi_chain_simulation.rs"
             
             if [ ! -f "$MULTI_CHAIN_FILE" ]; then
               echo "ERROR: Multi-chain simulation file not found"

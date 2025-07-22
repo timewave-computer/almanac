@@ -12,7 +12,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 print_header() {
     echo -e "${BLUE}======================================${NC}"
@@ -112,8 +112,7 @@ build_project() {
     echo "Entering Nix development shell..."
     nix develop --command bash -c '
         echo "Building API crates..."
-        cargo build -p almanac-api-core
-        cargo build -p almanac-api-http
+        cargo build -p almanac-api
         
         if [ -f Cargo.nix ]; then
             echo "Cargo.nix found, updating..."
@@ -144,7 +143,7 @@ run_tests() {
     cd "$PROJECT_ROOT"
     
     echo "Running API tests..."
-    if nix develop --command cargo test -p almanac-api-core -p almanac-api-http; then
+    if nix develop --command cargo test -p almanac-api; then
         print_success "All tests passed"
     else
         print_warning "Some tests failed"
@@ -167,7 +166,7 @@ ${GREEN}Next Steps:${NC}
    ${BLUE}nix develop --command start_api_server${NC}
    
    Or use the service management script:
-   ${BLUE}./scripts/manage-api-service.sh start${NC}
+   ${BLUE}./scripts/services/manage-api-service.sh start${NC}
 
 3. Check API health:
    ${BLUE}curl http://localhost:8080/health${NC}
@@ -194,10 +193,10 @@ ${GREEN}Useful Commands:${NC}
 - ${BLUE}api_health_check${NC} - Check if API is running
 
 ${GREEN}Service Management:${NC}
-- ${BLUE}./scripts/manage-api-service.sh start${NC} - Start as daemon
-- ${BLUE}./scripts/manage-api-service.sh status${NC} - Check status
-- ${BLUE}./scripts/manage-api-service.sh logs -f${NC} - Follow logs
-- ${BLUE}./scripts/monitor-api-health.sh${NC} - Monitor health
+- ${BLUE}./scripts/services/manage-api-service.sh start${NC} - Start as daemon
+- ${BLUE}./scripts/services/manage-api-service.sh status${NC} - Check status
+- ${BLUE}./scripts/services/manage-api-service.sh logs -f${NC} - Follow logs
+- ${BLUE}./scripts/services/monitor-api-health.sh${NC} - Monitor health
 
 ${YELLOW}Configuration:${NC}
 Edit ${BLUE}.env${NC} to customize your environment settings.

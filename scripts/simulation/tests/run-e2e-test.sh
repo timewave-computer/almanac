@@ -67,7 +67,7 @@ fi
 
 # Run the cross-chain e2e test using nix develop
 echo -e "${BLUE}Running cross-chain E2E test...${NC}"
-nix develop --command bash -c "cargo test -p tests --features postgres -- --nocapture cross_chain_e2e" 2>&1 | tee logs/e2e-test.log
+nix develop --command bash -c "cargo test -p almanac-tests --features postgres -- --nocapture cross_chain_e2e" 2>&1 | tee logs/e2e-test.log
 
 # Check if the test succeeded
 if [ ${PIPESTATUS[0]} -eq 0 ]; then
@@ -79,7 +79,7 @@ fi
 
 # Run valence contract integration test
 echo -e "${BLUE}Running Valence contract integration test...${NC}"
-nix develop --command bash -c "cargo test -p tests --features postgres -- --nocapture valence_contract_integration" 2>&1 | tee -a logs/e2e-test.log
+nix develop --command bash -c "cargo test -p almanac-tests --features postgres -- --nocapture valence_contract_integration" 2>&1 | tee -a logs/e2e-test.log
 
 # Check if the test succeeded
 if [ ${PIPESTATUS[0]} -eq 0 ]; then

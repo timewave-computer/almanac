@@ -241,47 +241,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "almanac-e2e-tests"
-version = "0.1.0"
-dependencies = [
- "almanac-api",
- "almanac-chains",
- "almanac-config",
- "almanac-core",
- "almanac-eventbus",
- "almanac-storage",
- "anyhow",
- "assert_cmd",
- "async-trait",
- "bincode",
- "bs58 0.4.0",
- "bytes",
- "chrono",
- "colored",
- "criterion",
- "foundationdb",
- "hex",
- "predicates",
- "regex",
- "reqwest 0.11.27",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "solana-client",
- "solana-program",
- "solana-sdk",
- "solana-system-interface",
- "tempfile",
- "thiserror 1.0.69",
- "tokio",
- "toml 0.8.23",
- "tracing",
- "tracing-subscriber",
- "uuid 1.17.0",
- "walkdir",
-]
-
-[[package]]
 name = "almanac-eventbus"
 version = "0.1.0"
 dependencies = [
@@ -363,6 +322,48 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid 1.17.0",
+]
+
+[[package]]
+name = "almanac-tests"
+version = "0.1.0"
+dependencies = [
+ "almanac-api",
+ "almanac-chains",
+ "almanac-config",
+ "almanac-core",
+ "almanac-eventbus",
+ "almanac-storage",
+ "anyhow",
+ "assert_cmd",
+ "async-trait",
+ "bincode",
+ "bs58 0.4.0",
+ "bytes",
+ "chrono",
+ "clap",
+ "colored",
+ "criterion",
+ "foundationdb",
+ "hex",
+ "predicates",
+ "regex",
+ "reqwest 0.11.27",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "solana-client",
+ "solana-program",
+ "solana-sdk",
+ "solana-system-interface",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "toml 0.8.23",
+ "tracing",
+ "tracing-subscriber",
+ "uuid 1.17.0",
+ "walkdir",
 ]
 
 [[package]]
