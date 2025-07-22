@@ -3,7 +3,7 @@
 
 [simulation]
 name = "almanac-local-cluster"
-chains = ["ethereum", "fdb"]
+chains = ["ethereum", "cosmos", "fdb"]
 
 [almanac]
 name = "local-simulation"
@@ -25,12 +25,12 @@ enabled = true
 node_type = "anvil"
 rpc_port = 8545
 ws_port = 8546
-chain_id = "31337"
+chain_id = 31337
 data_dir = "/Users/hxrts/projects/timewave/almanac/data/ethereum"
 log_file = "/Users/hxrts/projects/timewave/almanac/logs/anvil.log"
 
 [services.cosmos]
-enabled = false
+enabled = true
 node_type = "neutron"
 rpc_port = 26657
 grpc_port = 9090
@@ -51,6 +51,14 @@ log_file = "/Users/hxrts/projects/timewave/almanac/logs/solana.log"
 name = "ethereum-local"
 rpc_url = "http://localhost:8545"
 ws_url = "ws://localhost:8546"
-chain_id = "31337"
+chain_id = 31337
+starting_block = 1
+batch_size = 100
+
+[[chains.cosmos]]
+name = "cosmos-local"
+rpc_url = "http://localhost:26657"
+grpc_url = "http://localhost:9090"
+chain_id = "test-1"
 starting_block = 1
 batch_size = 100

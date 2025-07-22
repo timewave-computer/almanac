@@ -6,16 +6,16 @@ use uuid::Uuid;
 pub trait Event: Any + Send + Sync {
     /// Get the event type name
     fn event_type(&self) -> &'static str;
-    
+
     /// Get the event timestamp
     fn timestamp(&self) -> SystemTime;
-    
+
     /// Get the event ID
     fn event_id(&self) -> Uuid;
-    
+
     /// Clone the event as a boxed trait object
     fn clone_event(&self) -> Box<dyn Event>;
-    
+
     /// Get the TypeId for downcasting
     fn type_id(&self) -> TypeId {
         TypeId::of::<Self>()
@@ -32,7 +32,7 @@ impl<T: Event + 'static> EventDowncast for T {
     fn as_any(&self) -> &dyn Any {
         self
     }
-    
+
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
@@ -58,12 +58,12 @@ impl EventMetadata {
             source: source.into(),
         }
     }
-    
+
     pub fn with_correlation(mut self, correlation_id: Uuid) -> Self {
         self.correlation_id = Some(correlation_id);
         self
     }
-    
+
     pub fn with_causation(mut self, causation_id: Uuid) -> Self {
         self.causation_id = Some(causation_id);
         self
@@ -78,7 +78,7 @@ impl EventType {
     pub fn new(name: &'static str) -> Self {
         Self(name)
     }
-    
+
     pub fn name(&self) -> &'static str {
         self.0
     }
@@ -94,15 +94,15 @@ impl Event for SystemStartedEvent {
     fn event_type(&self) -> &'static str {
         "system.started"
     }
-    
+
     fn timestamp(&self) -> SystemTime {
         self.metadata.timestamp
     }
-    
+
     fn event_id(&self) -> Uuid {
         self.metadata.event_id
     }
-    
+
     fn clone_event(&self) -> Box<dyn Event> {
         Box::new(self.clone())
     }
@@ -117,15 +117,15 @@ impl Event for SystemStoppedEvent {
     fn event_type(&self) -> &'static str {
         "system.stopped"
     }
-    
+
     fn timestamp(&self) -> SystemTime {
         self.metadata.timestamp
     }
-    
+
     fn event_id(&self) -> Uuid {
         self.metadata.event_id
     }
-    
+
     fn clone_event(&self) -> Box<dyn Event> {
         Box::new(self.clone())
     }
@@ -142,15 +142,15 @@ impl Event for ModuleStartedEvent {
     fn event_type(&self) -> &'static str {
         "module.started"
     }
-    
+
     fn timestamp(&self) -> SystemTime {
         self.metadata.timestamp
     }
-    
+
     fn event_id(&self) -> Uuid {
         self.metadata.event_id
     }
-    
+
     fn clone_event(&self) -> Box<dyn Event> {
         Box::new(self.clone())
     }
@@ -166,15 +166,15 @@ impl Event for ModuleStoppedEvent {
     fn event_type(&self) -> &'static str {
         "module.stopped"
     }
-    
+
     fn timestamp(&self) -> SystemTime {
         self.metadata.timestamp
     }
-    
+
     fn event_id(&self) -> Uuid {
         self.metadata.event_id
     }
-    
+
     fn clone_event(&self) -> Box<dyn Event> {
         Box::new(self.clone())
     }
@@ -192,15 +192,15 @@ impl Event for ServiceRegisteredEvent {
     fn event_type(&self) -> &'static str {
         "service.registered"
     }
-    
+
     fn timestamp(&self) -> SystemTime {
         self.metadata.timestamp
     }
-    
+
     fn event_id(&self) -> Uuid {
         self.metadata.event_id
     }
-    
+
     fn clone_event(&self) -> Box<dyn Event> {
         Box::new(self.clone())
     }
@@ -216,15 +216,15 @@ impl Event for ServiceUnregisteredEvent {
     fn event_type(&self) -> &'static str {
         "service.unregistered"
     }
-    
+
     fn timestamp(&self) -> SystemTime {
         self.metadata.timestamp
     }
-    
+
     fn event_id(&self) -> Uuid {
         self.metadata.event_id
     }
-    
+
     fn clone_event(&self) -> Box<dyn Event> {
         Box::new(self.clone())
     }
@@ -233,24 +233,24 @@ impl Event for ServiceUnregisteredEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_event_metadata() {
         let metadata = EventMetadata::new("test")
             .with_correlation(Uuid::new_v4())
             .with_causation(Uuid::new_v4());
-            
+
         assert_eq!(metadata.source, "test");
         assert!(metadata.correlation_id.is_some());
         assert!(metadata.causation_id.is_some());
     }
-    
+
     #[test]
     fn test_system_events() {
         let event = SystemStartedEvent {
             metadata: EventMetadata::new("test"),
         };
-        
+
         assert_eq!(event.event_type(), "system.started");
         assert_eq!(event.event_id(), event.metadata.event_id);
     }

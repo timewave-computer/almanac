@@ -24,13 +24,13 @@ The e2e test suite validates the complete Almanac system including:
 ### Run Specific Test Categories
 
 ```bash
-# Run blockchain indexing tests
+# Run blockchain indexing tests (e.g., Ethereum indexing)
 ./scripts/testing/e2e-tests.sh --components-only
 
 # Run multi-chain simulation tests
 ./scripts/testing/e2e-tests.sh --simulation-only
 
-# Run FoundationDB integration tests
+# Run FoundationDB integration tests (currently simplified placeholders)
 ./scripts/testing/fdb-tests.sh --e2e-only
 ```
 
@@ -90,7 +90,7 @@ The tests require a complete Almanac environment:
 
 ### Required Components
 - **FoundationDB**: Distributed storage backend
-- **Blockchain Nodes**: Ethereum (Anvil/Reth), Cosmos (Neutron), Solana
+- **Blockchain Nodes**: Ethereum (Anvil/Geth), Cosmos (Neutron), Solana
 - **Almanac Services**: API server, indexing nodes
 - **Mock Data**: Test contracts and events
 
@@ -269,13 +269,13 @@ e2e/test_outputs/
 
 ## Coverage
 
-The e2e test suite covers:
+The e2e test suite aims to cover:
 
-- **100% of API endpoints** with real storage backends
-- **All supported blockchains** (Ethereum, Cosmos, Solana)
+- **Most API endpoints** with real storage backends (ongoing)
+- **Supported blockchains** (Ethereum, Cosmos, and partially Solana)
 - **Complete indexing pipeline** from blockchain to API
 - **Cross-chain functionality** and data consistency
 - **Configuration scenarios** and error conditions
 - **Performance characteristics** under load
 
-This ensures the complete Almanac system works correctly in real-world scenarios and that all documented functionality is accurate and reliable.
+This ensures the complete Almanac system works correctly in real-world scenarios and that documented functionality is accurate and reliable.

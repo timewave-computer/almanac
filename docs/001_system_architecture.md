@@ -58,7 +58,7 @@ Almanac uses a distributed microservices architecture where chain-specific index
 ┌─────────────────────────────────────────────────────────────────┐
 │                      Blockchain Networks                        │
 │  • Ethereum/Anvil       • Cosmos/Neutron      • Solana          │
-│  • :8545                • :26657               • :8899          │
+│  • :8545                • :26657              • :8899           │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -69,7 +69,7 @@ Almanac uses a distributed microservices architecture where chain-specific index
 #### almanac-core
 The foundational crate containing core types and traits used throughout the system:
 - **Event trait**: Base trait for all blockchain events
-- **Storage trait**: Abstract storage interface
+- **Storage traits**: Separate `StorageWriter` and `StorageReader` traits for write and read operations, respectively
 - **Error types**: Unified error handling
 - **Common types**: BlockStatus, ChainId, EventFilter
 

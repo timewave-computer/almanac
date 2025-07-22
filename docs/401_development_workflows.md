@@ -115,9 +115,8 @@ The simulation automatically generates configuration files:
 
 ```
 ./
-├── config/simulation/
-│   ├── simulation.json          # Main simulation configuration
-│   └── almanac-indexer.toml     # Almanac indexer configuration
+├── config/
+│   └── simulation.toml          # Main simulation configuration
 ├── data/
 │   ├── fdb.cluster              # FoundationDB cluster file
 │   ├── foundationdb/            # FoundationDB data
@@ -162,7 +161,7 @@ The simulation automatically generates configuration files:
    - **Cosmos RPC**: http://localhost:26657
    - **Almanac API**: http://localhost:3000
    - **API Health**: http://localhost:3000/health
-   - **Swagger UI**: http://localhost:3000/swagger-ui/
+   - **Swagger UI**: http://localhost:3000/swagger-ui
 
 6. **Develop and Test**:
    ```bash

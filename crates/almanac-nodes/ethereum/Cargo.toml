@@ -43,3 +43,4 @@ axum = { workspace = true }
 
 # Utils
 hex = { workspace = true }
+bincode = { workspace = true }

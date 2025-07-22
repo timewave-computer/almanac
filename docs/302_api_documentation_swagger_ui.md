@@ -46,9 +46,9 @@ Once the server is running, you can access the documentation at:
 
 | Interface | URL | Description |
 |-----------|-----|-------------|
-| **Swagger UI** | `http://localhost:8080/api/swagger-ui` | Interactive API explorer (recommended) |
-| **OpenAPI Spec** | `http://localhost:8080/api/openapi.json` | Raw OpenAPI 3.0 specification |
-| **ReDoc** | `http://localhost:8080/api/redoc` | Alternative documentation interface |
+| **Swagger UI** | `http://localhost:8080/swagger-ui` | Interactive API explorer (recommended) |
+| **OpenAPI Spec** | `http://localhost:8080/openapi.json` | Raw OpenAPI 3.0 specification |
+| **ReDoc** | `http://localhost:8080/redoc` | Alternative documentation interface |
 | **Health Check** | `http://localhost:8080/health` | Server health status |
 
 ## Features
@@ -185,7 +185,7 @@ nix develop
    ```
 
 4. **Access Documentation**:
-   - Open `http://localhost:8080/api/swagger-ui`
+   - Open `http://localhost:8080/swagger-ui`
    - Test endpoints interactively
    - View generated schemas
 

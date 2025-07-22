@@ -10,7 +10,7 @@ The `almanac-chains` crate defines the `ChainAdapter` trait and provides impleme
 
 - **Ethereum** - Full support for state extraction, storage proofs, and finality tracking
 - **Cosmos** - Support for Tendermint-based chains with instant finality
-- **Solana** - Support for Solana blockchain with account-based state tracking
+- **Solana** - (Work in Progress) Basic support for Solana blockchain with account-based state tracking, real Geyser streaming integration is being developed.
 
 ## Architecture
 
@@ -22,7 +22,8 @@ almanac-chains/
 │   │   ├── types.rs       # Common types (ChainDataIR, etc.)
 │   │   ├── ethereum.rs    # Ethereum implementation
 │   │   ├── cosmos.rs      # Cosmos implementation
-│   │   └── solana.rs      # Solana implementation
+│   │   ├── solana.rs      # Solana implementation (basic RPC polling)
+│   │   └── solana_geyser.rs # Solana Geyser streaming implementation
 │   └── lib.rs
 └── tests/
     ├── ethereum_adapter_test.rs
@@ -41,11 +42,14 @@ almanac-chains = { path = "../almanac-chains", features = ["ethereum"] }
 ### Creating an Adapter
 
 ```rust
-use almanac_chains::{ChainAdapter, ChainConfig, EthereumAdapter};
+use almanac_chains::{ChainAdapter, EthereumAdapter};
+use almanac_chains::adapters::types::ChainConfig;
 
 let config = ChainConfig {
     chain_id: "ethereum-mainnet".to_string(),
     rpc_url: "https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY".to_string(),
+    ws_url: None,
+    grpc_url: None,
     api_key: None,
     confirmations: 6,
     max_retries: 3,
@@ -66,8 +70,8 @@ let latest = adapter.get_latest_block().await?;
 let block_data = adapter.fetch_block(latest - 1).await?;
 
 // Access normalized data
-println!("Block: {}", block_data.block_metadata.block_height);
-println!("Events: {}", block_data.state_changes.len());
+println!("Block: {}", block_data.block_number);
+println!("Events: {}", block_data.events.len());
 ```
 
 ## Implementing a New Chain Adapter
@@ -84,6 +88,7 @@ Example structure:
 ```rust
 use async_trait::async_trait;
 use crate::adapters::{ChainAdapter, ChainAdapterError, ChainDataIR};
+use crate::adapters::types::ChainConfig;
 
 pub struct MyChainAdapter {
     client: MyChainClient,
@@ -118,7 +123,7 @@ All chain adapters normalize blockchain data into the `ChainDataIR` format:
 ### Unit Tests
 
 ```bash
-cargo test -p almanac-chains
+nix develop -c cargo test -p almanac-chains
 ```
 
 ### Integration Tests
@@ -131,7 +136,7 @@ export ETHEREUM_TEST_RPC_URL="https://eth-goerli.g.alchemy.com/v2/YOUR_KEY"
 export COSMOS_TEST_RPC_URL="https://rpc.testnet.cosmos.network"
 
 # Run integration tests
-cargo test -p almanac-chains --features ethereum,cosmos -- --ignored
+nix develop -c cargo test -p almanac-chains --features ethereum,cosmos -- --ignored
 ```
 
 ## Features
@@ -139,6 +144,10 @@ cargo test -p almanac-chains --features ethereum,cosmos -- --ignored
 - `ethereum` - Ethereum adapter with ethers-rs
 - `cosmos` - Cosmos adapter with cosmrs and tendermint-rpc
 - `solana` - Solana adapter with solana-client and solana-sdk
+- `valence` - Enables Valence domain client integration (requires `valence-domain-clients` repository)
+- `valence-ethereum` - Enables Valence Ethereum client (requires `ethereum` feature)
+- `valence-cosmos` - Enables Valence Cosmos client (requires `cosmos` feature)
+- `valence-solana` - Enables Valence Solana client (requires `solana` feature)
 
 ## Performance Considerations
 

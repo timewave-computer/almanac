@@ -1,6 +1,6 @@
 //! Contract layout types for FDB storage
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// Contract layout key
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

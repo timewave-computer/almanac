@@ -14,11 +14,11 @@ pub enum PrincipalType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthenticatedPrincipal {
     pub id: String,
-    pub principal_id: String,  // Alias for compatibility
+    pub principal_id: String, // Alias for compatibility
     pub principal_type: PrincipalType,
     pub permissions: Vec<String>,
     pub metadata: HashMap<String, String>,
-    pub attributes: HashMap<String, String>,  // Additional attributes field
+    pub attributes: HashMap<String, String>, // Additional attributes field
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -34,52 +34,64 @@ impl Operation {
             resource: resource.to_string(),
         }
     }
-    
+
     // Common operations as associated functions that return instances
     pub fn read_events() -> Self {
         Self::new("read", "events")
     }
-    
+
     pub fn write_events() -> Self {
         Self::new("write", "events")
     }
-    
+
     pub fn read_layouts() -> Self {
         Self::new("read", "layouts")
     }
-    
+
     pub fn write_layouts() -> Self {
         Self::new("write", "layouts")
     }
-    
+
     pub fn read_views() -> Self {
         Self::new("read", "views")
     }
-    
+
     pub fn write_views() -> Self {
         Self::new("write", "views")
     }
-    
+
     pub fn admin() -> Self {
         Self::new("admin", "*")
     }
 }
 
-// Simplified: just provide as associated functions  
+// Simplified: just provide as associated functions
 impl Operation {
     // These functions can be called like Operation::read_events()
     #[allow(non_snake_case)]
-    pub fn ReadEvents() -> Operation { Self::read_events() }
+    pub fn ReadEvents() -> Operation {
+        Self::read_events()
+    }
     #[allow(non_snake_case)]
-    pub fn WriteEvents() -> Operation { Self::write_events() }
+    pub fn WriteEvents() -> Operation {
+        Self::write_events()
+    }
     #[allow(non_snake_case)]
-    pub fn ReadLayouts() -> Operation { Self::read_layouts() }
+    pub fn ReadLayouts() -> Operation {
+        Self::read_layouts()
+    }
     #[allow(non_snake_case)]
-    pub fn WriteLayouts() -> Operation { Self::write_layouts() }
+    pub fn WriteLayouts() -> Operation {
+        Self::write_layouts()
+    }
     #[allow(non_snake_case)]
-    pub fn ReadViews() -> Operation { Self::read_views() }
+    pub fn ReadViews() -> Operation {
+        Self::read_views()
+    }
     #[allow(non_snake_case)]
-    pub fn WriteViews() -> Operation { Self::write_views() }
+    pub fn WriteViews() -> Operation {
+        Self::write_views()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -98,14 +110,28 @@ pub enum PermissionError {
 
 #[async_trait::async_trait]
 pub trait PermissionStore: Send + Sync {
-    fn check_permission(&self, principal: &str, operation: &Operation) -> Result<bool, PermissionError>;
-    async fn get_permissions(&self, principal: &AuthenticatedPrincipal) -> crate::types::error::ApiResult<AlmanacPermissions>;
+    fn check_permission(
+        &self,
+        principal: &str,
+        operation: &Operation,
+    ) -> Result<bool, PermissionError>;
+    async fn get_permissions(
+        &self,
+        principal: &AuthenticatedPrincipal,
+    ) -> crate::types::error::ApiResult<AlmanacPermissions>;
 }
 
 #[async_trait::async_trait]
 pub trait PermissionManager: Send + Sync {
-    async fn get_permissions(&self, principal: &AuthenticatedPrincipal) -> crate::types::error::ApiResult<AlmanacPermissions>;
-    async fn set_permissions(&self, principal: &AuthenticatedPrincipal, permissions: AlmanacPermissions) -> crate::types::error::ApiResult<()>;
+    async fn get_permissions(
+        &self,
+        principal: &AuthenticatedPrincipal,
+    ) -> crate::types::error::ApiResult<AlmanacPermissions>;
+    async fn set_permissions(
+        &self,
+        principal: &AuthenticatedPrincipal,
+        permissions: AlmanacPermissions,
+    ) -> crate::types::error::ApiResult<()>;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -140,20 +166,29 @@ pub mod traits {
 
     #[async_trait]
     pub trait AuthenticationService: Send + Sync {
-        async fn authenticate(&self, token: &str) -> Result<AuthenticatedPrincipal, Box<dyn std::error::Error + Send + Sync>>;
-        async fn validate_token(&self, token: &str) -> crate::types::ApiResult<AuthenticatedPrincipal>;
+        async fn authenticate(
+            &self,
+            token: &str,
+        ) -> Result<AuthenticatedPrincipal, Box<dyn std::error::Error + Send + Sync>>;
+        async fn validate_token(
+            &self,
+            token: &str,
+        ) -> crate::types::ApiResult<AuthenticatedPrincipal>;
         async fn health_check(&self) -> crate::types::ApiResult<()>;
     }
 
     #[async_trait]
     pub trait ExternalAuthService: Send + Sync {
-        async fn verify_token(&self, token: &str) -> Result<AuthenticatedPrincipal, Box<dyn std::error::Error + Send + Sync>>;
+        async fn verify_token(
+            &self,
+            token: &str,
+        ) -> Result<AuthenticatedPrincipal, Box<dyn std::error::Error + Send + Sync>>;
     }
 }
 
 pub use traits::AuthenticationService;
 
-// Type aliases for backward compatibility  
+// Type aliases for backward compatibility
 pub type AuthService = Box<dyn traits::AuthenticationService>;
 
 /// Resource identifier for permission checks
@@ -222,25 +257,25 @@ impl AlmanacPermissions {
         ops.insert(OperationType::ReadEvents);
         ops.insert(OperationType::ReadState);
         ops.insert(OperationType::ReadProofs);
-        
+
         Self {
             operations: ops,
             chain_scopes: vec![],
             contract_scopes: vec![],
         }
     }
-    
+
     /// Check if permission allows a specific operation
     pub fn can(&self, _operation: Operation) -> bool {
         // For now, just return true - this would be implemented properly
         true
     }
-    
+
     /// Check if permission allows access to a specific chain
     pub fn has_chain_access(&self, chain_id: &str) -> bool {
         self.chain_scopes.is_empty() || self.chain_scopes.contains(&chain_id.to_string())
     }
-    
+
     /// Check if permission allows access to a specific contract
     pub fn has_contract_access(&self, contract: &str) -> bool {
         self.contract_scopes.is_empty() || self.contract_scopes.contains(&contract.to_string())
@@ -250,16 +285,17 @@ impl AlmanacPermissions {
 /// Security context for a request
 pub mod context {
     use super::*;
-    
+
     #[derive(Debug, Clone)]
     pub struct SecurityContext {
         pub principal: AuthenticatedPrincipal,
         pub permissions: std::collections::HashSet<String>,
-        pub resource_access: std::collections::HashMap<ResourceIdentifier, std::collections::HashSet<String>>,
+        pub resource_access:
+            std::collections::HashMap<ResourceIdentifier, std::collections::HashSet<String>>,
         pub request_id: Option<String>,
         pub client_ip: Option<String>,
     }
-    
+
     impl SecurityContext {
         pub fn new(
             principal: AuthenticatedPrincipal,
@@ -268,11 +304,12 @@ pub mod context {
             client_ip: Option<String>,
         ) -> Self {
             // Convert AlmanacPermissions to the format expected by SecurityContext
-            let permission_strings: std::collections::HashSet<String> = permissions.operations
+            let permission_strings: std::collections::HashSet<String> = permissions
+                .operations
                 .iter()
                 .map(|op| format!("{:?}", op)) // Convert OperationType to string
                 .collect();
-            
+
             Self {
                 principal,
                 permissions: permission_strings,
@@ -281,7 +318,7 @@ pub mod context {
                 client_ip,
             }
         }
-        
+
         pub fn simple(principal: AuthenticatedPrincipal) -> Self {
             Self {
                 principal,
@@ -291,30 +328,31 @@ pub mod context {
                 client_ip: None,
             }
         }
-        
+
         pub fn has_permission(&self, permission: &str) -> bool {
             self.permissions.contains(permission)
         }
-        
+
         pub fn can_access_resource(&self, resource: &ResourceIdentifier, action: &str) -> bool {
             self.resource_access
                 .get(resource)
                 .map(|perms| perms.contains(action))
                 .unwrap_or(false)
         }
-        
+
         /// Require a specific permission, returning an error if not granted
         pub fn require_permission(&self, operation: Operation) -> Result<(), PermissionError> {
             let permission_key = format!("{}:{}", operation.action, operation.resource);
             if self.has_permission(&permission_key) {
                 Ok(())
             } else {
-                Err(PermissionError::InsufficientPermissions(
-                    format!("Permission required: {}", permission_key)
-                ))
+                Err(PermissionError::InsufficientPermissions(format!(
+                    "Permission required: {}",
+                    permission_key
+                )))
             }
         }
-        
+
         /// Require access to a specific chain
         pub fn require_chain_access(&self, chain_id: &str) -> Result<(), PermissionError> {
             // For now, implement basic chain access check
@@ -324,34 +362,42 @@ pub mod context {
             } else {
                 // Check if we have permissions for this chain
                 // This is a simplified implementation
-                let has_access = self.permissions.iter()
-                    .any(|perm| perm.contains(&format!("chain:{}", chain_id)) || perm.contains("chain:*"));
-                
+                let has_access = self.permissions.iter().any(|perm| {
+                    perm.contains(&format!("chain:{}", chain_id)) || perm.contains("chain:*")
+                });
+
                 if has_access {
                     Ok(())
                 } else {
-                    Err(PermissionError::InsufficientPermissions(
-                        format!("Chain access required: {}", chain_id)
-                    ))
+                    Err(PermissionError::InsufficientPermissions(format!(
+                        "Chain access required: {}",
+                        chain_id
+                    )))
                 }
             }
         }
-        
+
         /// Require access to a specific contract
-        pub fn require_contract_access(&self, contract_address: &str) -> Result<(), PermissionError> {
+        pub fn require_contract_access(
+            &self,
+            contract_address: &str,
+        ) -> Result<(), PermissionError> {
             // Check contract-specific permissions
-            let has_access = self.permissions.iter()
-                .any(|perm| perm.contains(&format!("contract:{}", contract_address)) || perm.contains("contract:*"));
-                
+            let has_access = self.permissions.iter().any(|perm| {
+                perm.contains(&format!("contract:{}", contract_address))
+                    || perm.contains("contract:*")
+            });
+
             if has_access {
                 Ok(())
             } else {
-                Err(PermissionError::InsufficientPermissions(
-                    format!("Contract access required: {}", contract_address)
-                ))
+                Err(PermissionError::InsufficientPermissions(format!(
+                    "Contract access required: {}",
+                    contract_address
+                )))
             }
         }
-        
+
         /// Get the principal ID
         pub fn principal_id(&self) -> &str {
             &self.principal.principal_id

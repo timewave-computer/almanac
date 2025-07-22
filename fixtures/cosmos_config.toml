@@ -1,0 +1,20 @@
+[cosmos]
+output_dir = "./generated"
+default_features = ["client", "storage", "api"]
+
+[cosmos.templates]
+template_dir = "./templates"
+
+[cosmos.database]
+url = "postgresql://localhost/test_db"
+schema_prefix = "contract_"
+
+[cosmos.api]
+base_path = "/api/v1/cosmos"
+rate_limiting = true
+cors = true
+
+[[cosmos.contracts]]
+name_pattern = "valence_base_account_*"
+features = ["client", "storage", "api"]
+namespace_prefix = "valence_"

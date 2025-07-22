@@ -6,17 +6,17 @@
 //! - Usage tracking and analytics
 //! - Quota management
 
+use crate::error::HttpError;
 use axum::{
     extract::{Request, State},
     middleware::Next,
     response::Response,
 };
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use chrono::{DateTime, Utc};
-use crate::error::HttpError;
 
 /// Enhanced API key with permissions and metadata
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -65,17 +65,17 @@ pub enum ApiOperation {
     ReadViews,
     ReadStorage,
     ReadTrust,
-    
+
     // Write operations
     WriteLayouts,
     WriteSemantics,
     WriteViews,
     WriteTrust,
-    
+
     // Admin operations
     ManageKeys,
     ManageUsers,
-    
+
     // Traverse operations
     GenerateProofs,
     VerifyProofs,
@@ -171,6 +171,12 @@ pub struct EnhancedApiKeyStore {
     developer_keys: Arc<RwLock<HashMap<String, HashSet<String>>>>,
 }
 
+impl Default for EnhancedApiKeyStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EnhancedApiKeyStore {
     pub fn new() -> Self {
         Self {
@@ -181,7 +187,10 @@ impl EnhancedApiKeyStore {
     }
 
     /// Generate a new API key
-    pub async fn generate_key(&self, request: GenerateKeyRequest) -> Result<GenerateKeyResponse, String> {
+    pub async fn generate_key(
+        &self,
+        request: GenerateKeyRequest,
+    ) -> Result<GenerateKeyResponse, String> {
         // Generate random key
         let api_key = format!("ak_{}", uuid::Uuid::new_v4().to_string().replace("-", ""));
         let key_hash = self.hash_key(&api_key);
@@ -208,7 +217,7 @@ impl EnhancedApiKeyStore {
 
         // Store the key
         self.keys.write().await.insert(key_hash.clone(), key);
-        
+
         // Update developer index
         self.developer_keys
             .write()
@@ -218,7 +227,10 @@ impl EnhancedApiKeyStore {
             .insert(key_hash);
 
         // Initialize usage stats
-        self.usage.write().await.insert(key_id.clone(), UsageStats::default());
+        self.usage
+            .write()
+            .await
+            .insert(key_id.clone(), UsageStats::default());
 
         Ok(GenerateKeyResponse {
             key_id,
@@ -235,10 +247,9 @@ impl EnhancedApiKeyStore {
         context: &PermissionContext,
     ) -> Result<ApiKey, ApiKeyError> {
         let key_hash = self.hash_key(api_key);
-        
+
         let keys = self.keys.read().await;
-        let key = keys.get(&key_hash)
-            .ok_or(ApiKeyError::InvalidKey)?;
+        let key = keys.get(&key_hash).ok_or(ApiKeyError::InvalidKey)?;
 
         // Check if key is enabled
         if !key.enabled {
@@ -293,7 +304,10 @@ impl EnhancedApiKeyStore {
         let mut usage = self.usage.write().await;
         if let Some(stats) = usage.get_mut(key_id) {
             stats.total_requests += 1;
-            *stats.requests_by_operation.entry(operation.to_string()).or_insert(0) += 1;
+            *stats
+                .requests_by_operation
+                .entry(operation.to_string())
+                .or_insert(0) += 1;
             stats.data_egress_bytes += data_egress;
             if is_storage_query {
                 stats.storage_queries += 1;
@@ -337,9 +351,10 @@ impl EnhancedApiKeyStore {
     pub async fn list_developer_keys(&self, developer_id: &str) -> Vec<ApiKeySummary> {
         let dev_keys = self.developer_keys.read().await;
         let keys = self.keys.read().await;
-        
+
         if let Some(key_hashes) = dev_keys.get(developer_id) {
-            key_hashes.iter()
+            key_hashes
+                .iter()
                 .filter_map(|hash| keys.get(hash))
                 .map(|key| ApiKeySummary {
                     key_id: key.key_id.clone(),
@@ -357,7 +372,7 @@ impl EnhancedApiKeyStore {
 
     /// Hash an API key
     fn hash_key(&self, key: &str) -> String {
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         hasher.update(key.as_bytes());
         format!("{:x}", hasher.finalize())
@@ -455,35 +470,38 @@ pub async fn enhanced_auth_middleware(
         .headers()
         .get("x-api-key")
         .and_then(|v| v.to_str().ok())
-        .ok_or_else(|| HttpError::Api(almanac_api_core::ApiError::Unauthorized(
-            "API key required".to_string()
-        )))?;
+        .ok_or_else(|| {
+            HttpError::Api(crate::types::error::ApiError::Unauthorized(
+                "API key required".to_string(),
+            ))
+        })?;
 
     // Extract operation from request path and method
     let operation = extract_operation(&request);
     let context = extract_permission_context(&request);
 
     // Validate key and permissions
-    match key_store.validate_key_with_permissions(api_key, operation, &context).await {
+    match key_store
+        .validate_key_with_permissions(api_key, operation, &context)
+        .await
+    {
         Ok(key) => {
             // Check quotas
-            if let Err(e) = key_store.check_quotas(&key).await {
-                return Err(HttpError::Api(almanac_api_core::ApiError::TooManyRequests(
-                    format!("Quota exceeded: {}", e)
-                )));
+            if let Err(_e) = key_store.check_quotas(&key).await {
+                return Err(HttpError::Api(
+                    crate::types::error::ApiError::RateLimitExceeded,
+                ));
             }
 
             // Store key info in request extensions for later use
             request.extensions_mut().insert(key);
-            
+
             let response = next.run(request).await;
             Ok(response)
         }
-        Err(e) => {
-            Err(HttpError::Api(almanac_api_core::ApiError::Unauthorized(
-                format!("Authentication failed: {}", e)
-            )))
-        }
+        Err(e) => Err(HttpError::Api(crate::types::error::ApiError::Unauthorized(
+            format!("Authentication failed: {}", e),
+        ))),
     }
 }
 
@@ -512,17 +530,19 @@ fn extract_operation(request: &Request) -> ApiOperation {
 /// Extract permission context from request
 fn extract_permission_context(request: &Request) -> PermissionContext {
     let path = request.uri().path();
-    
+
     // Extract chain and contract from path
     // This is a simplified extraction - would need proper parsing
     let parts: Vec<&str> = path.split('/').collect();
-    
-    let chain = parts.iter()
+
+    let chain = parts
+        .iter()
         .position(|&p| p == "chains")
         .and_then(|i| parts.get(i + 1))
         .map(|s| s.to_string());
-        
-    let contract = parts.iter()
+
+    let contract = parts
+        .iter()
         .position(|&p| p == "contracts")
         .and_then(|i| parts.get(i + 1))
         .map(|s| s.to_string());

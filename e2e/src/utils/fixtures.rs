@@ -108,17 +108,15 @@ pub fn create_valence_base_account_schema<P: AsRef<Path>>(output_path: P) -> Res
             }
         }
     });
-    
-    let content = serde_json::to_string_pretty(&schema)
-        .map_err(|e| E2EError::SetupFailed {
-            reason: format!("Failed to serialize schema: {}", e)
-        })?;
-    
-    fs::write(output_path, content)
-        .map_err(|e| E2EError::SetupFailed {
-            reason: format!("Failed to write schema file: {}", e)
-        })?;
-    
+
+    let content = serde_json::to_string_pretty(&schema).map_err(|e| E2EError::SetupFailed {
+        reason: format!("Failed to serialize schema: {}", e),
+    })?;
+
+    fs::write(output_path, content).map_err(|e| E2EError::SetupFailed {
+        reason: format!("Failed to write schema file: {}", e),
+    })?;
+
     Ok(())
 }
 
@@ -220,24 +218,26 @@ pub fn create_erc20_abi<P: AsRef<Path>>(output_path: P) -> Result<(), E2EError> 
             ]
         }
     ]);
-    
-    let content = serde_json::to_string_pretty(&abi)
-        .map_err(|e| E2EError::SetupFailed {
-            reason: format!("Failed to serialize ABI: {}", e)
-        })?;
-    
-    fs::write(output_path, content)
-        .map_err(|e| E2EError::SetupFailed {
-            reason: format!("Failed to write ABI file: {}", e)
-        })?;
-    
+
+    let content = serde_json::to_string_pretty(&abi).map_err(|e| E2EError::SetupFailed {
+        reason: format!("Failed to serialize ABI: {}", e),
+    })?;
+
+    fs::write(output_path, content).map_err(|e| E2EError::SetupFailed {
+        reason: format!("Failed to write ABI file: {}", e),
+    })?;
+
     Ok(())
 }
 
 /// Create test configuration files
-pub fn create_test_config<P: AsRef<Path>>(output_path: P, config_type: &str) -> Result<(), E2EError> {
+pub fn create_test_config<P: AsRef<Path>>(
+    output_path: P,
+    config_type: &str,
+) -> Result<(), E2EError> {
     let config_content = match config_type {
-        "cosmos" => r#"[cosmos]
+        "cosmos" => {
+            r#"[cosmos]
 output_dir = "./generated"
 default_features = ["client", "storage", "api"]
 
@@ -257,8 +257,10 @@ cors = true
 name_pattern = "valence_base_account_*"
 features = ["client", "storage", "api"]
 namespace_prefix = "valence_"
-"#,
-        "ethereum" => r#"[ethereum]
+"#
+        }
+        "ethereum" => {
+            r#"[ethereum]
 output_dir = "./generated"
 default_features = ["client", "storage", "api"]
 
@@ -278,17 +280,19 @@ cors = true
 name_pattern = "erc20_*"
 features = ["client", "storage", "api"]
 namespace_prefix = "token_"
-"#,
-        _ => return Err(E2EError::SetupFailed {
-            reason: format!("Unknown config type: {}", config_type)
-        })
+"#
+        }
+        _ => {
+            return Err(E2EError::SetupFailed {
+                reason: format!("Unknown config type: {}", config_type),
+            })
+        }
     };
-    
-    fs::write(output_path, config_content)
-        .map_err(|e| E2EError::SetupFailed {
-            reason: format!("Failed to write config file: {}", e)
-        })?;
-    
+
+    fs::write(output_path, config_content).map_err(|e| E2EError::SetupFailed {
+        reason: format!("Failed to write config file: {}", e),
+    })?;
+
     Ok(())
 }
 
@@ -297,24 +301,22 @@ pub fn setup_fixtures(fixtures_dir: &Path) -> Result<(), E2EError> {
     // Create directories
     let schemas_dir = fixtures_dir.join("schemas");
     let abis_dir = fixtures_dir.join("abis");
-    fs::create_dir_all(&schemas_dir)
-        .map_err(|e| E2EError::SetupFailed {
-            reason: format!("Failed to create schemas directory: {}", e)
-        })?;
-    fs::create_dir_all(&abis_dir)
-        .map_err(|e| E2EError::SetupFailed {
-            reason: format!("Failed to create abis directory: {}", e)
-        })?;
-    
+    fs::create_dir_all(&schemas_dir).map_err(|e| E2EError::SetupFailed {
+        reason: format!("Failed to create schemas directory: {}", e),
+    })?;
+    fs::create_dir_all(&abis_dir).map_err(|e| E2EError::SetupFailed {
+        reason: format!("Failed to create abis directory: {}", e),
+    })?;
+
     // Create schema files
     create_valence_base_account_schema(schemas_dir.join("valence_base_account.json"))?;
-    
+
     // Create ABI files
     create_erc20_abi(abis_dir.join("erc20.json"))?;
-    
+
     // Create config files
     create_test_config(fixtures_dir.join("cosmos_config.toml"), "cosmos")?;
     create_test_config(fixtures_dir.join("ethereum_config.toml"), "ethereum")?;
-    
+
     Ok(())
-} 
+}

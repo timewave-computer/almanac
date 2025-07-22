@@ -18,28 +18,17 @@ else
   echo "No Anvil node found running"
 fi
 
-# Stop Reth node
-if pgrep -f "reth" > /dev/null; then
-  echo "Stopping Reth node..."
-  pkill -f "reth" || echo "Failed to stop Reth"
-  if [ -f "/tmp/reth-almanac.pid" ]; then
-    RETH_PID=$(cat /tmp/reth-almanac.pid)
-    kill $RETH_PID 2>/dev/null || echo "Failed to stop Reth with PID $RETH_PID"
-    rm -f /tmp/reth-almanac.pid
+# Stop Geth node
+if pgrep -f "geth" > /dev/null; then
+  echo "Stopping Geth node..."
+  pkill -f "geth" || echo "Failed to stop Geth"
+  if [ -f "/tmp/geth-almanac.pid" ]; then
+    GETH_PID=$(cat /tmp/geth-almanac.pid)
+    kill $GETH_PID 2>/dev/null || echo "Failed to stop Geth with PID $GETH_PID"
+    rm -f /tmp/geth-almanac.pid
   fi
 else
-  echo "No Reth node found running"
-fi
-
-# Stop mock-reth if running
-if pgrep -f "mock-reth" > /dev/null; then
-  echo "Stopping mock-reth server..."
-  pkill -f "mock-reth" || echo "Failed to stop mock-reth"
-  if [ -f "/tmp/mock-reth.pid" ]; then
-    MOCK_RETH_PID=$(cat /tmp/mock-reth.pid)
-    kill $MOCK_RETH_PID 2>/dev/null || echo "Failed to stop mock-reth with PID $MOCK_RETH_PID"
-    rm -f /tmp/mock-reth.pid
-  fi
+  echo "No Geth node found running"
 fi
 
 # Stop wasmd node

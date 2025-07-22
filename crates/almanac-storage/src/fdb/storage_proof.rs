@@ -1,6 +1,6 @@
 //! Storage proof types for FDB storage
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// Storage proof key
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -26,7 +26,7 @@ pub struct StorageProofValue {
 /// Type of storage proof
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ProofType {
-    MerklePatricia,  // Ethereum
-    Iavl,            // Cosmos
-    Smt,             // Sparse Merkle Tree
+    MerklePatricia, // Ethereum
+    Iavl,           // Cosmos
+    Smt,            // Sparse Merkle Tree
 }

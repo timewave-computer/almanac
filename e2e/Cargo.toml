@@ -12,7 +12,7 @@ path = "src/main.rs"
 # Almanac crates
 almanac-core = { path = "../crates/almanac-core" }
 almanac-storage = { path = "../crates/almanac-storage", features = ["fdb"] }
-almanac-chains = { path = "../crates/almanac-chains", features = ["ethereum", "cosmos"] }
+almanac-chains = { path = "../crates/almanac-chains", features = ["solana", "ethereum", "cosmos"] }
 almanac-eventbus = { path = "../crates/almanac-eventbus" }
 almanac-api = { path = "../crates/almanac-api" }
 almanac-config = { path = "../crates/almanac-config" }
@@ -47,17 +47,29 @@ reqwest = { version = "0.11", features = ["json"] }
 # Additional dependencies for new tests
 uuid = { version = "1.0", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
-foundationdb = { version = "0.8", optional = true }
-ethers = "2.0"
-cosmrs = "0.14"
-tendermint-rpc = "0.34"
+foundationdb = { version = "0.8", optional = true, features = ["embedded-fdb-include"] }
+# ethers = "2.0"
+# cosmrs = "0.14"
+# tendermint-rpc = "0.32"
 bytes = "1.5"
 hex = "0.4"
 async-trait = "0.1"
+bs58 = "0.4"
+sha2 = "0.10"
+bincode = "1.3"
+
+# Solana dependencies for real account creation and interaction
+solana-client = "~2.3.0"
+solana-sdk = "~2.3.0"
+solana-program = "~2.3.0"
+solana-system-interface = "1.0"
 
 [dev-dependencies]
 criterion = "0.5"
 
 [features]
 default = []
-fdb = ["almanac-storage/fdb", "foundationdb"] 
+fdb = ["almanac-storage/fdb", "foundationdb"]
+solana = ["almanac-chains/solana"]
+cosmos = ["almanac-chains/cosmos"] 
+ethereum = ["almanac-chains/ethereum"] 

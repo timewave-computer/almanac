@@ -1,7 +1,7 @@
 //! Semantic metadata types for FDB storage
 
-use serde::{Serialize, Deserialize};
 use crate::fdb::ConfidenceLevel;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Semantic metadata key
@@ -89,14 +89,15 @@ impl TrustPolicy {
                 return Some(item);
             }
         }
-        
+
         // If no trusted developer found, apply default behavior
         match self.default_behavior {
             super::trust::TrustBehavior::Accept => interpretations.first(),
             super::trust::TrustBehavior::Reject => None,
             super::trust::TrustBehavior::RequireVerification => {
                 // Return highest confidence interpretation
-                interpretations.iter()
+                interpretations
+                    .iter()
                     .max_by_key(|(_, v)| v.confidence_level)
             }
         }

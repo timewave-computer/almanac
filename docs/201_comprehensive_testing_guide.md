@@ -283,7 +283,7 @@ nix run .#fdb-manage -- status
 cat ./data/fdb.cluster
 
 # Clear test data
-fdbcli --exec "clearrange \x00 \xFF"
+nix run .#fdb-manage -- cli --exec "clearrange \x00 \xFF"
 ```
 
 **Test Timeouts:**

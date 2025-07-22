@@ -8,14 +8,14 @@ use std::time::{Duration, SystemTime};
 #[tokio::test]
 async fn test_finality_processor_creation() {
     let _processor = AdvancedFinalityProcessor::new();
-    
+
     // Test that we can create a processor - processor created successfully
 }
 
 #[tokio::test]
 async fn test_finality_processor_default() {
     let _processor = AdvancedFinalityProcessor::default();
-    
+
     // Test that default implementation works - processor created successfully
 }
 
@@ -42,7 +42,7 @@ async fn test_finality_config_creation() {
         reorg_detection: true,
         auto_finality_timeout: Duration::from_secs(3600),
     };
-    
+
     assert_eq!(config.chain_id, "ethereum");
     assert_eq!(config.finality_requirements.len(), 3);
     assert_eq!(config.max_reorg_depth, 100);
@@ -57,7 +57,7 @@ async fn test_finality_levels() {
         FinalityLevel::Justified,
         FinalityLevel::Finalized,
     ];
-    
+
     // Test that all levels can be created and compared
     for level in levels {
         assert_eq!(level, level.clone());
@@ -70,7 +70,7 @@ async fn test_finality_requirements() {
     let mut requirements = HashMap::new();
     requirements.insert(FinalityLevel::Safe, 6);
     requirements.insert(FinalityLevel::Finalized, 12);
-    
+
     assert_eq!(requirements[&FinalityLevel::Safe], 6);
     assert_eq!(requirements[&FinalityLevel::Finalized], 12);
 }
@@ -78,7 +78,7 @@ async fn test_finality_requirements() {
 #[tokio::test]
 async fn test_add_chain_config() {
     let processor = AdvancedFinalityProcessor::new();
-    
+
     let config = FinalityConfig {
         chain_id: "ethereum".to_string(),
         finality_requirements: {
@@ -96,10 +96,10 @@ async fn test_add_chain_config() {
         reorg_detection: true,
         auto_finality_timeout: Duration::from_secs(3600),
     };
-    
+
     // Test that we can add a chain config
     processor.add_chain_config(config);
-    
+
     // Basic test - we can't easily verify the internal state without getters - config added successfully
 }
 
@@ -116,7 +116,7 @@ async fn test_block_info_creation() {
         event_count: 10,
         metadata: HashMap::new(),
     };
-    
+
     assert_eq!(block_info.number, 1000);
     assert_eq!(block_info.hash, "0x1234567890abcdef");
     assert_eq!(block_info.confirmations, 5);
@@ -147,7 +147,7 @@ async fn test_ethereum_finality_config() {
         reorg_detection: true,
         auto_finality_timeout: Duration::from_secs(1800),
     };
-    
+
     // Test Ethereum-specific finality requirements
     assert_eq!(config.finality_requirements[&FinalityLevel::Confirmed], 1);
     assert_eq!(config.finality_requirements[&FinalityLevel::Safe], 6);
@@ -175,7 +175,7 @@ async fn test_cosmos_finality_config() {
         reorg_detection: false,
         auto_finality_timeout: Duration::from_secs(600),
     };
-    
+
     // Test Cosmos-specific finality requirements
     assert_eq!(config.max_reorg_depth, 0);
     assert_eq!(config.finality_requirements.len(), 2);
@@ -187,7 +187,7 @@ async fn test_finality_level_ordering() {
     assert!(FinalityLevel::Confirmed < FinalityLevel::Safe);
     assert!(FinalityLevel::Safe < FinalityLevel::Justified);
     assert!(FinalityLevel::Justified < FinalityLevel::Finalized);
-    
+
     // Test the all_up_to method
     let levels = FinalityLevel::Finalized.all_up_to();
     assert_eq!(levels.len(), 4);

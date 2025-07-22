@@ -1,15 +1,19 @@
 //! Cosmos chain adapter implementation
 
 use async_trait::async_trait;
-use tendermint_rpc::{client::Client, HttpClient};
-use tracing::{debug, info};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Duration;
-use serde::{Deserialize, Serialize};
+use tendermint::abci::Event;
+use tendermint_rpc::{client::Client, HttpClient};
+use tracing::{debug, info};
 
 use crate::adapters::{
     traits::{ChainAdapter, ChainAdapterError},
-    types::{BlockMetadata, ChainConfig, ChainDataIR, ConsensusMetadata, FinalityStatus, StateChange, StorageProof},
+    types::{
+        BlockMetadata, ChainConfig, ChainDataIR, ConsensusMetadata, FinalityStatus, StateChange,
+        StorageProof,
+    },
 };
 
 /// Cosmos consensus configuration
@@ -95,8 +99,9 @@ pub struct CosmosAdapter {
 impl CosmosAdapter {
     /// Create a new Cosmos adapter
     pub async fn new(config: ChainConfig) -> Result<Self, ChainAdapterError> {
-        let client = HttpClient::new(config.rpc_url.as_str())
-            .map_err(|e| ChainAdapterError::Configuration(format!("Failed to create client: {}", e)))?;
+        let client = HttpClient::new(config.rpc_url.as_str()).map_err(|e| {
+            ChainAdapterError::Configuration(format!("Failed to create client: {}", e))
+        })?;
 
         // Verify connection by getting status
         let status = client
@@ -131,7 +136,8 @@ impl CosmosAdapter {
         let mut state_changes = Vec::new();
 
         // Get block results to access events
-        let block_results = self.client
+        let block_results = self
+            .client
             .block_results(block_height as u32)
             .await
             .map_err(|e| ChainAdapterError::Rpc(format!("Failed to get block results: {}", e)))?;
@@ -146,44 +152,255 @@ impl CosmosAdapter {
                     let mut value = [0u8; 32];
 
                     for attr in &event.attributes {
-                    match attr.key.as_str() {
-                        "store" => address = attr.value.clone(),
-                        "key" => {
-                            let key_bytes = hex::decode(&attr.value)
-                                .unwrap_or_default();
-                            let len = key_bytes.len().min(32);
-                            key[..len].copy_from_slice(&key_bytes[..len]);
+                        match attr.key.as_str() {
+                            "store" => address = attr.value.clone(),
+                            "key" => {
+                                let key_bytes = hex::decode(&attr.value).unwrap_or_default();
+                                let len = key_bytes.len().min(32);
+                                key[..len].copy_from_slice(&key_bytes[..len]);
+                            }
+                            "value" => {
+                                let value_bytes = hex::decode(&attr.value).unwrap_or_default();
+                                let len = value_bytes.len().min(32);
+                                value[..len].copy_from_slice(&value_bytes[..len]);
+                            }
+                            _ => {}
                         }
-                        "value" => {
-                            let value_bytes = hex::decode(&attr.value)
-                                .unwrap_or_default();
-                            let len = value_bytes.len().min(32);
-                            value[..len].copy_from_slice(&value_bytes[..len]);
-                        }
-                        _ => {}
                     }
-                }
 
-                if !address.is_empty() {
-                    state_changes.push(StateChange {
-                        contract_address: address,
-                        storage_slot: key,
-                        previous_value: Some([0u8; 32]), // Cosmos doesn't provide previous value in events
-                        new_value: value,
-                        proof: None,
-                    });
-                }
+                    if !address.is_empty() {
+                        state_changes.push(StateChange {
+                            contract_address: address,
+                            storage_slot: key,
+                            previous_value: Some([0u8; 32]), // Cosmos doesn't provide previous value in events
+                            new_value: value,
+                            proof: None,
+                        });
+                    }
                 }
             }
         }
 
-        // Process transaction events
-        for _tx_result in block_results.txs_results.iter() {
-            // TODO: Process transaction events when the API structure is clarified
-            // For now, we'll leave event processing as a stub
-        }
+        // For minimal implementation, just return basic state changes
 
         Ok(state_changes)
+    }
+
+    /// Process transaction events with updated tendermint API
+    #[allow(dead_code)]
+    async fn process_transaction_events(&self, height: u64, _block_hash: &str) -> Vec<StateChange> {
+        let mut state_changes = Vec::new();
+
+        // Get block results to access transaction events
+        let height_u32 = height as u32;
+        match self.client.block_results(height_u32).await {
+            Ok(block_results) => {
+                debug!("Processing transaction results for Cosmos block {}", height);
+
+                // For simplified implementation, process end block events
+                if let Some(events) = &block_results.end_block_events {
+                    for event in events {
+                        match event.kind.as_str() {
+                            // Wasm contract execution events
+                            "wasm" => {
+                                self.process_wasm_event(event, 0, &mut state_changes);
+                            }
+                            // Bank transfer events
+                            "transfer" => {
+                                self.process_transfer_event(event, 0, &mut state_changes);
+                            }
+                            // Coin spent/received events
+                            "coin_spent" | "coin_received" => {
+                                self.process_coin_event(event, 0, &mut state_changes);
+                            }
+                            // Generic message events
+                            "message" => {
+                                self.process_message_event(event, 0, &mut state_changes);
+                            }
+                            _ => {
+                                // Log unknown event types for debugging
+                                debug!("Unhandled Cosmos event type: {}", event.kind);
+                            }
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                debug!("Failed to get block results for height {}: {}", height, e);
+            }
+        }
+
+        state_changes
+    }
+
+    /// Process wasm contract execution events
+    #[allow(dead_code)]
+    fn process_wasm_event(
+        &self,
+        event: &Event,
+        _tx_index: u64,
+        state_changes: &mut Vec<StateChange>,
+    ) {
+        let mut contract_address = String::new();
+        let mut key = [0u8; 32];
+        let mut value = [0u8; 32];
+
+        for attr in &event.attributes {
+            match attr.key.as_str() {
+                "_contract_address" => contract_address = attr.value.clone(),
+                "key" => {
+                    if let Ok(key_bytes) = hex::decode(&attr.value) {
+                        let len = key_bytes.len().min(32);
+                        key[..len].copy_from_slice(&key_bytes[..len]);
+                    }
+                }
+                "value" => {
+                    if let Ok(value_bytes) = hex::decode(&attr.value) {
+                        let len = value_bytes.len().min(32);
+                        value[..len].copy_from_slice(&value_bytes[..len]);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if !contract_address.is_empty() {
+            state_changes.push(StateChange {
+                contract_address,
+                storage_slot: key,
+                previous_value: None,
+                new_value: value,
+                proof: None,
+            });
+        }
+    }
+
+    /// Process bank transfer events
+    #[allow(dead_code)]
+    fn process_transfer_event(
+        &self,
+        event: &Event,
+        _tx_index: u64,
+        state_changes: &mut Vec<StateChange>,
+    ) {
+        let mut recipient = String::new();
+        let mut amount_bytes = [0u8; 32];
+
+        for attr in &event.attributes {
+            match attr.key.as_str() {
+                "recipient" => recipient = attr.value.clone(),
+                "amount" => {
+                    // Convert amount to bytes (simplified encoding)
+                    let amount_str = attr.value.clone();
+                    if let Ok(amount_num) = amount_str
+                        .chars()
+                        .take_while(|c| c.is_ascii_digit())
+                        .collect::<String>()
+                        .parse::<u64>()
+                    {
+                        let amount_be = amount_num.to_be_bytes();
+                        amount_bytes[..8].copy_from_slice(&amount_be);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if !recipient.is_empty() {
+            state_changes.push(StateChange {
+                contract_address: recipient,
+                storage_slot: [0u8; 32], // Balance slot (simplified)
+                previous_value: None,
+                new_value: amount_bytes,
+                proof: None,
+            });
+        }
+    }
+
+    /// Process coin spent/received events
+    #[allow(dead_code)]
+    fn process_coin_event(
+        &self,
+        event: &Event,
+        _tx_index: u64,
+        state_changes: &mut Vec<StateChange>,
+    ) {
+        let mut spender_or_receiver = String::new();
+        let mut amount_bytes = [0u8; 32];
+
+        for attr in &event.attributes {
+            match attr.key.as_str() {
+                "spender" | "receiver" => spender_or_receiver = attr.value.clone(),
+                "amount" => {
+                    if let Ok(amount_num) = attr
+                        .value
+                        .chars()
+                        .take_while(|c| c.is_ascii_digit())
+                        .collect::<String>()
+                        .parse::<u64>()
+                    {
+                        let amount_be = amount_num.to_be_bytes();
+                        amount_bytes[..8].copy_from_slice(&amount_be);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if !spender_or_receiver.is_empty() {
+            state_changes.push(StateChange {
+                contract_address: spender_or_receiver,
+                storage_slot: [1u8; 32], // Different slot for coin events
+                previous_value: None,
+                new_value: amount_bytes,
+                proof: None,
+            });
+        }
+    }
+
+    /// Process generic message events
+    #[allow(dead_code)]
+    fn process_message_event(
+        &self,
+        event: &Event,
+        _tx_index: u64,
+        state_changes: &mut Vec<StateChange>,
+    ) {
+        // Extract first meaningful attribute as potential state change
+        if let Some(first_attr) = event.attributes.first() {
+            let mut key = [0u8; 32];
+            let mut value = [0u8; 32];
+
+            // Use attribute key as storage key
+            if let Ok(key_bytes) = hex::decode(&first_attr.key) {
+                let len = key_bytes.len().min(32);
+                key[..len].copy_from_slice(&key_bytes[..len]);
+            } else {
+                // Use key string bytes directly
+                let key_bytes = first_attr.key.as_bytes();
+                let len = key_bytes.len().min(32);
+                key[..len].copy_from_slice(&key_bytes[..len]);
+            }
+
+            // Use attribute value as storage value
+            if let Ok(value_bytes) = hex::decode(&first_attr.value) {
+                let len = value_bytes.len().min(32);
+                value[..len].copy_from_slice(&value_bytes[..len]);
+            } else {
+                // Use value string bytes directly
+                let value_bytes = first_attr.value.as_bytes();
+                let len = value_bytes.len().min(32);
+                value[..len].copy_from_slice(&value_bytes[..len]);
+            }
+
+            state_changes.push(StateChange {
+                contract_address: format!("message_{}", event.kind),
+                storage_slot: key,
+                previous_value: None,
+                new_value: value,
+                proof: None,
+            });
+        }
     }
 
     /// Get finality status for Cosmos (instant finality with Tendermint)
@@ -203,13 +420,13 @@ impl ChainAdapter for CosmosAdapter {
     fn chain_id(&self) -> &str {
         &self.chain_id
     }
-    
 
     async fn fetch_block(&self, block_number: u64) -> Result<ChainDataIR, ChainAdapterError> {
         debug!("Fetching Cosmos block {}", block_number);
 
         // Get block
-        let block_response = self.client
+        let block_response = self
+            .client
             .block(block_number as u32)
             .await
             .map_err(|e| ChainAdapterError::Rpc(format!("Failed to get block: {}", e)))?;
@@ -218,11 +435,11 @@ impl ChainAdapter for CosmosAdapter {
         let header = &block.header;
 
         // Get latest height for finality calculation
-        let latest_response = self.client
-            .latest_block()
-            .await
-            .map_err(|e| ChainAdapterError::Rpc(format!("Failed to get latest block: {}", e)))?;
-        
+        let latest_response =
+            self.client.latest_block().await.map_err(|e| {
+                ChainAdapterError::Rpc(format!("Failed to get latest block: {}", e))
+            })?;
+
         let latest_height = latest_response.block.header.height.value();
 
         // Extract state changes
@@ -235,25 +452,58 @@ impl ChainAdapter for CosmosAdapter {
         let block_metadata = BlockMetadata {
             block_height: block_number,
             block_hash: hex::encode(block_response.block_id.hash.as_bytes()),
-            parent_hash: hex::encode(header.last_block_id.as_ref().map(|id| id.hash.as_bytes()).unwrap_or(&[0u8; 32])),
+            parent_hash: hex::encode(
+                header
+                    .last_block_id
+                    .as_ref()
+                    .map(|id| id.hash.as_bytes())
+                    .unwrap_or(&[0u8; 32]),
+            ),
             timestamp: header.time.unix_timestamp() as u64,
             state_root: hex::encode(header.app_hash.as_bytes()),
             receipts_root: None, // Not applicable for Cosmos
-            transactions_root: Some(hex::encode(header.data_hash.as_ref().map(|h| h.as_bytes()).unwrap_or(&[0u8; 32]))),
+            transactions_root: Some(hex::encode(
+                header
+                    .data_hash
+                    .as_ref()
+                    .map(|h| h.as_bytes())
+                    .unwrap_or(&[0u8; 32]),
+            )),
         };
 
         // Build consensus metadata
         let mut extra = HashMap::new();
-        extra.insert("consensus_hash".to_string(), serde_json::json!(hex::encode(header.consensus_hash.as_bytes())));
-        extra.insert("next_validators_hash".to_string(), serde_json::json!(hex::encode(header.next_validators_hash.as_bytes())));
-        extra.insert("evidence_hash".to_string(), serde_json::json!(header.evidence_hash.as_ref().map(|h| hex::encode(h.as_bytes()))));
-        extra.insert("last_results_hash".to_string(), serde_json::json!(header.last_results_hash.as_ref().map(|h| hex::encode(h.as_bytes()))));
-        extra.insert("validators_hash".to_string(), serde_json::json!(hex::encode(header.validators_hash.as_bytes())));
-        
+        extra.insert(
+            "consensus_hash".to_string(),
+            serde_json::json!(hex::encode(header.consensus_hash.as_bytes())),
+        );
+        extra.insert(
+            "next_validators_hash".to_string(),
+            serde_json::json!(hex::encode(header.next_validators_hash.as_bytes())),
+        );
+        extra.insert(
+            "evidence_hash".to_string(),
+            serde_json::json!(header
+                .evidence_hash
+                .as_ref()
+                .map(|h| hex::encode(h.as_bytes()))),
+        );
+        extra.insert(
+            "last_results_hash".to_string(),
+            serde_json::json!(header
+                .last_results_hash
+                .as_ref()
+                .map(|h| hex::encode(h.as_bytes()))),
+        );
+        extra.insert(
+            "validators_hash".to_string(),
+            serde_json::json!(hex::encode(header.validators_hash.as_bytes())),
+        );
+
         let consensus_metadata = ConsensusMetadata {
             validator_set_hash: Some(hex::encode(header.validators_hash.as_bytes())),
             proposer: Some(hex::encode(header.proposer_address.as_bytes())),
-            round: None, // Would need to extract from commit info
+            round: None,      // Would need to extract from commit info
             signatures: None, // Would need to extract from block signatures
             extra,
         };
@@ -267,18 +517,21 @@ impl ChainAdapter for CosmosAdapter {
     }
 
     async fn get_latest_block(&self) -> Result<u64, ChainAdapterError> {
-        let response = self.client
-            .latest_block()
-            .await
-            .map_err(|e| ChainAdapterError::Rpc(format!("Failed to get latest block: {}", e)))?;
+        let response =
+            self.client.latest_block().await.map_err(|e| {
+                ChainAdapterError::Rpc(format!("Failed to get latest block: {}", e))
+            })?;
 
         Ok(response.block.header.height.value())
     }
 
-    
-    async fn check_block_finality(&self, block_number: u64, current_height: u64) -> Result<FinalityStatus, ChainAdapterError> {
+    async fn check_block_finality(
+        &self,
+        block_number: u64,
+        current_height: u64,
+    ) -> Result<FinalityStatus, ChainAdapterError> {
         let confirmations = current_height.saturating_sub(block_number);
-        
+
         Ok(match confirmations {
             0 => FinalityStatus::Pending,
             1 => FinalityStatus::Safe,
@@ -289,7 +542,7 @@ impl ChainAdapter for CosmosAdapter {
     async fn is_block_finalized(&self, block_number: u64) -> Result<bool, ChainAdapterError> {
         let latest = self.get_latest_block().await?;
         let confirmations = latest.saturating_sub(block_number);
-        
+
         // Cosmos achieves finality quickly with Tendermint consensus
         Ok(confirmations >= 2)
     }
@@ -303,12 +556,16 @@ impl ChainAdapter for CosmosAdapter {
         // Cosmos doesn't provide storage proofs in the same way as Ethereum
         // This would need to be implemented based on the specific Cosmos SDK modules
         Err(ChainAdapterError::Unsupported(
-            "Storage proofs not yet implemented for Cosmos".to_string()
+            "Storage proofs not yet implemented for Cosmos".to_string(),
         ))
     }
 
-    async fn get_block_metadata(&self, block_number: u64) -> Result<BlockMetadata, ChainAdapterError> {
-        let block_response = self.client
+    async fn get_block_metadata(
+        &self,
+        block_number: u64,
+    ) -> Result<BlockMetadata, ChainAdapterError> {
+        let block_response = self
+            .client
             .block(block_number as u32)
             .await
             .map_err(|e| ChainAdapterError::Rpc(format!("Failed to get block: {}", e)))?;
@@ -316,34 +573,51 @@ impl ChainAdapter for CosmosAdapter {
         let block = block_response.block;
         let header = &block.header;
 
-        let latest_response = self.client
-            .latest_block()
-            .await
-            .map_err(|e| ChainAdapterError::Rpc(format!("Failed to get latest block: {}", e)))?;
-        
+        let latest_response =
+            self.client.latest_block().await.map_err(|e| {
+                ChainAdapterError::Rpc(format!("Failed to get latest block: {}", e))
+            })?;
+
         let latest_height = latest_response.block.header.height.value();
         let _finality_status = self.get_finality_status(block_number, latest_height);
 
         Ok(BlockMetadata {
             block_height: block_number,
             block_hash: hex::encode(block_response.block_id.hash.as_bytes()),
-            parent_hash: hex::encode(header.last_block_id.as_ref().map(|id| id.hash.as_bytes()).unwrap_or(&[0u8; 32])),
+            parent_hash: hex::encode(
+                header
+                    .last_block_id
+                    .as_ref()
+                    .map(|id| id.hash.as_bytes())
+                    .unwrap_or(&[0u8; 32]),
+            ),
             timestamp: header.time.unix_timestamp() as u64,
             state_root: hex::encode(header.app_hash.as_bytes()),
             receipts_root: None,
-            transactions_root: Some(hex::encode(header.data_hash.as_ref().map(|h| h.as_bytes()).unwrap_or(&[0u8; 32]))),
+            transactions_root: Some(hex::encode(
+                header
+                    .data_hash
+                    .as_ref()
+                    .map(|h| h.as_bytes())
+                    .unwrap_or(&[0u8; 32]),
+            )),
         })
     }
 
-    async fn extract_state_changes(&self, block_number: u64) -> Result<Vec<StateChange>, ChainAdapterError> {
+    async fn extract_state_changes(
+        &self,
+        block_number: u64,
+    ) -> Result<Vec<StateChange>, ChainAdapterError> {
         self.extract_state_changes_from_block(block_number).await
     }
 
-    async fn subscribe_blocks(&self) -> Result<Box<dyn futures::Stream<Item = u64> + Send>, ChainAdapterError> {
+    async fn subscribe_blocks(
+        &self,
+    ) -> Result<Box<dyn futures::Stream<Item = u64> + Send>, ChainAdapterError> {
         // WebSocket subscription would be implemented here
         // For now, return unsupported
         Err(ChainAdapterError::Unsupported(
-            "Block subscription not yet implemented for Cosmos".to_string()
+            "Block subscription not yet implemented for Cosmos".to_string(),
         ))
     }
 }
@@ -380,8 +654,17 @@ mod tests {
             },
         };
 
-        assert_eq!(adapter.get_finality_status(100, 100), FinalityStatus::Finalized);
-        assert_eq!(adapter.get_finality_status(100, 101), FinalityStatus::Finalized);
-        assert_eq!(adapter.get_finality_status(101, 100), FinalityStatus::Pending);
+        assert_eq!(
+            adapter.get_finality_status(100, 100),
+            FinalityStatus::Finalized
+        );
+        assert_eq!(
+            adapter.get_finality_status(100, 101),
+            FinalityStatus::Finalized
+        );
+        assert_eq!(
+            adapter.get_finality_status(101, 100),
+            FinalityStatus::Pending
+        );
     }
 }

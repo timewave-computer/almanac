@@ -13,22 +13,22 @@ pub type TestResult<T> = Result<T, E2EError>;
 pub enum E2EError {
     #[error("CLI command failed: {command}")]
     CliCommandFailed { command: String },
-    
+
     #[error("Generated code compilation failed: {details}")]
     CompilationFailed { details: String },
-    
+
     #[error("File validation failed: {file} - {reason}")]
     FileValidationFailed { file: String, reason: String },
-    
+
     #[error("Test setup failed: {reason}")]
     SetupFailed { reason: String },
-    
+
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-    
+
     #[error("JSON parsing error: {0}")]
     Json(#[from] serde_json::Error),
-    
+
     #[error("TOML parsing error: {0}")]
     Toml(#[from] toml::de::Error),
 }
@@ -38,22 +38,22 @@ pub enum E2EError {
 pub struct TestConfig {
     /// Path to the almanac binary
     pub almanac_binary: PathBuf,
-    
+
     /// Temporary directory for test outputs
     pub temp_dir: PathBuf,
-    
+
     /// Timeout for CLI commands (in seconds)
     pub command_timeout: u64,
-    
+
     /// Whether to clean up test artifacts
     pub cleanup: bool,
-    
+
     /// Verbose output for debugging
     pub verbose: bool,
-    
+
     /// Test fixtures directory
     pub fixtures_dir: PathBuf,
-    
+
     /// FoundationDB cluster file path
     pub fdb_cluster_file: String,
 }
@@ -109,7 +109,7 @@ impl TestOutcome {
             error: None,
         }
     }
-    
+
     pub fn failure(name: String, duration: std::time::Duration, error: String) -> Self {
         Self {
             name,
@@ -133,15 +133,15 @@ impl TestSuiteResults {
         self.total_duration += result.duration;
         self.results.push(result);
     }
-    
+
     pub fn success_count(&self) -> usize {
         self.results.iter().filter(|r| r.success).count()
     }
-    
+
     pub fn failure_count(&self) -> usize {
         self.results.iter().filter(|r| !r.success).count()
     }
-    
+
     pub fn success_rate(&self) -> f64 {
         if self.results.is_empty() {
             0.0
@@ -149,4 +149,4 @@ impl TestSuiteResults {
             self.success_count() as f64 / self.results.len() as f64
         }
     }
-} 
+}

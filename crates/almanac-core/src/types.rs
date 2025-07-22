@@ -1,6 +1,6 @@
 //! Core types used throughout Almanac
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// Chain identifier
@@ -12,7 +12,7 @@ impl ChainId {
     pub fn new(id: impl Into<String>) -> Self {
         Self(id.into())
     }
-    
+
     /// Get the chain ID as a string slice
     pub fn as_str(&self) -> &str {
         &self.0

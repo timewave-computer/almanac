@@ -1,37 +1,30 @@
 //! Logging and tracing middleware
 
-use axum::{
-    extract::Request,
-    middleware::Next,
-    response::Response,
-};
+use axum::{extract::Request, middleware::Next, response::Response};
 use std::time::Instant;
 
 /// Log request details
-pub async fn log_request(
-    request: Request,
-    next: Next,
-) -> Response {
+pub async fn log_request(request: Request, next: Next) -> Response {
     let method = request.method().clone();
     let uri = request.uri().clone();
     let start = Instant::now();
-    
+
     // Create span for this request
     let span = tracing::info_span!(
         "http_request",
         method = %method,
         uri = %uri,
     );
-    
+
     // Execute request within span
     let response = {
         let _guard = span.enter();
         next.run(request).await
     };
-    
+
     let status = response.status();
     let duration = start.elapsed();
-    
+
     // Log completion
     tracing::info!(
         target: "http",
@@ -39,7 +32,7 @@ pub async fn log_request(
         duration_ms = %duration.as_millis(),
         "Request completed"
     );
-    
+
     response
 }
 

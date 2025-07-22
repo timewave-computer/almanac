@@ -1,39 +1,38 @@
+use crate::types::{
+    auth::{context::SecurityContext, Operation},
+    ApiResponseBuilder, BlockNumber, ChainId, EventFilter, PaginatedResponse,
+};
+use crate::{error::HttpError, state::AppState};
 use axum::{
-    extract::{Path, Query, State, Extension},
+    extract::{Extension, Path, Query, State},
     response::IntoResponse,
     Json,
 };
 use serde::Deserialize;
-use utoipa::{ToSchema, IntoParams};
-use crate::types::{
-    ApiResponseBuilder, EventFilter, ChainId, BlockNumber,
-    PaginatedResponse,
-    auth::{context::SecurityContext, Operation},
-};
-use crate::{state::AppState, error::HttpError};
+use utoipa::{IntoParams, ToSchema};
 
 /// Query parameters for event listing
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct EventQuery {
     /// Filter by chain
     pub chain: Option<String>,
-    
+
     /// Starting block number
     pub from_block: Option<BlockNumber>,
-    
+
     /// Ending block number  
     pub to_block: Option<BlockNumber>,
-    
+
     /// Filter by event type
     pub event_type: Option<String>,
-    
+
     /// Filter by contract address
     pub address: Option<String>,
-    
+
     /// Pagination limit
     #[serde(default = "default_limit")]
     pub limit: u32,
-    
+
     /// Pagination offset
     #[serde(default)]
     pub offset: u32,
@@ -75,43 +74,43 @@ pub async fn list_events(
         .map_err(HttpError::from)?;
     // Build filter from query parameters
     let mut filter = EventFilter::new();
-    
+
     if let Some(chain) = &query.chain {
         // Check chain access
-        ctx.require_chain_access(chain)
-            .map_err(HttpError::from)?;
+        ctx.require_chain_access(chain).map_err(HttpError::from)?;
         filter = filter.chain(chain.clone());
     }
-    
+
     if let (Some(from), Some(to)) = (query.from_block, query.to_block) {
         filter = filter.block_range(from, to);
     }
-    
+
     if let Some(event_type) = query.event_type {
         filter = filter.event_type(event_type);
     }
-    
+
     if let Some(address) = &query.address {
         // Check contract access if filtering by address
         ctx.require_contract_access(address)
             .map_err(HttpError::from)?;
         filter = filter.address(address.clone());
     }
-    
+
     filter = filter.paginate(query.limit, query.offset);
-    
+
     // Get events from storage
-    let events = state.storage
+    let events = state
+        .storage
         .get_events(filter.clone())
         .await
         .map_err(HttpError::Api)?;
-    
+
     // Check if there are more results
     let _has_more = events.len() >= query.limit as usize;
-    
+
     // Ensure limit is not zero to prevent divide by zero
     let safe_limit = if query.limit == 0 { 1 } else { query.limit };
-    
+
     // Create paginated response
     let paginated = PaginatedResponse::new(
         events,
@@ -119,11 +118,11 @@ pub async fn list_events(
         query.offset / safe_limit,
         safe_limit,
     );
-    
+
     let response = ApiResponseBuilder::new(paginated)
         .version(&state.version)
         .build();
-    
+
     Ok(Json(response))
 }
 
@@ -150,24 +149,27 @@ pub async fn get_event(
     // Check basic read permission
     ctx.require_permission(Operation::ReadEvents())
         .map_err(HttpError::from)?;
-    
+
     // For now, we'll search through all events to find by ID
     // In production, you'd want a more efficient lookup
     let filter = EventFilter::new();
-    let events = state.storage
+    let events = state
+        .storage
         .get_events(filter)
         .await
         .map_err(HttpError::Api)?;
-    
-    let event = events
-        .into_iter()
-        .find(|e| e.id == id)
-        .ok_or_else(|| HttpError::Api(crate::types::ApiError::NotFound(format!("Event {} not found", id))))?;
-    
+
+    let event = events.into_iter().find(|e| e.id == id).ok_or_else(|| {
+        HttpError::Api(crate::types::ApiError::NotFound(format!(
+            "Event {} not found",
+            id
+        )))
+    })?;
+
     let response = ApiResponseBuilder::new(event)
         .version(&state.version)
         .build();
-    
+
     Ok(Json(response))
 }
 
@@ -221,24 +223,23 @@ pub async fn get_latest_block(
     // Check read permission and chain access
     ctx.require_permission(Operation::ReadEvents())
         .map_err(HttpError::from)?;
-    ctx.require_chain_access(&chain)
-        .map_err(HttpError::from)?;
+    ctx.require_chain_access(&chain).map_err(HttpError::from)?;
     let chain_id = ChainId::from(chain);
-    
-    let latest_block = state.storage
+
+    let latest_block = state
+        .storage
         .get_latest_block(&chain_id)
         .await
         .map_err(HttpError::Api)?;
-    
-    
+
     let data = LatestBlockResponse {
         chain: chain_id.to_string(),
         latest_block,
     };
-    
+
     let response = ApiResponseBuilder::new(data)
         .version(&state.version)
         .build();
-    
+
     Ok(Json(response))
 }

@@ -19,6 +19,7 @@ fdb = ["almanac-storage/fdb"]
 # Core types
 almanac-core = { path = "../almanac-core" }
 almanac-storage = { path = "../almanac-storage" }
+almanac-chains = { path = "../almanac-chains" }
 
 # Web framework
 axum = { workspace = true }
@@ -51,6 +52,9 @@ uuid = { workspace = true, features = ["v4", "serde"] }
 # Encoding
 hex = { workspace = true }
 base64 = { workspace = true }
+
+# Cryptography
+sha2 = { workspace = true }
 
 # HTTP client for auth service
 reqwest = { version = "0.11", features = ["json"] }

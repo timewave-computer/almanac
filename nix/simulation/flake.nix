@@ -54,7 +54,6 @@
             # Generate configuration for simulation environment
             
             CHAINS="''${1:-ethereum,cosmos,fdb}"  # Default chains to run
-            OUTPUT_DIR="''${2:-./config/simulation}"
             
             # Set up environment variables
             DATA_DIR="$PWD/data"
@@ -63,9 +62,9 @@
             
             echo "Generating simulation configuration..."
             echo "Chains: $CHAINS"
-            echo "Output directory: $OUTPUT_DIR"
+            echo "Configuration directory: $CONFIG_DIR"
             
-            mkdir -p "$OUTPUT_DIR"
+            mkdir -p "$CONFIG_DIR"
             
             # Generate consolidated TOML configuration
             cat > "$CONFIG_DIR/simulation.toml" << EOF
@@ -158,71 +157,21 @@
             EOF
             fi
             
-            # Generate main simulation config (for legacy compatibility)
-            cat > "$OUTPUT_DIR/simulation.json" << EOF
-            {
-              "simulation": {
-                "name": "almanac-local-cluster",
-                "chains": [$(echo "$CHAINS" | sed 's/,/", "/g' | sed 's/^/"/' | sed 's/$/"/')]
-              },
-              "services": {
-                "foundationdb": {
-                  "enabled": $(echo "$CHAINS" | grep -q "fdb" && echo "true" || echo "false"),
-                  "cluster_file": "$DATA_DIR/fdb.cluster",
-                  "data_dir": "$DATA_DIR/foundationdb",
-                  "log_dir": "$LOGS_DIR/foundationdb"
-                },
-                "ethereum": {
-                  "enabled": $(echo "$CHAINS" | grep -q "ethereum" && echo "true" || echo "false"),
-                  "node_type": "anvil",
-                  "rpc_port": 8545,
-                  "ws_port": 8546,
-                  "chain_id": 31337,
-                  "data_dir": "$DATA_DIR/ethereum",
-                  "log_file": "$LOGS_DIR/anvil.log"
-                },
-                "cosmos": {
-                  "enabled": $(echo "$CHAINS" | grep -q "cosmos" && echo "true" || echo "false"),
-                  "node_type": "neutron",
-                  "rpc_port": 26657,
-                  "grpc_port": 9090,
-                  "api_port": 1317,
-                  "chain_id": "test-1",
-                  "data_dir": "$DATA_DIR/cosmos",
-                  "log_file": "$LOGS_DIR/neutron.log"
-                },
-                "solana": {
-                  "enabled": $(echo "$CHAINS" | grep -q "solana" && echo "true" || echo "false"),
-                  "node_type": "test-validator",
-                  "rpc_port": 8899,
-                  "ws_port": 8900,
-                  "data_dir": "$DATA_DIR/solana",
-                  "log_file": "$LOGS_DIR/solana.log"
-                }
-              },
-              "almanac": {
-                "indexer_config": "$CONFIG_DIR/simulation.toml",
-                "api_port": 3000,
-                "api_log_file": "$LOGS_DIR/almanac-api.log"
-              }
-            }
-            EOF
             
-            echo "Configuration generated successfully in $OUTPUT_DIR"
+            echo "Configuration generated successfully"
             echo "Consolidated TOML configuration: $CONFIG_DIR/simulation.toml"
-            echo "Legacy JSON configuration: $OUTPUT_DIR/simulation.json"
           '';
         };
 
         # Individual node launchers
         ethereumLauncher = pkgs.writeShellApplication {
           name = "sim-ethereum";
-          runtimeInputs = [ ethereum-packages.forge pkgs.curl pkgs.jq pkgs.envsubst ];
+          runtimeInputs = [ ethereum-packages.forge pkgs.curl pkgs.toml2json pkgs.jq pkgs.envsubst ];
           text = ''
             # Launch Ethereum node (Anvil)
             
             ACTION="''${1:-start}"  # start, stop, status
-            CONFIG_FILE="''${2:-./config/simulation/simulation.json}"
+            CONFIG_FILE="''${2:-./config/simulation.toml}"
             
             if [ ! -f "$CONFIG_FILE" ]; then
               echo "Error: Configuration file not found: $CONFIG_FILE"
@@ -230,12 +179,12 @@
               exit 1
             fi
             
-            # Read configuration
-            ETH_ENABLED=$(jq -r '.services.ethereum.enabled' "$CONFIG_FILE")
-            RPC_PORT=$(jq -r '.services.ethereum.rpc_port' "$CONFIG_FILE")
-            CHAIN_ID=$(jq -r '.services.ethereum.chain_id' "$CONFIG_FILE")
-            DATA_DIR=$(jq -r '.services.ethereum.data_dir' "$CONFIG_FILE" | envsubst)
-            LOG_FILE=$(jq -r '.services.ethereum.log_file' "$CONFIG_FILE" | envsubst)
+            # Read configuration from TOML
+            ETH_ENABLED=$(toml2json < "$CONFIG_FILE" | jq -r '.services.ethereum.enabled')
+            RPC_PORT=$(toml2json < "$CONFIG_FILE" | jq -r '.services.ethereum.rpc_port')
+            CHAIN_ID=$(toml2json < "$CONFIG_FILE" | jq -r '.services.ethereum.chain_id')
+            DATA_DIR=$(toml2json < "$CONFIG_FILE" | jq -r '.services.ethereum.data_dir' | envsubst)
+            LOG_FILE=$(toml2json < "$CONFIG_FILE" | jq -r '.services.ethereum.log_file' | envsubst)
             
             if [ "$ETH_ENABLED" != "true" ]; then
               echo "Ethereum not enabled in configuration"
@@ -323,12 +272,12 @@
 
         cosmosLauncher = pkgs.writeShellApplication {
           name = "sim-cosmos";
-          runtimeInputs = [ cosmos-packages.neutron pkgs.curl pkgs.jq pkgs.envsubst ];
+          runtimeInputs = [ cosmos-packages.neutron pkgs.curl pkgs.toml2json pkgs.jq pkgs.envsubst ];
           text = ''
             # Launch Cosmos node (Neutron)
             
             ACTION="''${1:-start}"  # start, stop, status  
-            CONFIG_FILE="''${2:-./config/simulation/simulation.json}"
+            CONFIG_FILE="''${2:-./config/simulation.toml}"
             
             if [ ! -f "$CONFIG_FILE" ]; then
               echo "Error: Configuration file not found: $CONFIG_FILE"
@@ -336,14 +285,14 @@
               exit 1
             fi
             
-            # Read configuration
-            COSMOS_ENABLED=$(jq -r '.services.cosmos.enabled' "$CONFIG_FILE")
-            RPC_PORT=$(jq -r '.services.cosmos.rpc_port' "$CONFIG_FILE")
-            GRPC_PORT=$(jq -r '.services.cosmos.grpc_port' "$CONFIG_FILE")
-            API_PORT=$(jq -r '.services.cosmos.api_port' "$CONFIG_FILE")
-            CHAIN_ID=$(jq -r '.services.cosmos.chain_id' "$CONFIG_FILE")
-            DATA_DIR=$(jq -r '.services.cosmos.data_dir' "$CONFIG_FILE" | envsubst)
-            LOG_FILE=$(jq -r '.services.cosmos.log_file' "$CONFIG_FILE" | envsubst)
+            # Read configuration from TOML
+            COSMOS_ENABLED=$(toml2json < "$CONFIG_FILE" | jq -r '.services.cosmos.enabled')
+            RPC_PORT=$(toml2json < "$CONFIG_FILE" | jq -r '.services.cosmos.rpc_port')
+            GRPC_PORT=$(toml2json < "$CONFIG_FILE" | jq -r '.services.cosmos.grpc_port')
+            API_PORT=$(toml2json < "$CONFIG_FILE" | jq -r '.services.cosmos.api_port')
+            CHAIN_ID=$(toml2json < "$CONFIG_FILE" | jq -r '.services.cosmos.chain_id')
+            DATA_DIR=$(toml2json < "$CONFIG_FILE" | jq -r '.services.cosmos.data_dir' | envsubst)
+            LOG_FILE=$(toml2json < "$CONFIG_FILE" | jq -r '.services.cosmos.log_file' | envsubst)
             
             if [ "$COSMOS_ENABLED" != "true" ]; then
               echo "Cosmos not enabled in configuration"
@@ -450,12 +399,12 @@
         solanaLauncher = if (pkgs.stdenv.system != "aarch64-linux") then
           pkgs.writeShellApplication {
             name = "sim-solana";
-            runtimeInputs = [ solana-packages.solana-tools pkgs.curl pkgs.jq pkgs.envsubst ];
+            runtimeInputs = [ solana-packages.solana-tools pkgs.curl pkgs.toml2json pkgs.jq pkgs.envsubst ];
             text = ''
               # Launch Solana node (Test Validator)
               
               ACTION="''${1:-start}"  # start, stop, status
-              CONFIG_FILE="''${2:-./config/simulation/simulation.json}"
+              CONFIG_FILE="''${2:-./config/simulation.toml}"
               
               if [ ! -f "$CONFIG_FILE" ]; then
                 echo "Error: Configuration file not found: $CONFIG_FILE"
@@ -463,12 +412,12 @@
                 exit 1
               fi
               
-              # Read configuration
-              SOLANA_ENABLED=$(jq -r '.services.solana.enabled' "$CONFIG_FILE")
-              RPC_PORT=$(jq -r '.services.solana.rpc_port' "$CONFIG_FILE")
-              # WS_PORT=$(jq -r '.services.solana.ws_port' "$CONFIG_FILE")  # Currently unused
-              DATA_DIR=$(jq -r '.services.solana.data_dir' "$CONFIG_FILE" | envsubst)
-              LOG_FILE=$(jq -r '.services.solana.log_file' "$CONFIG_FILE" | envsubst)
+              # Read configuration from TOML
+              SOLANA_ENABLED=$(toml2json < "$CONFIG_FILE" | jq -r '.services.solana.enabled')
+              RPC_PORT=$(toml2json < "$CONFIG_FILE" | jq -r '.services.solana.rpc_port')
+              # WS_PORT=$(toml2json < "$CONFIG_FILE" | jq -r '.services.solana.ws_port')  # Currently unused
+              DATA_DIR=$(toml2json < "$CONFIG_FILE" | jq -r '.services.solana.data_dir' | envsubst)
+              LOG_FILE=$(toml2json < "$CONFIG_FILE" | jq -r '.services.solana.log_file' | envsubst)
               
               if [ "$SOLANA_ENABLED" != "true" ]; then
                 echo "Solana not enabled in configuration"
@@ -564,12 +513,12 @@
         # Almanac API launcher
         almanacApiLauncher = pkgs.writeShellApplication {
           name = "sim-almanac-api";
-          runtimeInputs = [ pkgs.curl pkgs.jq pkgs.envsubst ];
+          runtimeInputs = [ pkgs.curl pkgs.toml2json pkgs.jq pkgs.envsubst ];
           text = ''
             # Launch Almanac API server
             
             ACTION="''${1:-start}"  # start, stop, status
-            CONFIG_FILE="''${2:-./config/simulation/simulation.json}"
+            CONFIG_FILE="''${2:-./config/simulation.toml}"
             
             if [ ! -f "$CONFIG_FILE" ]; then
               echo "Error: Configuration file not found: $CONFIG_FILE"
@@ -577,9 +526,9 @@
               exit 1
             fi
             
-            # Read configuration
-            API_PORT=$(jq -r '.almanac.api_port' "$CONFIG_FILE")
-            API_LOG_FILE=$(jq -r '.almanac.api_log_file' "$CONFIG_FILE" | envsubst)
+            # Read configuration from TOML
+            API_PORT=$(toml2json < "$CONFIG_FILE" | jq -r '.almanac.api_port')
+            API_LOG_FILE=$(toml2json < "$CONFIG_FILE" | jq -r '.almanac.api_log_file' | envsubst)
             
             PID_FILE="/tmp/sim-almanac-api.pid"
             
@@ -605,6 +554,13 @@
                 export ENABLE_CORS="true"
                 export CORS_ORIGINS="*"
                 export RUST_LOG="almanac_api=info,tower_http=debug"
+                
+                # Set FoundationDB library path for runtime
+                ${if pkgs.stdenv.isDarwin then ''
+                  export DYLD_LIBRARY_PATH="${fdb-packages.foundationdb}/lib:''${DYLD_LIBRARY_PATH:-}"
+                '' else ''
+                  export LD_LIBRARY_PATH="${fdb-packages.foundationdb}/lib:''${LD_LIBRARY_PATH:-}"
+                ''}
                 
                 # Start API server
                 cargo run --bin almanac-api --features fdb \
@@ -662,12 +618,12 @@
         # Almanac indexer launcher
         almanacIndexerLauncher = pkgs.writeShellApplication {
           name = "sim-almanac-indexer";
-          runtimeInputs = [ pkgs.curl pkgs.jq pkgs.envsubst ];
+          runtimeInputs = [ pkgs.curl pkgs.toml2json pkgs.jq pkgs.envsubst ];
           text = ''
             # Launch Almanac indexer service
             
             ACTION="''${1:-start}"  # start, stop, status
-            CONFIG_FILE="''${2:-./config/simulation/simulation.json}"
+            CONFIG_FILE="''${2:-./config/simulation.toml}"
             
             if [ ! -f "$CONFIG_FILE" ]; then
               echo "Error: Configuration file not found: $CONFIG_FILE"
@@ -675,8 +631,8 @@
               exit 1
             fi
             
-            # Read configuration
-            INDEXER_CONFIG=$(jq -r '.almanac.indexer_config' "$CONFIG_FILE" | envsubst)
+            # Read configuration from TOML
+            INDEXER_CONFIG=$(toml2json < "$CONFIG_FILE" | jq -r '.almanac.indexer_config' | envsubst)
             
             PID_FILE="/tmp/sim-almanac-indexer.pid"
             LOG_FILE="$PWD/logs/almanac-indexer.log"
@@ -697,6 +653,13 @@
                 # Set environment variables for indexer
                 export RUST_LOG="almanac_indexing=info,almanac_core=debug"
                 export ALMANAC_CONFIG="$INDEXER_CONFIG"
+                
+                # Set FoundationDB library path for runtime
+                ${if pkgs.stdenv.isDarwin then ''
+                  export DYLD_LIBRARY_PATH="${fdb-packages.foundationdb}/lib:''${DYLD_LIBRARY_PATH:-}"
+                '' else ''
+                  export LD_LIBRARY_PATH="${fdb-packages.foundationdb}/lib:''${LD_LIBRARY_PATH:-}"
+                ''}
                 
                 # Start indexer service
                 cargo run --bin almanac-indexing --features fdb \
@@ -747,6 +710,7 @@
             almanacIndexerLauncher
             fdb-packages.fdb-manage
             pkgs.curl
+            pkgs.toml2json
             pkgs.jq
             pkgs.envsubst
           ];
@@ -755,7 +719,7 @@
             
             ACTION="''${1:-help}"
             CHAINS="''${2:-ethereum,cosmos,fdb}"  # Default chains
-            CONFIG_FILE="./config/simulation/simulation.json"
+            CONFIG_FILE="./config/simulation.toml"
             
             case "$ACTION" in
               "init")
@@ -763,7 +727,7 @@
                 echo "Chains: $CHAINS"
                 
                 # Generate configuration
-                sim-config "$CHAINS" "./config/simulation"
+                sim-config "$CHAINS"
                 
                 echo "Simulation cluster initialized"
                 echo "Configuration: $CONFIG_FILE"
@@ -779,14 +743,14 @@
                 
                 if [ ! -f "$CONFIG_FILE" ]; then
                   echo "Configuration not found. Running init first..."
-                  sim-config "$CHAINS" "./config/simulation"
+                  sim-config "$CHAINS"
                 fi
                 
                 # Create directories
                 mkdir -p data logs config
                 
                 # Start FoundationDB first (if enabled)
-                if jq -e '.services.foundationdb.enabled == true' "$CONFIG_FILE" > /dev/null; then
+                if toml2json < "$CONFIG_FILE" | jq -e '.services.foundationdb.enabled == true' > /dev/null; then
                   echo "Starting FoundationDB..."
                   fdb-manage start || echo "FoundationDB already running or failed to start"
                 fi
@@ -814,13 +778,13 @@
                 echo "All services started"
                 echo ""
                 echo "Service endpoints:"
-                jq -e '.services.ethereum.enabled == true' "$CONFIG_FILE" > /dev/null && \
-                  echo "  Ethereum RPC: http://localhost:$(jq -r '.services.ethereum.rpc_port' "$CONFIG_FILE")"
-                jq -e '.services.cosmos.enabled == true' "$CONFIG_FILE" > /dev/null && \
-                  echo "  Cosmos RPC: http://localhost:$(jq -r '.services.cosmos.rpc_port' "$CONFIG_FILE")"
-                jq -e '.services.solana.enabled == true' "$CONFIG_FILE" > /dev/null && \
-                  echo "  Solana RPC: http://localhost:$(jq -r '.services.solana.rpc_port' "$CONFIG_FILE")"
-                echo "  Almanac API: http://localhost:$(jq -r '.almanac.api_port' "$CONFIG_FILE")"
+                toml2json < "$CONFIG_FILE" | jq -e '.services.ethereum.enabled == true' > /dev/null && \
+                  echo "  Ethereum RPC: http://localhost:$(toml2json < "$CONFIG_FILE" | jq -r '.services.ethereum.rpc_port')"
+                toml2json < "$CONFIG_FILE" | jq -e '.services.cosmos.enabled == true' > /dev/null && \
+                  echo "  Cosmos RPC: http://localhost:$(toml2json < "$CONFIG_FILE" | jq -r '.services.cosmos.rpc_port')"
+                toml2json < "$CONFIG_FILE" | jq -e '.services.solana.enabled == true' > /dev/null && \
+                  echo "  Solana RPC: http://localhost:$(toml2json < "$CONFIG_FILE" | jq -r '.services.solana.rpc_port')"
+                echo "  Almanac API: http://localhost:$(toml2json < "$CONFIG_FILE" | jq -r '.almanac.api_port')"
                 echo ""
                 echo "Logs directory: ./logs/"
                 ;;
@@ -853,7 +817,7 @@
                 fi
                 
                 # Check FoundationDB
-                if jq -e '.services.foundationdb.enabled == true' "$CONFIG_FILE" > /dev/null; then
+                if toml2json < "$CONFIG_FILE" | jq -e '.services.foundationdb.enabled == true' > /dev/null; then
                   echo -n "FoundationDB: "
                   if fdb-manage status > /dev/null 2>&1; then
                     echo "Running"
@@ -882,7 +846,7 @@
                 
                 case "$SERVICE" in
                   "ethereum"|"eth")
-                    LOG_FILE=$(jq -r '.services.ethereum.log_file' "$CONFIG_FILE" | envsubst)
+                    LOG_FILE=$(toml2json < "$CONFIG_FILE" | jq -r '.services.ethereum.log_file' | envsubst)
                     if [ -f "$LOG_FILE" ]; then
                       tail -f "$LOG_FILE"
                     else
@@ -890,7 +854,7 @@
                     fi
                     ;;
                   "cosmos")
-                    LOG_FILE=$(jq -r '.services.cosmos.log_file' "$CONFIG_FILE" | envsubst)
+                    LOG_FILE=$(toml2json < "$CONFIG_FILE" | jq -r '.services.cosmos.log_file' | envsubst)
                     if [ -f "$LOG_FILE" ]; then
                       tail -f "$LOG_FILE"
                     else
@@ -898,7 +862,7 @@
                     fi
                     ;;
                   "solana")
-                    LOG_FILE=$(jq -r '.services.solana.log_file' "$CONFIG_FILE" | envsubst)
+                    LOG_FILE=$(toml2json < "$CONFIG_FILE" | jq -r '.services.solana.log_file' | envsubst)
                     if [ -f "$LOG_FILE" ]; then
                       tail -f "$LOG_FILE"
                     else
@@ -906,7 +870,7 @@
                     fi
                     ;;
                   "api"|"almanac-api")
-                    LOG_FILE=$(jq -r '.almanac.api_log_file' "$CONFIG_FILE" | envsubst)
+                    LOG_FILE=$(toml2json < "$CONFIG_FILE" | jq -r '.almanac.api_log_file' | envsubst)
                     if [ -f "$LOG_FILE" ]; then
                       tail -f "$LOG_FILE"
                     else
@@ -964,7 +928,7 @@
               sim-cluster logs api                   # Show Almanac API logs
               sim-cluster logs indexer               # Show Almanac indexer logs
 
-            Configuration is stored in: ./config/simulation/
+            Configuration is stored in: ./config/
             EOF
                 ;;
             esac

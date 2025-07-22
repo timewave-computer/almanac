@@ -117,12 +117,19 @@
             
             # Set FoundationDB compilation environment for Rust
             export BINDGEN_EXTRA_CLANG_ARGS="-I${fdb-packages.foundationdb}/include"
-            export C_INCLUDE_PATH="${fdb-packages.foundationdb}/include:$${C_INCLUDE_PATH:-}"
-            export CPLUS_INCLUDE_PATH="${fdb-packages.foundationdb}/include:$${CPLUS_INCLUDE_PATH:-}"
-            export LIBRARY_PATH="${fdb-packages.foundationdb}/lib:$${LIBRARY_PATH:-}"
-            export LD_LIBRARY_PATH="${fdb-packages.foundationdb}/lib:$${LD_LIBRARY_PATH:-}"
-            export DYLD_LIBRARY_PATH="${fdb-packages.foundationdb}/lib:$${DYLD_LIBRARY_PATH:-}"
-            export PKG_CONFIG_PATH="${fdb-packages.foundationdb}/lib/pkgconfig:$${PKG_CONFIG_PATH:-}"
+            export C_INCLUDE_PATH="${fdb-packages.foundationdb}/include:''${C_INCLUDE_PATH:-}"
+            export CPLUS_INCLUDE_PATH="${fdb-packages.foundationdb}/include:''${CPLUS_INCLUDE_PATH:-}"
+            export LIBRARY_PATH="${fdb-packages.foundationdb}/lib:''${LIBRARY_PATH:-}"
+            export LD_LIBRARY_PATH="${fdb-packages.foundationdb}/lib:''${LD_LIBRARY_PATH:-}"
+            export DYLD_LIBRARY_PATH="${fdb-packages.foundationdb}/lib:''${DYLD_LIBRARY_PATH:-}"
+            
+            # Fix PKG_CONFIG_PATH to include OpenSSL and FoundationDB
+            export PKG_CONFIG_PATH="${fdb-packages.foundationdb}/lib/pkgconfig:${pkgs.openssl.dev}/lib/pkgconfig:''${PKG_CONFIG_PATH:-}"
+            
+            # Set OpenSSL environment variables for rust-openssl
+            export OPENSSL_DIR="${pkgs.openssl.dev}"
+            export OPENSSL_LIB_DIR="${pkgs.openssl.out}/lib"
+            export OPENSSL_INCLUDE_DIR="${pkgs.openssl.dev}/include"
             
             # Create local include directory for FoundationDB headers
             if command -v fdbcli >/dev/null 2>&1; then
@@ -148,8 +155,8 @@ EOFFDB
               
               # Export paths for build
               export FDB_INCLUDE_DIR="$FDB_LOCAL_INCLUDE"
-              export CPATH="$FDB_LOCAL_INCLUDE:$${CPATH:-}"
-              export C_INCLUDE_PATH="$FDB_LOCAL_INCLUDE:$${C_INCLUDE_PATH:-}"
+              export CPATH="$FDB_LOCAL_INCLUDE:''${CPATH:-}"
+              export C_INCLUDE_PATH="$FDB_LOCAL_INCLUDE:''${C_INCLUDE_PATH:-}"
             fi
             
             # Set up blockchain client environment variables
@@ -198,6 +205,9 @@ EOFFDB
           fdb-manage = fdb-packages.fdb-manage;
           fdb-init = fdb-packages.fdb-init;
           fdb-config-generator = fdb-packages.fdb-config-generator;
+          run-e2e-tests = fdb-packages.run-e2e-tests;
+          test-unit = fdb-packages.test-unit;
+          test-multi-chain = fdb-packages.test-multi-chain;
           
           # Ethereum packages
           geth = ethereum-packages.geth;
@@ -250,6 +260,16 @@ EOFFDB
           run-e2e-tests = {
             type = "app";
             program = "${fdb-packages.run-e2e-tests}/bin/run-e2e-tests";
+          };
+          
+          test-unit = {
+            type = "app";
+            program = "${fdb-packages.test-unit}/bin/test-unit";
+          };
+          
+          test-multi-chain = {
+            type = "app";
+            program = "${fdb-packages.test-multi-chain}/bin/test-multi-chain";
           };
           
           geth = {

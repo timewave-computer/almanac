@@ -1,14 +1,18 @@
 //! Mock implementations for testing
 
-use almanac_core::{Event, UnifiedEvent, EventFilter, Storage, BlockStatus, Error};
-use almanac_core::Result as CoreResult;
-use almanac_chains::{ChainAdapter, ChainAdapterError};
-use almanac_chains::{BlockMetadata, ChainDataIR, ConsensusMetadata, FinalityStatus, StateChange, StorageProof};
 use almanac_chains::adapters::types::ProofType;
+use almanac_chains::{
+    BlockMetadata, ChainDataIR, ConsensusMetadata, FinalityStatus, StateChange, StorageProof,
+};
+use almanac_chains::{ChainAdapter, ChainAdapterError};
+use almanac_core::Result as CoreResult;
+use almanac_core::{
+    BlockStatus, Error, Event, EventFilter, StorageReader, StorageWriter, UnifiedEvent,
+};
 use async_trait::async_trait;
+use futures::Stream;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use futures::Stream;
 
 /// Mock chain adapter for testing
 #[derive(Debug, Clone)]
@@ -75,7 +79,10 @@ impl ChainAdapter for MockChainAdapter {
         &self.chain_id
     }
 
-    async fn fetch_block(&self, block_number: u64) -> std::result::Result<ChainDataIR, ChainAdapterError> {
+    async fn fetch_block(
+        &self,
+        block_number: u64,
+    ) -> std::result::Result<ChainDataIR, ChainAdapterError> {
         if self.should_fail {
             return Err(ChainAdapterError::Network("Mock failure".to_string()));
         }
@@ -118,7 +125,10 @@ impl ChainAdapter for MockChainAdapter {
         Ok(self.latest_block)
     }
 
-    async fn is_block_finalized(&self, block_number: u64) -> std::result::Result<bool, ChainAdapterError> {
+    async fn is_block_finalized(
+        &self,
+        block_number: u64,
+    ) -> std::result::Result<bool, ChainAdapterError> {
         if self.should_fail {
             return Err(ChainAdapterError::Network("Mock failure".to_string()));
         }
@@ -136,17 +146,24 @@ impl ChainAdapter for MockChainAdapter {
             return Err(ChainAdapterError::Network("Mock failure".to_string()));
         }
 
-        let proofs = storage_keys.iter().map(|key| StorageProof {
-            key: *key,
-            value: [42u8; 32], // Mock value
-            proof_nodes: vec![vec![1, 2, 3], vec![4, 5, 6]], // Mock proof nodes
-            proof_type: ProofType::MerklePatricia,
-        }).collect();
+        let proofs = storage_keys
+            .iter()
+            .map(|key| StorageProof {
+                key: *key,
+                value: [42u8; 32],                               // Mock value
+                proof_nodes: vec![vec![1, 2, 3], vec![4, 5, 6]], // Mock proof nodes
+                proof_type: ProofType::MerklePatricia,
+            })
+            .collect();
 
         Ok(proofs)
     }
 
-    async fn check_block_finality(&self, block_number: u64, current_height: u64) -> std::result::Result<FinalityStatus, ChainAdapterError> {
+    async fn check_block_finality(
+        &self,
+        block_number: u64,
+        current_height: u64,
+    ) -> std::result::Result<FinalityStatus, ChainAdapterError> {
         if self.should_fail {
             return Err(ChainAdapterError::Network("Mock failure".to_string()));
         }
@@ -160,7 +177,10 @@ impl ChainAdapter for MockChainAdapter {
         })
     }
 
-    async fn get_block_metadata(&self, block_number: u64) -> std::result::Result<BlockMetadata, ChainAdapterError> {
+    async fn get_block_metadata(
+        &self,
+        block_number: u64,
+    ) -> std::result::Result<BlockMetadata, ChainAdapterError> {
         if self.should_fail {
             return Err(ChainAdapterError::Network("Mock failure".to_string()));
         }
@@ -176,15 +196,22 @@ impl ChainAdapter for MockChainAdapter {
         })
     }
 
-    async fn extract_state_changes(&self, _block_number: u64) -> std::result::Result<Vec<StateChange>, ChainAdapterError> {
+    async fn extract_state_changes(
+        &self,
+        _block_number: u64,
+    ) -> std::result::Result<Vec<StateChange>, ChainAdapterError> {
         if self.should_fail {
             return Err(ChainAdapterError::Network("Mock failure".to_string()));
         }
         Ok(vec![])
     }
 
-    async fn subscribe_blocks(&self) -> std::result::Result<Box<dyn Stream<Item = u64> + Send>, ChainAdapterError> {
-        Err(ChainAdapterError::Unsupported("Mock adapter doesn't support subscriptions".to_string()))
+    async fn subscribe_blocks(
+        &self,
+    ) -> std::result::Result<Box<dyn Stream<Item = u64> + Send>, ChainAdapterError> {
+        Err(ChainAdapterError::Unsupported(
+            "Mock adapter doesn't support subscriptions".to_string(),
+        ))
     }
 }
 
@@ -216,13 +243,19 @@ impl MockStorage {
 
     /// Set latest block for a chain
     pub fn with_latest_block(self, chain_id: &str, block_number: u64) -> Self {
-        self.latest_blocks.lock().unwrap().insert(chain_id.to_string(), block_number);
+        self.latest_blocks
+            .lock()
+            .unwrap()
+            .insert(chain_id.to_string(), block_number);
         self
     }
 
     /// Set block status
     pub fn with_block_status(self, chain_id: &str, block_number: u64, status: BlockStatus) -> Self {
-        self.block_statuses.lock().unwrap().insert((chain_id.to_string(), block_number), status);
+        self.block_statuses
+            .lock()
+            .unwrap()
+            .insert((chain_id.to_string(), block_number), status);
         self
     }
 
@@ -240,12 +273,12 @@ impl Default for MockStorage {
 }
 
 #[async_trait]
-impl Storage for MockStorage {
+impl StorageWriter for MockStorage {
     async fn store_event(&self, event: Box<dyn Event>) -> CoreResult<()> {
         if self.should_fail {
             return Err(Error::Storage("Mock storage failure".to_string()));
         }
-        
+
         // Convert Event trait object to UnifiedEvent
         let unified_event = UnifiedEvent {
             id: event.id().to_string(),
@@ -264,11 +297,55 @@ impl Storage for MockStorage {
             attributes: event.attributes(),
             source: almanac_core::EventSource::Chain,
         };
-        
+
         self.events.lock().unwrap().push(unified_event);
         Ok(())
     }
 
+    async fn store_events_batch(&self, events: Vec<Box<dyn Event>>) -> CoreResult<()> {
+        if self.should_fail {
+            return Err(Error::Storage("Mock storage failure".to_string()));
+        }
+
+        for event in events {
+            self.store_event(event).await?;
+        }
+        Ok(())
+    }
+
+    async fn update_block_status(
+        &self,
+        chain: &str,
+        block_number: u64,
+        status: BlockStatus,
+    ) -> CoreResult<()> {
+        if self.should_fail {
+            return Err(Error::Storage("Mock storage failure".to_string()));
+        }
+        self.block_statuses
+            .lock()
+            .unwrap()
+            .insert((chain.to_string(), block_number), status);
+        Ok(())
+    }
+
+    async fn reorg_chain(&self, _chain: &str, _from_block: u64) -> CoreResult<()> {
+        if self.should_fail {
+            return Err(Error::Storage("Mock storage failure".to_string()));
+        }
+        Ok(())
+    }
+
+    async fn health_check(&self) -> CoreResult<()> {
+        if self.should_fail {
+            return Err(Error::Storage("Mock storage failure".to_string()));
+        }
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl StorageReader for MockStorage {
     async fn get_events(&self, filters: Vec<EventFilter>) -> CoreResult<Vec<Box<dyn Event>>> {
         if self.should_fail {
             return Err(Error::Storage("Mock storage failure".to_string()));
@@ -285,7 +362,8 @@ impl Storage for MockStorage {
 
             if let Some(addresses) = &filter.addresses {
                 filtered_events.retain(|e| {
-                    e.contract_address.as_ref()
+                    e.contract_address
+                        .as_ref()
                         .map(|addr| addresses.iter().any(|a| a == addr))
                         .unwrap_or(false)
                 });
@@ -296,7 +374,8 @@ impl Storage for MockStorage {
             }
 
             if let Some((from_block, to_block)) = filter.block_range {
-                filtered_events.retain(|e| e.block_number >= from_block && e.block_number <= to_block);
+                filtered_events
+                    .retain(|e| e.block_number >= from_block && e.block_number <= to_block);
             }
 
             if let Some(tx_hashes) = &filter.tx_hashes {
@@ -330,26 +409,38 @@ impl Storage for MockStorage {
         if self.should_fail {
             return Err(Error::Storage("Mock storage failure".to_string()));
         }
-        Ok(self.latest_blocks.lock().unwrap().get(chain).copied().unwrap_or(0))
+        Ok(self
+            .latest_blocks
+            .lock()
+            .unwrap()
+            .get(chain)
+            .copied()
+            .unwrap_or(0))
     }
 
-    async fn get_latest_block_with_status(&self, chain: &str, _status: BlockStatus) -> CoreResult<u64> {
+    async fn get_latest_block_with_status(
+        &self,
+        chain: &str,
+        _status: BlockStatus,
+    ) -> CoreResult<u64> {
         if self.should_fail {
             return Err(Error::Storage("Mock storage failure".to_string()));
         }
         // Simplified implementation - just return latest block
-        Ok(self.latest_blocks.lock().unwrap().get(chain).copied().unwrap_or(0))
+        Ok(self
+            .latest_blocks
+            .lock()
+            .unwrap()
+            .get(chain)
+            .copied()
+            .unwrap_or(0))
     }
 
-    async fn update_block_status(&self, chain: &str, block_number: u64, status: BlockStatus) -> CoreResult<()> {
-        if self.should_fail {
-            return Err(Error::Storage("Mock storage failure".to_string()));
-        }
-        self.block_statuses.lock().unwrap().insert((chain.to_string(), block_number), status);
-        Ok(())
-    }
-
-    async fn get_events_with_status(&self, filters: Vec<EventFilter>, _status: BlockStatus) -> CoreResult<Vec<Box<dyn Event>>> {
+    async fn get_events_with_status(
+        &self,
+        filters: Vec<EventFilter>,
+        _status: BlockStatus,
+    ) -> CoreResult<Vec<Box<dyn Event>>> {
         if self.should_fail {
             return Err(Error::Storage("Mock storage failure".to_string()));
         }
@@ -357,7 +448,21 @@ impl Storage for MockStorage {
         self.get_events(filters).await
     }
 
-    async fn reorg_chain(&self, _chain: &str, _from_block: u64) -> CoreResult<()> {
+    async fn get_latest_block_before(&self, chain: &str, before_block: u64) -> CoreResult<u64> {
+        if self.should_fail {
+            return Err(Error::Storage("Mock storage failure".to_string()));
+        }
+        let latest = self
+            .latest_blocks
+            .lock()
+            .unwrap()
+            .get(chain)
+            .copied()
+            .unwrap_or(0);
+        Ok(latest.min(before_block.saturating_sub(1)))
+    }
+
+    async fn health_check(&self) -> CoreResult<()> {
         if self.should_fail {
             return Err(Error::Storage("Mock storage failure".to_string()));
         }
@@ -369,6 +474,7 @@ impl Storage for MockStorage {
 mod tests {
     use super::*;
     use crate::fixtures;
+    use almanac_core::StorageReader;
 
     #[tokio::test]
     async fn test_mock_chain_adapter() {

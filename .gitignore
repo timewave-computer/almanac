@@ -1,6 +1,7 @@
 # Rust
 target/
 Cargo.lock
+.cargo/
 
 # Nix
 result
@@ -54,3 +55,6 @@ test_run.log
 
 # Working
 work/
+
+# OpenAPI
+openapi.json

@@ -1,0 +1,144 @@
+{
+  "contract_name": "valence-base-account",
+  "contract_version": "0.2.0",
+  "execute": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "oneOf": [
+      {
+        "additionalProperties": false,
+        "properties": {
+          "approve_library": {
+            "additionalProperties": false,
+            "properties": {
+              "library": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "library"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "approve_library"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "remove_library": {
+            "additionalProperties": false,
+            "properties": {
+              "library": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "library"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "remove_library"
+        ],
+        "type": "object"
+      }
+    ],
+    "title": "ExecuteMsg"
+  },
+  "idl_version": "1.0.0",
+  "instantiate": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "additionalProperties": false,
+    "properties": {
+      "admin": {
+        "type": "string"
+      },
+      "approved_libraries": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "admin",
+      "approved_libraries"
+    ],
+    "title": "InstantiateMsg",
+    "type": "object"
+  },
+  "migrate": null,
+  "query": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "oneOf": [
+      {
+        "additionalProperties": false,
+        "properties": {
+          "list_approved_libraries": {
+            "additionalProperties": false,
+            "type": "object"
+          }
+        },
+        "required": [
+          "list_approved_libraries"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "ownership": {
+            "additionalProperties": false,
+            "type": "object"
+          }
+        },
+        "required": [
+          "ownership"
+        ],
+        "type": "object"
+      }
+    ],
+    "title": "QueryMsg"
+  },
+  "responses": {
+    "list_approved_libraries": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "items": {
+        "type": "string"
+      },
+      "title": "Array_of_String",
+      "type": "array"
+    },
+    "ownership": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "owner": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pending_expiry": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "pending_owner": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "Ownership_for_String",
+      "type": "object"
+    }
+  },
+  "sudo": null
+}

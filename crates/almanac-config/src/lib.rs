@@ -3,9 +3,9 @@
 //! This crate provides configuration loading and management functionality
 //! for the Almanac indexing system.
 
+use almanac_core::{Error, Result};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use almanac_core::{Error, Result};
 
 /// Main configuration structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -21,7 +21,6 @@ pub struct Config {
     /// Services configuration
     pub services: ServicesConfig,
 }
-
 
 /// Storage configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -109,7 +108,6 @@ pub struct ChainConfigurations {
     pub solana: Option<Vec<SolanaChainConfig>>,
 }
 
-
 /// Ethereum chain configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EthereumChainConfig {
@@ -194,8 +192,7 @@ impl Default for Config {
 pub fn load_config<P: AsRef<Path>>(path: P) -> Result<Config> {
     let content = std::fs::read_to_string(path)
         .map_err(|e| Error::configuration(format!("Failed to read config file: {}", e)))?;
-    
+
     toml::from_str(&content)
         .map_err(|e| Error::configuration(format!("Failed to parse config: {}", e)))
 }
-

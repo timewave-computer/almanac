@@ -110,7 +110,7 @@
             # Print banner
             echo -e "''${BLUE}"
             echo "╔════════════════════════════════════════════════════════════╗"
-            echo "║                Almanac API Swagger UI Server              ║"
+            echo "║                Almanac API Swagger UI Server               ║"
             echo "║         High-Performance Multi-Chain Blockchain Indexer    ║"
             echo "╚════════════════════════════════════════════════════════════╝"
             echo -e "''${NC}"
@@ -158,8 +158,46 @@
             
             # Prepare environment
             export RUST_LOG="''${RUST_LOG:-info}"
-            export ALMANAC_HOST="$HOST"
-            export ALMANAC_PORT="$PORT"
+            export API_HOST="$HOST"
+            export API_PORT="$PORT"
+            
+            # Set up FoundationDB environment variables
+            PROJECT_ROOT="''${PROJECT_ROOT:-$(pwd)}"
+            export FDB_CLUSTER_FILE="$PROJECT_ROOT/data/fdb.cluster"
+            export FDB_NETWORK_OPTION_TLS_CERT_PATH=""
+            export FDB_NETWORK_OPTION_TLS_KEY_PATH=""
+            export FDB_NETWORK_OPTION_TLS_CA_PATH=""
+            
+            # Set library paths based on platform for FoundationDB
+            ${if pkgs.stdenv.isDarwin then ''
+              # macOS: Set DYLD_LIBRARY_PATH for FoundationDB
+              if command -v nix >/dev/null 2>&1; then
+                FDB_LIB_PATH=$(nix eval --raw .#foundationdb.outPath 2>/dev/null)/lib || true
+                if [ -n "$FDB_LIB_PATH" ] && [ -d "$FDB_LIB_PATH" ]; then
+                  export DYLD_LIBRARY_PATH="$FDB_LIB_PATH:''${DYLD_LIBRARY_PATH:-}"
+                  print_info "FoundationDB library path: $FDB_LIB_PATH"
+                fi
+              fi
+            '' else ''
+              # Linux: Set LD_LIBRARY_PATH for FoundationDB
+              if command -v nix >/dev/null 2>&1; then
+                FDB_LIB_PATH=$(nix eval --raw .#foundationdb.outPath 2>/dev/null)/lib || true
+                if [ -n "$FDB_LIB_PATH" ] && [ -d "$FDB_LIB_PATH" ]; then
+                  export LD_LIBRARY_PATH="$FDB_LIB_PATH:''${LD_LIBRARY_PATH:-}"
+                  print_info "FoundationDB library path: $FDB_LIB_PATH"
+                fi
+              fi
+            ''}
+            
+            # Set include paths for compilation  
+            if command -v nix >/dev/null 2>&1; then
+              FDB_INCLUDE_PATH=$(nix eval --raw .#foundationdb.outPath 2>/dev/null)/include || true
+              if [ -n "$FDB_INCLUDE_PATH" ] && [ -d "$FDB_INCLUDE_PATH" ]; then
+                export FDB_INCLUDE_DIR="$FDB_INCLUDE_PATH"
+                export C_INCLUDE_PATH="$FDB_INCLUDE_PATH:''${C_INCLUDE_PATH:-}"
+                export CPLUS_INCLUDE_PATH="$FDB_INCLUDE_PATH:''${CPLUS_INCLUDE_PATH:-}"
+              fi
+            fi
             
             # Start the API server
             print_info "Starting Almanac API server..."
@@ -168,11 +206,11 @@
             print_info "Config: ''${CONFIG:-default}"
             print_info "Binary: $API_BINARY"
             
-            # Start the server in the background
+            # Start the server in the background (environment variables are used for config)
             if [ -n "$CONFIG" ]; then
-                $API_BINARY --config "$CONFIG" --host "$HOST" --port "$PORT" &
+                $API_BINARY --config "$CONFIG" &
             else
-                $API_BINARY --host "$HOST" --port "$PORT" &
+                $API_BINARY &
             fi
             
             API_PID=$!
@@ -293,33 +331,176 @@
           '';
         };
 
-        # OpenAPI spec generator
+        # OpenAPI spec generator with FoundationDB support
         openApiGenerator = pkgs.writeShellApplication {
           name = "generate-openapi-spec";
           runtimeInputs = with pkgs; [ 
             cargo
             rustc
             jq
+            coreutils
+            curl
+            python3
           ];
           text = ''
-            # Generate OpenAPI specification from Almanac API
+            # Generate OpenAPI specification from Almanac API with FoundationDB support
             
             set -euo pipefail
             
             OUTPUT="''${1:-openapi.json}"
+            PROJECT_ROOT="''${PROJECT_ROOT:-$(pwd)}"
             
-            echo "Generating OpenAPI specification..."
+            echo "=== Generating OpenAPI Specification ==="
+            echo "Output file: $OUTPUT"
+            echo "Platform: ${system}"
+            echo ""
             
-            # Build and run the API in spec-generation mode
-            cargo run --bin almanac-api -- --generate-openapi > "$OUTPUT"
+            # Set up FoundationDB environment variables
+            export FDB_CLUSTER_FILE="$PROJECT_ROOT/data/fdb.cluster"
+            export FDB_NETWORK_OPTION_TLS_CERT_PATH=""
+            export FDB_NETWORK_OPTION_TLS_KEY_PATH=""
+            export FDB_NETWORK_OPTION_TLS_CA_PATH=""
+            
+            # Set library paths based on platform
+            ${if pkgs.stdenv.isDarwin then ''
+              # macOS: Set DYLD_LIBRARY_PATH for FoundationDB
+              if command -v nix >/dev/null 2>&1; then
+                FDB_LIB_PATH=$(nix eval --raw .#foundationdb.outPath 2>/dev/null)/lib || true
+                if [ -n "$FDB_LIB_PATH" ] && [ -d "$FDB_LIB_PATH" ]; then
+                  export DYLD_LIBRARY_PATH="$FDB_LIB_PATH:''${DYLD_LIBRARY_PATH:-}"
+                  echo "FoundationDB library path (macOS): $FDB_LIB_PATH"
+                else
+                  echo "Warning: FoundationDB library path not found. Some features may not work."
+                fi
+              fi
+            '' else ''
+              # Linux: Set LD_LIBRARY_PATH for FoundationDB
+              if command -v nix >/dev/null 2>&1; then
+                FDB_LIB_PATH=$(nix eval --raw .#foundationdb.outPath 2>/dev/null)/lib || true
+                if [ -n "$FDB_LIB_PATH" ] && [ -d "$FDB_LIB_PATH" ]; then
+                  export LD_LIBRARY_PATH="$FDB_LIB_PATH:''${LD_LIBRARY_PATH:-}"
+                  echo "FoundationDB library path (Linux): $FDB_LIB_PATH"
+                else
+                  echo "Warning: FoundationDB library path not found. Some features may not work."
+                fi
+              fi
+            ''}
+            
+            # Set include paths for compilation  
+            if command -v nix >/dev/null 2>&1; then
+              FDB_INCLUDE_PATH=$(nix eval --raw .#foundationdb.outPath 2>/dev/null)/include || true
+              if [ -n "$FDB_INCLUDE_PATH" ] && [ -d "$FDB_INCLUDE_PATH" ]; then
+                export FDB_INCLUDE_DIR="$FDB_INCLUDE_PATH"
+                export C_INCLUDE_PATH="$FDB_INCLUDE_PATH:''${C_INCLUDE_PATH:-}"
+                export CPLUS_INCLUDE_PATH="$FDB_INCLUDE_PATH:''${CPLUS_INCLUDE_PATH:-}"
+                echo "FoundationDB include path: $FDB_INCLUDE_PATH"
+              fi
+            fi
+            
+            # Check if we're in the right directory
+            if [ ! -f "Cargo.toml" ] || [ ! -d "crates/almanac-api" ]; then
+                echo "Error: Please run this script from the almanac project root directory"
+                exit 1
+            fi
+            
+            # Create cluster file if it doesn't exist
+            if [ ! -f "$FDB_CLUSTER_FILE" ]; then
+                echo "Creating default FoundationDB cluster file..."
+                mkdir -p "$(dirname "$FDB_CLUSTER_FILE")"
+                echo "almanac_dev:almanac_dev@127.0.0.1:4500" > "$FDB_CLUSTER_FILE"
+            fi
+            
+            echo ""
+            echo "Environment variables set:"
+            echo "  FDB_CLUSTER_FILE=$FDB_CLUSTER_FILE"
+            ${if pkgs.stdenv.isDarwin then ''
+              echo "  DYLD_LIBRARY_PATH=''${DYLD_LIBRARY_PATH:-}"
+            '' else ''
+              echo "  LD_LIBRARY_PATH=''${LD_LIBRARY_PATH:-}"
+            ''}
+            echo "  FDB_INCLUDE_DIR=''${FDB_INCLUDE_DIR:-}"
+            echo ""
+            
+            echo "Building and running almanac-api in spec-generation mode..."
+            
+            # Start the API server temporarily and fetch the OpenAPI spec
+            echo "Starting almanac-api server to fetch OpenAPI specification..."
+            
+            # Find an available port
+            API_PORT=$(python3 -c "import socket; s=socket.socket(); s.bind(('localhost',0)); print(s.getsockname()[1]); s.close()")
+            export API_PORT="$API_PORT"
+            echo "Using port: $API_PORT"
+            
+            # Try memory backend as fallback if FDB fails
+            echo "Attempting with memory backend fallback..."
+            ALMANAC_BACKEND=memory cargo run --bin almanac-api > api_server.log 2>&1 &
+            API_PID=$!
+            
+            echo "API server started (PID: $API_PID)"
+            echo "Waiting for server to be ready..."
+            
+            # Wait for server to be ready (max 30 seconds)
+            for i in {1..30}; do
+              if curl -s "http://localhost:$API_PORT/health" > /dev/null 2>&1; then
+                echo "Server is ready"
+                break
+              fi
+              if ! kill -0 $API_PID 2>/dev/null; then
+                echo "Error: Server process died"
+                echo "Server log:"
+                cat api_server.log || echo "Could not read log file"
+                exit 1
+              fi
+              echo "Waiting... ($i/30)"
+              sleep 1
+            done
+            
+            # Try to fetch the OpenAPI specification from different possible endpoints
+            OPENAPI_FETCHED=false
+            for endpoint in "/openapi.json" "/api/openapi.json" "/docs/openapi.json"; do
+              echo "Trying endpoint: $endpoint"
+              if curl -s "http://localhost:$API_PORT$endpoint" -o "$OUTPUT" 2>/dev/null; then
+                if jq empty "$OUTPUT" >/dev/null 2>&1; then
+                  echo "Successfully fetched OpenAPI spec from $endpoint"
+                  OPENAPI_FETCHED=true
+                  break
+                fi
+              fi
+            done
+            
+            # Clean up: kill the API server
+            echo "Stopping API server..."
+            kill $API_PID 2>/dev/null || true
+            wait $API_PID 2>/dev/null || true
+            rm -f api_server.log
+            
+            # Check if we successfully fetched the spec
+            if [ "$OPENAPI_FETCHED" != "true" ]; then
+              echo "Error: Could not fetch OpenAPI specification from any endpoint"
+              echo "Tried endpoints: /openapi.json, /api/openapi.json, /docs/openapi.json"
+              echo "Make sure the almanac-api server serves OpenAPI spec at one of these endpoints"
+              exit 1
+            fi
+            
+            # Validate the generated JSON
+            if ! jq empty "$OUTPUT" >/dev/null 2>&1; then
+              echo "Error: Generated file is not valid JSON"
+              exit 1
+            fi
             
             # Pretty-print the JSON
+            echo "Formatting JSON output..."
             jq . "$OUTPUT" > "$OUTPUT.tmp" && mv "$OUTPUT.tmp" "$OUTPUT"
             
-            echo "OpenAPI specification generated: $OUTPUT"
             echo ""
-            echo "To view with Swagger UI, run:"
-            echo "  swagger-static-server 8080 $OUTPUT"
+            echo "=== OpenAPI Specification Generated Successfully ==="
+            echo "File: $OUTPUT"
+            echo "Size: $(du -h "$OUTPUT" | cut -f1)"
+            echo ""
+            echo "Next steps:"
+            echo "  View with Swagger UI:  nix run .#swagger-ui"
+            echo "  Serve static file:     swagger-static-server 8080 $OUTPUT"
+            echo "  Validate spec:         jq . $OUTPUT >/dev/null && echo 'Valid JSON'"
           '';
         };
 

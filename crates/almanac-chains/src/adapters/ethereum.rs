@@ -2,15 +2,18 @@
 
 use async_trait::async_trait;
 use ethers::prelude::*;
-use std::sync::Arc;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, info};
-use serde::{Deserialize, Serialize};
 
 use crate::adapters::{
     traits::{ChainAdapter, ChainAdapterError},
-    types::{BlockMetadata, ChainConfig, ChainDataIR, ConsensusMetadata, FinalityStatus, StateChange, StorageProof, ProofType},
+    types::{
+        BlockMetadata, ChainConfig, ChainDataIR, ConsensusMetadata, FinalityStatus, ProofType,
+        StateChange, StorageProof,
+    },
 };
 
 /// Ethereum-specific consensus configuration
@@ -132,25 +135,27 @@ impl EthereumAdapter {
         block: &Block<H256>,
     ) -> Result<Vec<StateChange>, ChainAdapterError> {
         let state_changes = Vec::new();
-        
+
         // For each transaction in the block, get the state changes
         for tx_hash in block.transactions.iter() {
-            let trace = self.client
-                .trace_transaction(*tx_hash)
-                .await
-                .map_err(|e| ChainAdapterError::Rpc(format!("Failed to trace transaction: {}", e)))?;
+            let trace = self.client.trace_transaction(*tx_hash).await.map_err(|e| {
+                ChainAdapterError::Rpc(format!("Failed to trace transaction: {}", e))
+            })?;
 
             // Process traces to extract state changes
             // Note: For now, we'll extract basic information from traces
             // In a full implementation, you would use debug_traceTransaction with proper tracer
             for trace_item in trace {
-                // Extract state changes from trace actions  
+                // Extract state changes from trace actions
                 // This is a simplified approach - in practice you'd need more sophisticated tracing
                 match &trace_item.action {
                     ethers::types::Action::Call(call_action) => {
                         // For call actions, we can infer potential state changes
                         // but we don't have actual storage diffs from basic traces
-                        info!("Call trace found: {:?} -> {:?}", call_action.from, call_action.to);
+                        info!(
+                            "Call trace found: {:?} -> {:?}",
+                            call_action.from, call_action.to
+                        );
                     }
                     _ => {
                         // Handle other action types as needed
@@ -163,7 +168,10 @@ impl EthereumAdapter {
     }
 
     /// Get finality status based on confirmations
-    async fn get_finality_status(&self, block_number: u64) -> Result<FinalityStatus, ChainAdapterError> {
+    async fn get_finality_status(
+        &self,
+        block_number: u64,
+    ) -> Result<FinalityStatus, ChainAdapterError> {
         let latest = self.get_latest_block().await?;
         let confirmations = latest.saturating_sub(block_number);
 
@@ -180,12 +188,12 @@ impl ChainAdapter for EthereumAdapter {
     fn chain_id(&self) -> &str {
         &self.chain_id
     }
-    
 
     async fn fetch_block(&self, block_number: u64) -> Result<ChainDataIR, ChainAdapterError> {
         debug!("Fetching Ethereum block {}", block_number);
 
-        let block = self.client
+        let block = self
+            .client
             .get_block(block_number)
             .await
             .map_err(|e| ChainAdapterError::Rpc(format!("Failed to get block: {}", e)))?
@@ -210,14 +218,35 @@ impl ChainAdapter for EthereumAdapter {
 
         // Build consensus metadata
         let mut extra = HashMap::new();
-        extra.insert("nonce".to_string(), serde_json::json!(format!("{:?}", block.nonce)));
-        extra.insert("mix_hash".to_string(), serde_json::json!(format!("{:?}", block.mix_hash)));
-        extra.insert("base_fee_per_gas".to_string(), serde_json::json!(block.base_fee_per_gas.map(|fee| fee.to_string())));
-        extra.insert("difficulty".to_string(), serde_json::json!(block.difficulty.to_string()));
-        extra.insert("total_difficulty".to_string(), serde_json::json!(block.total_difficulty.map(|td| td.to_string())));
-        extra.insert("gas_limit".to_string(), serde_json::json!(block.gas_limit.to_string()));
-        extra.insert("gas_used".to_string(), serde_json::json!(block.gas_used.to_string()));
-        
+        extra.insert(
+            "nonce".to_string(),
+            serde_json::json!(format!("{:?}", block.nonce)),
+        );
+        extra.insert(
+            "mix_hash".to_string(),
+            serde_json::json!(format!("{:?}", block.mix_hash)),
+        );
+        extra.insert(
+            "base_fee_per_gas".to_string(),
+            serde_json::json!(block.base_fee_per_gas.map(|fee| fee.to_string())),
+        );
+        extra.insert(
+            "difficulty".to_string(),
+            serde_json::json!(block.difficulty.to_string()),
+        );
+        extra.insert(
+            "total_difficulty".to_string(),
+            serde_json::json!(block.total_difficulty.map(|td| td.to_string())),
+        );
+        extra.insert(
+            "gas_limit".to_string(),
+            serde_json::json!(block.gas_limit.to_string()),
+        );
+        extra.insert(
+            "gas_used".to_string(),
+            serde_json::json!(block.gas_used.to_string()),
+        );
+
         let consensus_metadata = ConsensusMetadata {
             validator_set_hash: None,
             proposer: block.author.map(|a| format!("{:?}", a)),
@@ -259,25 +288,30 @@ impl ChainAdapter for EthereumAdapter {
             .map_err(|e| ChainAdapterError::Other(format!("Invalid address: {}", e)))?;
 
         let block_id = Some(BlockId::Number(BlockNumber::Number(block_number.into())));
-        
+
         let mut proofs = Vec::new();
 
         for storage_key in storage_keys {
             let key = H256::from_slice(storage_key);
-            
-            let proof = self.client
+
+            let proof = self
+                .client
                 .get_proof(address, vec![key], block_id)
                 .await
-                .map_err(|e| ChainAdapterError::ProofGeneration(format!("Failed to get proof: {}", e)))?;
+                .map_err(|e| {
+                    ChainAdapterError::ProofGeneration(format!("Failed to get proof: {}", e))
+                })?;
 
             // Get the storage value
-            let value = proof.storage_proof
+            let value = proof
+                .storage_proof
                 .first()
                 .map(|sp| Self::u256_to_bytes32(sp.value))
                 .unwrap_or([0u8; 32]);
 
             // Get the state root for verification
-            let _block = self.client
+            let _block = self
+                .client
                 .get_block(block_number)
                 .await
                 .map_err(|e| ChainAdapterError::Rpc(e.to_string()))?
@@ -286,7 +320,9 @@ impl ChainAdapter for EthereumAdapter {
             let storage_proof = StorageProof {
                 key: *storage_key,
                 value,
-                proof_nodes: proof.account_proof.into_iter()
+                proof_nodes: proof
+                    .account_proof
+                    .into_iter()
                     .map(|bytes| bytes.to_vec())
                     .collect(),
                 proof_type: ProofType::MerklePatricia,
@@ -298,10 +334,13 @@ impl ChainAdapter for EthereumAdapter {
         Ok(proofs)
     }
 
-    
-    async fn check_block_finality(&self, block_number: u64, current_height: u64) -> Result<FinalityStatus, ChainAdapterError> {
+    async fn check_block_finality(
+        &self,
+        block_number: u64,
+        current_height: u64,
+    ) -> Result<FinalityStatus, ChainAdapterError> {
         let confirmations = current_height.saturating_sub(block_number);
-        
+
         Ok(match confirmations {
             0 => FinalityStatus::Pending,
             1..=5 => FinalityStatus::Confirmed,
@@ -311,8 +350,12 @@ impl ChainAdapter for EthereumAdapter {
         })
     }
 
-    async fn get_block_metadata(&self, block_number: u64) -> Result<BlockMetadata, ChainAdapterError> {
-        let block = self.client
+    async fn get_block_metadata(
+        &self,
+        block_number: u64,
+    ) -> Result<BlockMetadata, ChainAdapterError> {
+        let block = self
+            .client
             .get_block(block_number)
             .await
             .map_err(|e| ChainAdapterError::Rpc(format!("Failed to get block: {}", e)))?
@@ -331,8 +374,12 @@ impl ChainAdapter for EthereumAdapter {
         })
     }
 
-    async fn extract_state_changes(&self, block_number: u64) -> Result<Vec<StateChange>, ChainAdapterError> {
-        let block = self.client
+    async fn extract_state_changes(
+        &self,
+        block_number: u64,
+    ) -> Result<Vec<StateChange>, ChainAdapterError> {
+        let block = self
+            .client
             .get_block(block_number)
             .await
             .map_err(|e| ChainAdapterError::Rpc(format!("Failed to get block: {}", e)))?
@@ -341,11 +388,13 @@ impl ChainAdapter for EthereumAdapter {
         self.extract_state_changes_from_block(&block).await
     }
 
-    async fn subscribe_blocks(&self) -> Result<Box<dyn futures::Stream<Item = u64> + Send>, ChainAdapterError> {
+    async fn subscribe_blocks(
+        &self,
+    ) -> Result<Box<dyn futures::Stream<Item = u64> + Send>, ChainAdapterError> {
         // For WebSocket support, we'd need a different provider type
         // This is a placeholder for HTTP-only implementation
         Err(ChainAdapterError::Unsupported(
-            "Block subscription requires WebSocket connection".to_string()
+            "Block subscription requires WebSocket connection".to_string(),
         ))
     }
 }

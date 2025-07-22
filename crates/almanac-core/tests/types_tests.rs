@@ -1,11 +1,11 @@
-use almanac_core::{ChainId, BlockStatus};
 use almanac_core::types::chains;
+use almanac_core::{BlockStatus, ChainId};
 
 #[test]
 fn test_chain_id_new() {
     let chain_id = ChainId::new("ethereum");
     assert_eq!(chain_id.as_str(), "ethereum");
-    
+
     let chain_id_string = ChainId::new("cosmos".to_string());
     assert_eq!(chain_id_string.as_str(), "cosmos");
 }
@@ -14,7 +14,7 @@ fn test_chain_id_new() {
 fn test_chain_id_display() {
     let ethereum = ChainId::new("ethereum");
     assert_eq!(ethereum.to_string(), "ethereum");
-    
+
     let cosmos = ChainId::new("cosmos");
     assert_eq!(cosmos.to_string(), "cosmos");
 }
@@ -23,7 +23,7 @@ fn test_chain_id_display() {
 fn test_chain_id_from_string() {
     let chain_id: ChainId = "ethereum".into();
     assert_eq!(chain_id.as_str(), "ethereum");
-    
+
     let chain_id: ChainId = "cosmos".to_string().into();
     assert_eq!(chain_id.as_str(), "cosmos");
 }
@@ -33,7 +33,7 @@ fn test_chain_id_serialization() {
     let chain_id = ChainId::new("ethereum");
     let serialized = serde_json::to_string(&chain_id).unwrap();
     assert_eq!(serialized, "\"ethereum\"");
-    
+
     let deserialized: ChainId = serde_json::from_str(&serialized).unwrap();
     assert_eq!(deserialized, chain_id);
 }
@@ -43,7 +43,7 @@ fn test_chain_id_equality() {
     let chain1 = ChainId::new("ethereum");
     let chain2 = ChainId::new("ethereum");
     let chain3 = ChainId::new("cosmos");
-    
+
     assert_eq!(chain1, chain2);
     assert_ne!(chain1, chain3);
 }
@@ -52,7 +52,7 @@ fn test_chain_id_equality() {
 fn test_chain_id_as_str() {
     let chain_id = ChainId::new("ethereum");
     assert_eq!(chain_id.as_str(), "ethereum");
-    
+
     let chain_id = ChainId::new("cosmos");
     assert_eq!(chain_id.as_str(), "cosmos");
 }
@@ -67,12 +67,12 @@ fn test_block_status_variants() {
         BlockStatus::Finalized,
         BlockStatus::Reorged,
     ];
-    
+
     // Test Debug implementation
     for status in &statuses {
         assert!(!format!("{:?}", status).is_empty());
     }
-    
+
     // Test Clone implementation
     let cloned = statuses.clone();
     assert_eq!(statuses, cloned);
@@ -117,11 +117,11 @@ fn test_chain_constants() {
     assert_eq!(chains::COSMOS, "cosmoshub");
     assert_eq!(chains::OSMOSIS, "osmosis");
     assert_eq!(chains::NEUTRON, "neutron");
-    
+
     // Test that we can create ChainId from constants
     let ethereum = ChainId::new(chains::ETHEREUM);
     assert_eq!(ethereum.as_str(), "ethereum");
-    
+
     let cosmos = ChainId::new(chains::COSMOS);
     assert_eq!(cosmos.as_str(), "cosmoshub");
 }
@@ -129,14 +129,14 @@ fn test_chain_constants() {
 #[test]
 fn test_chain_id_hash() {
     use std::collections::HashMap;
-    
+
     let mut map = HashMap::new();
     let ethereum = ChainId::new("ethereum");
     let cosmos = ChainId::new("cosmos");
-    
+
     map.insert(ethereum.clone(), "Ethereum data");
     map.insert(cosmos.clone(), "Cosmos data");
-    
+
     assert_eq!(map.get(&ethereum), Some(&"Ethereum data"));
     assert_eq!(map.get(&cosmos), Some(&"Cosmos data"));
 }
@@ -145,7 +145,7 @@ fn test_chain_id_hash() {
 fn test_block_status_copy() {
     let status = BlockStatus::Finalized;
     let copied = status;
-    
+
     assert_eq!(status, copied);
     assert_eq!(status, BlockStatus::Finalized);
     assert_eq!(copied, BlockStatus::Finalized);

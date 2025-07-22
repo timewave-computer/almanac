@@ -1,11 +1,11 @@
 //! Validation utilities for generated code and output files
 
 use crate::{E2EError, TestOutcome};
-use std::path::Path;
-use std::fs;
-use walkdir::WalkDir;
 use regex::Regex;
+use std::fs;
+use std::path::Path;
 use std::time::Instant;
+use walkdir::WalkDir;
 
 /// Validate that all expected files were generated
 pub fn validate_generated_files<P: AsRef<Path>>(
@@ -15,18 +15,18 @@ pub fn validate_generated_files<P: AsRef<Path>>(
 ) -> TestOutcome {
     let start = Instant::now();
     let output_dir = output_dir.as_ref();
-    
+
     if !output_dir.exists() {
         return TestOutcome::failure(
             test_name.to_string(),
             start.elapsed(),
-            "Output directory does not exist".to_string()
+            "Output directory does not exist".to_string(),
         );
     }
-    
+
     let mut missing_files = Vec::new();
     let mut validation_errors = Vec::new();
-    
+
     for feature in features {
         match *feature {
             "client" => {
@@ -74,7 +74,7 @@ pub fn validate_generated_files<P: AsRef<Path>>(
                         .filter(|e| e.file_type().is_file())
                         .filter(|e| e.path().extension().is_some_and(|ext| ext == "sql"))
                         .collect();
-                    
+
                     if migration_files.is_empty() {
                         missing_files.push("migration SQL files");
                     }
@@ -85,22 +85,31 @@ pub fn validate_generated_files<P: AsRef<Path>>(
             }
         }
     }
-    
+
     if !missing_files.is_empty() || !validation_errors.is_empty() {
         let mut error_msg = String::new();
         if !missing_files.is_empty() {
-            error_msg.push_str(&format!("Missing files/directories: {}\n", missing_files.join(", ")));
+            error_msg.push_str(&format!(
+                "Missing files/directories: {}\n",
+                missing_files.join(", ")
+            ));
         }
         if !validation_errors.is_empty() {
-            error_msg.push_str(&format!("Validation errors: {}", validation_errors.join(", ")));
+            error_msg.push_str(&format!(
+                "Validation errors: {}",
+                validation_errors.join(", ")
+            ));
         }
         return TestOutcome::failure(test_name.to_string(), start.elapsed(), error_msg);
     }
-    
+
     TestOutcome::success(
         test_name.to_string(),
         start.elapsed(),
-        format!("All expected files for features {} were generated", features.join(", "))
+        format!(
+            "All expected files for features {} were generated",
+            features.join(", ")
+        ),
     )
 }
 
@@ -112,18 +121,20 @@ pub fn validate_rust_code_patterns<P: AsRef<Path>>(
 ) -> TestOutcome {
     let start = Instant::now();
     let file_path = file_path.as_ref();
-    
+
     let content = match fs::read_to_string(file_path) {
         Ok(content) => content,
-        Err(e) => return TestOutcome::failure(
-            test_name.to_string(),
-            start.elapsed(),
-            format!("Failed to read file {:?}: {}", file_path, e)
-        )
+        Err(e) => {
+            return TestOutcome::failure(
+                test_name.to_string(),
+                start.elapsed(),
+                format!("Failed to read file {:?}: {}", file_path, e),
+            )
+        }
     };
-    
+
     let mut missing_patterns = Vec::new();
-    
+
     for pattern in expected_patterns {
         if let Ok(regex) = Regex::new(pattern) {
             if !regex.is_match(&content) {
@@ -136,19 +147,23 @@ pub fn validate_rust_code_patterns<P: AsRef<Path>>(
             }
         }
     }
-    
+
     if !missing_patterns.is_empty() {
         return TestOutcome::failure(
             test_name.to_string(),
             start.elapsed(),
-            format!("Missing patterns in {:?}: {}", file_path, missing_patterns.join(", "))
+            format!(
+                "Missing patterns in {:?}: {}",
+                file_path,
+                missing_patterns.join(", ")
+            ),
         );
     }
-    
+
     TestOutcome::success(
         test_name.to_string(),
         start.elapsed(),
-        format!("All expected patterns found in {:?}", file_path)
+        format!("All expected patterns found in {:?}", file_path),
     )
 }
 
@@ -160,15 +175,15 @@ pub fn validate_sql_migration<P: AsRef<Path>>(
 ) -> TestOutcome {
     let start = Instant::now();
     let migration_dir = migration_dir.as_ref();
-    
+
     if !migration_dir.exists() {
         return TestOutcome::failure(
             test_name.to_string(),
             start.elapsed(),
-            "Migration directory does not exist".to_string()
+            "Migration directory does not exist".to_string(),
         );
     }
-    
+
     // Find all SQL files
     let sql_files: Vec<_> = WalkDir::new(migration_dir)
         .into_iter()
@@ -176,28 +191,30 @@ pub fn validate_sql_migration<P: AsRef<Path>>(
         .filter(|e| e.file_type().is_file())
         .filter(|e| e.path().extension().is_some_and(|ext| ext == "sql"))
         .collect();
-    
+
     if sql_files.is_empty() {
         return TestOutcome::failure(
             test_name.to_string(),
             start.elapsed(),
-            "No SQL migration files found".to_string()
+            "No SQL migration files found".to_string(),
         );
     }
-    
+
     // Read all SQL content
     let mut all_sql_content = String::new();
     for sql_file in &sql_files {
         match fs::read_to_string(sql_file.path()) {
             Ok(content) => all_sql_content.push_str(&content),
-            Err(e) => return TestOutcome::failure(
-                test_name.to_string(),
-                start.elapsed(),
-                format!("Failed to read SQL file {:?}: {}", sql_file.path(), e)
-            )
+            Err(e) => {
+                return TestOutcome::failure(
+                    test_name.to_string(),
+                    start.elapsed(),
+                    format!("Failed to read SQL file {:?}: {}", sql_file.path(), e),
+                )
+            }
         }
     }
-    
+
     let mut missing_tables = Vec::new();
     for table in expected_tables {
         let create_pattern = format!(r"CREATE\s+TABLE\s+{}", regex::escape(table));
@@ -207,19 +224,22 @@ pub fn validate_sql_migration<P: AsRef<Path>>(
             }
         }
     }
-    
+
     if !missing_tables.is_empty() {
         return TestOutcome::failure(
             test_name.to_string(),
             start.elapsed(),
-            format!("Missing table definitions: {}", missing_tables.join(", "))
+            format!("Missing table definitions: {}", missing_tables.join(", ")),
         );
     }
-    
+
     TestOutcome::success(
         test_name.to_string(),
         start.elapsed(),
-        format!("All expected tables found in SQL migrations: {}", expected_tables.join(", "))
+        format!(
+            "All expected tables found in SQL migrations: {}",
+            expected_tables.join(", ")
+        ),
     )
 }
 
@@ -227,28 +247,28 @@ pub fn validate_sql_migration<P: AsRef<Path>>(
 pub fn count_generated_code_lines<P: AsRef<Path>>(output_dir: P) -> Result<usize, E2EError> {
     let output_dir = output_dir.as_ref();
     let mut total_lines = 0;
-    
+
     for entry in WalkDir::new(output_dir) {
         let entry = entry.map_err(|e| E2EError::FileValidationFailed {
             file: output_dir.display().to_string(),
-            reason: format!("Failed to traverse directory: {}", e)
+            reason: format!("Failed to traverse directory: {}", e),
         })?;
-        
+
         if entry.file_type().is_file() {
             let path = entry.path();
             if let Some(ext) = path.extension() {
                 if ext == "rs" || ext == "sql" || ext == "toml" {
-                    let content = fs::read_to_string(path)
-                        .map_err(|e| E2EError::FileValidationFailed {
+                    let content =
+                        fs::read_to_string(path).map_err(|e| E2EError::FileValidationFailed {
                             file: path.display().to_string(),
-                            reason: format!("Failed to read file: {}", e)
+                            reason: format!("Failed to read file: {}", e),
                         })?;
                     total_lines += content.lines().count();
                 }
             }
         }
     }
-    
+
     Ok(total_lines)
 }
 
@@ -256,26 +276,28 @@ pub fn count_generated_code_lines<P: AsRef<Path>>(output_dir: P) -> Result<usize
 pub fn validate_toml_config<P: AsRef<Path>>(config_path: P, test_name: &str) -> TestOutcome {
     let start = Instant::now();
     let config_path = config_path.as_ref();
-    
+
     let content = match fs::read_to_string(config_path) {
         Ok(content) => content,
-        Err(e) => return TestOutcome::failure(
-            test_name.to_string(),
-            start.elapsed(),
-            format!("Failed to read config file {:?}: {}", config_path, e)
-        )
+        Err(e) => {
+            return TestOutcome::failure(
+                test_name.to_string(),
+                start.elapsed(),
+                format!("Failed to read config file {:?}: {}", config_path, e),
+            )
+        }
     };
-    
+
     match toml::from_str::<toml::Value>(&content) {
         Ok(_) => TestOutcome::success(
             test_name.to_string(),
             start.elapsed(),
-            format!("Valid TOML configuration: {:?}", config_path)
+            format!("Valid TOML configuration: {:?}", config_path),
         ),
         Err(e) => TestOutcome::failure(
             test_name.to_string(),
             start.elapsed(),
-            format!("Invalid TOML in {:?}: {}", config_path, e)
-        )
+            format!("Invalid TOML in {:?}: {}", config_path, e),
+        ),
     }
-} 
+}

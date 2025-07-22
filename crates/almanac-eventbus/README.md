@@ -35,32 +35,22 @@ This crate provides a lightweight, in-process event bus for communication betwee
 ## Usage
 
 ```rust
-use almanac_eventbus::{EventBus, Event, EventHandler, EventType, EventMetadata};
+use almanac_eventbus::{EventBus, Event, EventMetadata};
+use almanac_eventbus::event::EventType;
+use almanac_eventbus::subscription::Subscription;
 use async_trait::async_trait;
 use std::sync::Arc;
 
 // Define custom events
 #[derive(Debug, Clone)]
-struct BlockProcessedEvent {
-    metadata: EventMetadata,
-    chain_id: String,
-    block_number: u64,
-    transaction_count: u32,
+pub struct BlockProcessedEvent {
+    pub metadata: EventMetadata,
+    pub chain_id: String,
+    pub block_number: u64,
+    pub transaction_count: u32,
 }
 
-impl Event for BlockProcessedEvent {
-    fn event_type(&self) -> EventType {
-        EventType::BlockProcessed
-    }
-    
-    fn metadata(&self) -> &EventMetadata {
-        &self.metadata
-    }
-    
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-}
+impl Event for BlockProcessedEvent {}
 
 // Create event handlers
 struct BlockProcessedHandler {
@@ -68,11 +58,17 @@ struct BlockProcessedHandler {
 }
 
 #[async_trait]
-impl EventHandler<BlockProcessedEvent> for BlockProcessedHandler {
-    async fn handle(&self, event: Arc<BlockProcessedEvent>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        println!("{}: Block {} processed on {}", 
-            self.name, event.block_number, event.chain_id);
+impl almanac_eventbus::handler::EventHandler for BlockProcessedHandler {
+    async fn handle(&self, event: Arc<dyn Event>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        if let Some(event) = event.as_any().downcast_ref::<BlockProcessedEvent>() {
+            println!("{}: Block {} processed on {}", 
+                self.name, event.block_number, event.chain_id);
+        }
         Ok(())
+    }
+
+    fn event_types(&self) -> Vec<EventType> {
+        vec![EventType::BlockProcessed]
     }
 }
 
@@ -84,7 +80,8 @@ let handler = Arc::new(BlockProcessedHandler {
     name: "Logger".to_string(),
 });
 
-let subscription_id = event_bus.subscribe(handler).await?;
+let subscription = Subscription::new(handler.clone());
+let subscription_id = event_bus.subscribe(subscription).await?;
 
 // Publish events
 let event = BlockProcessedEvent {
@@ -103,7 +100,9 @@ event_bus.unsubscribe(subscription_id).await?;
 ## Event Types
 
 ```rust
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum EventType {
     // Block processing events
     BlockProcessed,
@@ -160,17 +159,27 @@ The event bus provides comprehensive error handling:
 ```rust
 // Handler errors are captured and logged
 #[async_trait]
-impl EventHandler<MyEvent> for MyHandler {
-    async fn handle(&self, event: Arc<MyEvent>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+impl almanac_eventbus::handler::EventHandler for MyHandler {
+    async fn handle(&self, event: Arc<dyn Event>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // Handler logic that might fail
-        process_event(&event).map_err(|e| {
-            Box::new(e) as Box<dyn std::error::Error + Send + Sync>
-        })
+        // Example: if event is of a specific type
+        if let Some(my_event) = event.as_any().downcast_ref::<MyEvent>() {
+            // Process my_event
+            process_my_event(my_event).map_err(|e| {
+                Box::new(e) as Box<dyn std::error.Error + Send + Sync>
+            })
+        } else {
+            Ok(()) // Ignore other event types
+        }
+    }
+
+    fn event_types(&self) -> Vec<EventType> {
+        vec![EventType::Custom("MyEvent".to_string())]
     }
 }
 
 // Bus errors are propagated to callers
-match event_bus.publish(event).await {
+match event_bus.publish(Arc::new(event)).await {
     Ok(()) => println!("Event published successfully"),
     Err(e) => eprintln!("Failed to publish event: {}", e),
 }
@@ -180,7 +189,7 @@ match event_bus.publish(event).await {
 
 Run tests with:
 ```bash
-cargo test -p almanac-eventbus
+nix develop -c cargo test -p almanac-eventbus
 ```
 
 The test suite covers:

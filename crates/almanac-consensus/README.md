@@ -8,22 +8,23 @@ This crate provides comprehensive consensus mechanisms for managing blockchain f
 
 ## Key Components
 
-### Reorganization Detection
-- `ReorgDetector` - Monitors chain state for reorganizations
-- `ReorgHandler` - Processes and responds to detected reorganizations
-- `ReorgType` - Classifies reorganization severity (Simple, Deep, Complex)
-- `ReorgInfo` - Detailed information about reorganization events
+### Fork Choice Rules
+- `ForkChoiceRule` - Defines how to select the canonical chain
+- `ForkChoice` trait - Primary interface for consensus algorithms
+- `create_fork_choice` function - Factory for creating `ForkChoice` implementations
+- Support for different consensus mechanisms (PoW, PoS, BFT)
 
-### Finality Processing
+### Finality Processing (Internal)
 - `FinalityProcessor` - Tracks block finality across chains
 - `FinalityConfig` - Chain-specific finality rules
 - `FinalityLevel` - Finality status levels (Pending, Safe, Justified, Finalized)
 - Confirmation-based and consensus-based finality
 
-### Fork Choice Rules
-- `ForkChoiceRule` - Defines how to select the canonical chain
-- `ForkChoiceState` - Maintains fork choice state
-- Support for different consensus mechanisms (PoW, PoS, BFT)
+### Reorganization Detection (Internal)
+- `ReorgDetector` - Monitors chain state for reorganizations
+- `ReorgHandler` - Processes and responds to detected reorganizations
+- `ReorgType` - Classifies reorganization severity (Simple, Deep, Complex)
+- `ReorgInfo` - Detailed information about reorganization events
 
 ### Consensus Types
 - `BlockInfo` - Block metadata with consensus information
@@ -33,61 +34,40 @@ This crate provides comprehensive consensus mechanisms for managing blockchain f
 ## Usage
 
 ```rust
-use almanac_consensus::{
-    ReorgDetector, FinalityProcessor, FinalityConfig, 
-    ReorgHandler, FinalityLevel, ReorgType
+use almanac_consensus::{create_fork_choice, ForkChoiceRule};
+use almanac_consensus::types::BlockInfo;
+use std::time::SystemTime;
+
+// Create an initial block for the fork choice
+let initial_block = BlockInfo {
+    number: 0,
+    hash: "0x000...".to_string(),
+    parent_hash: "0x000...".to_string(),
+    timestamp: SystemTime::now(),
+    confirmations: 0,
 };
 
-// Initialize finality processor
-let finality_config = FinalityConfig {
-    chain_id: "ethereum".to_string(),
-    confirmation_blocks: 12,
-    finality_delay: 64,
-    enable_deep_reorg_detection: true,
-    max_reorg_depth: 100,
+// Initialize a fork choice implementation (e.g., LongestChain)
+let fork_choice = create_fork_choice(ForkChoiceRule::LongestChain, initial_block);
+
+// Process a new block
+let new_block = BlockInfo {
+    number: 1,
+    hash: "0x111...".to_string(),
+    parent_hash: "0x000...".to_string(),
+    timestamp: SystemTime::now(),
+    confirmations: 0,
 };
 
-let finality_processor = FinalityProcessor::new(finality_config);
+let update = fork_choice.process_block(new_block).await.unwrap();
 
-// Check block finality
-let finality_level = finality_processor
-    .get_finality_level(block_number, current_tip)
-    .await?;
-
-match finality_level {
-    FinalityLevel::Pending => println!("Block is pending"),
-    FinalityLevel::Safe => println!("Block is safe"),
-    FinalityLevel::Justified => println!("Block is justified"),
-    FinalityLevel::Finalized => println!("Block is finalized"),
+if update.head_changed {
+    println!("Canonical head changed to block {}", update.new_head.number);
 }
 
-// Set up reorganization detection
-let reorg_detector = ReorgDetector::new();
-
-// Register a handler for reorganizations
-struct MyReorgHandler;
-
-#[async_trait]
-impl ReorgHandler for MyReorgHandler {
-    async fn handle_reorg(&self, reorg_info: ReorgInfo) -> Result<()> {
-        match reorg_info.reorg_type {
-            ReorgType::Simple => {
-                println!("Simple reorg detected: {} blocks", reorg_info.depth);
-            }
-            ReorgType::Deep => {
-                println!("Deep reorg detected: {} blocks", reorg_info.depth);
-                // Handle deep reorganization
-            }
-            ReorgType::Complex => {
-                println!("Complex reorg detected: {} blocks", reorg_info.depth);
-                // Handle complex reorganization
-            }
-        }
-        Ok(())
-    }
-}
-
-reorg_detector.register_handler(Arc::new(MyReorgHandler)).await;
+// Get the current canonical head
+let current_head = fork_choice.get_canonical_head().await.unwrap();
+println!("Current canonical head: {}", current_head.number);
 ```
 
 ## Features
@@ -118,40 +98,13 @@ reorg_detector.register_handler(Arc::new(MyReorgHandler)).await;
 
 ## Configuration
 
-```rust
-// Ethereum configuration
-let eth_config = FinalityConfig {
-    chain_id: "ethereum".to_string(),
-    confirmation_blocks: 12,
-    finality_delay: 64,
-    enable_deep_reorg_detection: true,
-    max_reorg_depth: 100,
-};
-
-// Cosmos configuration (instant finality)
-let cosmos_config = FinalityConfig {
-    chain_id: "cosmos".to_string(),
-    confirmation_blocks: 1,
-    finality_delay: 1,
-    enable_deep_reorg_detection: false,
-    max_reorg_depth: 0,
-};
-
-// Solana configuration
-let solana_config = FinalityConfig {
-    chain_id: "solana".to_string(),
-    confirmation_blocks: 32,
-    finality_delay: 32,
-    enable_deep_reorg_detection: true,
-    max_reorg_depth: 50,
-};
-```
+Configuration for consensus, finality, and reorg handling is managed through the main `almanac-config` crate. Specific parameters are defined within the `Config` struct and loaded from TOML files or environment variables.
 
 ## Testing
 
 Run tests with:
 ```bash
-cargo test -p almanac-consensus
+nix develop -c cargo test -p almanac-consensus
 ```
 
 The test suite covers:

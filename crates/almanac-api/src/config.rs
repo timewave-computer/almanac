@@ -3,22 +3,22 @@
 //! This module provides configuration types that map from TOML config files
 //! to the runtime configuration needed by the HTTP API.
 
+use crate::auth::AuthServiceConfig;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
-use crate::auth::AuthServiceConfig;
 
 /// HTTP API authentication configuration from TOML
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthConfig {
     /// External authentication service URL
     pub service_url: String,
-    
+
     /// Request timeout in milliseconds
     pub timeout_ms: u64,
-    
+
     /// Cache TTL for validated tokens in seconds
     pub cache_ttl_seconds: u64,
-    
+
     /// Enable authentication (set to false to bypass auth)
     pub enabled: bool,
 }

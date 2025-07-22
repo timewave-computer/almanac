@@ -96,11 +96,12 @@ nix flake check
 ### API Server
 
 ```bash
-# Development
-nix run .#almanac-api
+# Development - run API with Swagger UI
+nix run .#swagger-ui
 
-# Production
-nix build .#almanac-api && ./result/bin/almanac-api
+# Alternative - run via development shell
+nix develop
+cargo run --bin almanac-api
 ```
 
 The API server supports both memory and FoundationDB storage backends, configured via environment variables:
@@ -116,14 +117,14 @@ export API_PORT=8080
 ### Indexing Nodes
 
 ```bash
-# Ethereum indexing
-nix run .#ethereum-node -- --config config/ethereum.toml
+# Use simulation cluster for multi-chain indexing
+nix run .#sim-cluster -- init ethereum,cosmos,fdb
+nix run .#sim-cluster -- start
 
-# Cosmos indexing  
-nix run .#cosmos-node -- --config config/cosmos.toml
-
-# Solana indexing (when available)
-nix run .#solana-node -- --config config/solana.toml
+# Or run individual indexers via development shell
+nix develop
+cargo run --bin almanac-node-ethereum -- --config config/ethereum.toml
+cargo run --bin almanac-node-cosmos -- --config config/cosmos.toml
 ```
 
 ### Using Helper Scripts
@@ -219,9 +220,15 @@ nix build .#almanac-api
 
 1. Build release binaries:
    ```bash
-   nix build .#almanac-api
-   nix build .#ethereum-node
-   nix build .#cosmos-node
+   # Build API and tools
+   nix build .#swagger-ui
+   nix build .#generate-openapi-spec
+   
+   # Build via development shell
+   nix develop
+   cargo build --release --bin almanac-api
+   cargo build --release --bin almanac-node-ethereum  
+   cargo build --release --bin almanac-node-cosmos
    ```
 
 2. Set up FoundationDB cluster
@@ -236,8 +243,8 @@ The project includes comprehensive testing at multiple levels:
 
 ### Unit Tests
 ```bash
-# Run all tests
-nix flake check
+# Run all unit tests
+nix develop -c cargo test
 
 # Test specific crates
 nix develop -c cargo test --package almanac-storage

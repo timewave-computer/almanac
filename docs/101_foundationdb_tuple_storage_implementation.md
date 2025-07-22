@@ -24,6 +24,8 @@ This document summarizes the FoundationDB implementation for the Almanac project
   - `CircuitKeys` - SP1 verification keys
   - `SolanaAccounts` - Solana account data
   - `ChangeTracking` - State change logs
+  - `ValidatorSignatures` - Proposer validator signatures
+  - `TrustPolicies` - Developer trust policies
 
 ### 3. Type Modules Created
 - `trust.rs` - Trust management types (TrustScope, TrustLevel, TrustPolicy)
@@ -33,71 +35,35 @@ This document summarizes the FoundationDB implementation for the Almanac project
 - `storage_proof.rs` - Storage proof types
 
 ### 4. FDB Implementation
-- Created `impl_actual.rs` with full FoundationDB integration
-- Implements tuple encoding/decoding using foundationdb-rs crate
+- Full FoundationDB integration in `crates/almanac-storage/src/fdb/impl_actual.rs` and `crates/almanac-storage/src/fdb/tuple_layer.rs`
+- Implements tuple encoding/decoding using `foundationdb-rs` crate
 - Trust-aware semantic metadata filtering
 - Layout conflict detection
 - Developer trust graph management
 
 ### 5. API Integration
-- Created `FdbStorageExt` that implements `ExtendedStorageReader`
-- Created `api_adapter.rs` to bridge storage and API layers
-- All storage methods properly typed and structured
-
-## Existing but Needs Connection
-
-### API Handlers
-Located in `/crates/almanac-api/src/handlers/`:
-- `semantics.rs` - Endpoints exist but return TODO
-- `trust.rs` - Endpoints exist but return TODO  
-- `layout.rs` - More complete, references storage backend
-- `views.rs` - Endpoints exist but return TODO
-
-These handlers need to be connected to the FDB storage backend.
+- API handlers in `crates/almanac-api/src/handlers/` are now connected to the FDB storage backend.
+- All storage methods properly typed and structured.
 
 ## Next Steps
 
-1. **Resolve Dependency Conflicts**
-   - Current conflict between bcrypt (API) and solana (chains) over zeroize version
-   - Consider updating bcrypt or isolating solana dependencies
+1. **Performance Optimization**
+   - Further optimize FDB queries and data access patterns.
+   - Implement caching strategies for frequently accessed data.
 
-2. **Connect API to Storage**
-   - Update API server initialization to create FdbStorageExt
-   - Pass storage instance to API handlers
-   - Update handlers to use actual storage methods instead of TODOs
+2. **Advanced Features**
+   - Implement Lightwave integration for recursive proof coordination.
+   - Enhance real-time streaming capabilities.
 
-3. **Testing Infrastructure**
-   - Create integration tests for FDB storage
-   - Test trust-scoped queries
-   - Verify layout conflict detection
-   - Test semantic metadata filtering
-
-4. **Lightwave Integration**
-   - Implement checkpoint verification
-   - Add circuit key management
-   - Integrate with recursive proof system
-
-## Building with FDB
-
-```bash
-# Set up FDB headers (macOS)
-./scripts/dev/setup-fdb-headers.sh
-
-# Source environment
-source .env.fdb
-
-# Build with FDB feature
-nix develop .#fdb --command cargo build --features fdb
-
-# Start FDB server (via nix)
-nix run .#fdb-manage start
-```
+3. **Production Readiness**
+   - Improve monitoring and alerting for FDB and indexer services.
+   - Develop robust backup and restore procedures.
 
 ## Architecture Overview
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   API Handlers  │────▶│ ExtendedStorage │────▶│ FDB Tuple Layer │
+│   API Handlers  │────▶│ Storage Traits  │────▶│ FDB Tuple Layer │
 └─────────────────┘     └─────────────────┘     └─────────────────┘
                                                           │
                         ┌─────────────────────────────────┼─────────────────────────────────┐

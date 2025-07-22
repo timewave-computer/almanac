@@ -203,6 +203,106 @@
           };
         };
 
+        # Pre-fetch the macOS-compatible affinity source to avoid git network calls during build
+        affinity-macos-src = pkgs.fetchFromGitHub {
+          owner = "elast0ny";
+          repo = "affinity";
+          rev = "67b925db00575a35d839455964baea494ac86ec2";
+          hash = "sha256-54Z45C751GCTadHJVorxWz40Igmk2D2QsQZwIQ9yAfc=";
+        };
+
+        # Build Yellowstone Geyser plugin for Solana with macOS affinity patch
+        yellowstone-grpc-geyser = pkgs.rustPlatform.buildRustPackage rec {
+          pname = "yellowstone-grpc-geyser";
+          version = "8.0.0+solana.2.3.3";
+
+          src = pkgs.fetchFromGitHub {
+            owner = "rpcpool";
+            repo = "yellowstone-grpc";
+            rev = "v${version}";
+            hash = "sha256-rbGS0NLljGrv5Ffap0T+28tLN7sRYclMQYJA/BlmiNs=";
+          };
+
+          cargoHash = "sha256-KWY0qQya9k674WPm5Oj3rOdKl2PfFnAGT5pS66rQUFc=";
+
+          # Patch the workspace Cargo.toml to use pre-fetched affinity source
+          postPatch = ''
+            # Copy the macOS-compatible affinity source into the vendor directory
+            mkdir -p vendor/affinity
+            cp -r ${affinity-macos-src}/* vendor/affinity/
+            
+            # Find and patch the workspace Cargo.toml to override affinity dependency
+            if [ -f Cargo.toml ]; then
+              echo "Patching workspace Cargo.toml..."
+              sed -i 's|affinity = "0\.1\.2"|affinity = { path = "./vendor/affinity" }|g' Cargo.toml
+              
+              echo "Workspace Cargo.toml affinity section:"
+              grep -A2 -B2 'affinity.*=' Cargo.toml || echo "affinity not found in workspace Cargo.toml"
+            fi
+            
+            echo "Patched affinity dependency to use local macOS-compatible version"
+          '';
+
+          # Build only the Geyser plugin library
+          cargoBuildFlags = [ "--package" "yellowstone-grpc-geyser" ];
+          
+          # Skip tests for faster builds  
+          doCheck = false;
+
+          nativeBuildInputs = with pkgs; [
+            pkg-config
+            protobuf
+            git
+          ];
+
+          buildInputs = with pkgs; [
+            openssl
+          ] ++ lib.optionals stdenv.isDarwin [
+            darwin.apple_sdk.frameworks.Security
+            darwin.apple_sdk.frameworks.SystemConfiguration
+          ];
+
+          # Set library type to cdylib for plugin loading
+          CARGO_BUILD_TARGET = if pkgs.stdenv.isDarwin then
+            "${if pkgs.stdenv.isAarch64 then "aarch64" else "x86_64"}-apple-darwin"
+          else
+            "${if pkgs.stdenv.isAarch64 then "aarch64" else "x86_64"}-unknown-linux-gnu";
+
+          # Set git version info for build script
+          VERGEN_GIT_DESCRIBE = "v${version}";
+          VERGEN_GIT_SHA = "unknown";
+          SOURCE_DATE_EPOCH = "1686858254";
+
+          # Set up fake git repo for build script
+          preBuild = ''
+            git init
+            git config user.email "nix@build.local"
+            git config user.name "Nix Build"
+            git add .
+            git commit -m "nix build" --allow-empty
+            git tag "v${version}"
+          '';
+
+          # Post-install to ensure the plugin library is accessible
+          postInstall = ''
+            # Create symlinks for easier plugin discovery
+            mkdir -p $out/plugins
+            if [ -f $out/lib/libyellowstone_grpc_geyser.dylib ]; then
+              ln -sf $out/lib/libyellowstone_grpc_geyser.dylib $out/plugins/
+            fi
+            if [ -f $out/lib/libyellowstone_grpc_geyser.so ]; then
+              ln -sf $out/lib/libyellowstone_grpc_geyser.so $out/plugins/
+            fi
+          '';
+
+          meta = with pkgs.lib; {
+            description = "Yellowstone gRPC Geyser plugin for Solana";
+            homepage = "https://github.com/rpcpool/yellowstone-grpc";
+            license = licenses.asl20;
+            platforms = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
+          };
+        };
+
         # Build anchor CLI from source with rust-overlay (from zero.nix)
         anchor = pkgs.rustPlatform.buildRustPackage rec {
           pname = "anchor-cli";
@@ -352,6 +452,7 @@
           paths = [
             anchor-wrapper
             setup-solana
+            yellowstone-grpc-geyser
           ] ++ lib.optionals (pkgs.stdenv.system != "aarch64-linux") [
             solana-node
           ];
@@ -359,7 +460,7 @@
 
       in {
         packages = {
-          inherit anchor setup-solana nightly-rust anchor-wrapper solana-tools;
+          inherit anchor setup-solana nightly-rust anchor-wrapper solana-tools yellowstone-grpc-geyser;
         } // lib.optionalAttrs (pkgs.stdenv.system != "aarch64-linux") {
           inherit solana-node;
         };
@@ -381,6 +482,10 @@
             {
               package = self'.packages.setup-solana;
               help = "Setup Solana development environment";
+            }
+            {
+              package = self'.packages.yellowstone-grpc-geyser;
+              help = "Yellowstone gRPC Geyser plugin for real-time data streaming";
             }
             {
               package = pkgs.curl;

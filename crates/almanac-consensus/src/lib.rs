@@ -6,13 +6,13 @@
 //! - Fork choice rules
 //! - Consensus state management
 
-pub mod reorg;
 pub mod finality;
 pub mod fork_choice;
+pub mod reorg;
 pub mod types;
 
 // Re-exports
-pub use reorg::{ReorgHandler, ReorgDetector, Reorganization, ReorgType};
-pub use finality::{FinalityProcessor, FinalityConfig, FinalityLevel};
+pub use finality::{FinalityConfig, FinalityLevel, FinalityProcessor};
 pub use fork_choice::{ForkChoiceRule, ForkChoiceState};
+pub use reorg::{ReorgDetector, ReorgHandler, ReorgType, Reorganization};
 pub use types::{BlockInfo, ConsensusState};

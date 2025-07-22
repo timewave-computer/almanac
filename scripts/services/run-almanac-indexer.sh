@@ -18,7 +18,7 @@ show_help() {
   echo ""
   echo "Options:"
   echo "  --chain=TYPE       Chain type to index (ethereum, cosmos) [default: ethereum]"
-  echo "  --node=TYPE        Node type for Ethereum (anvil, reth) [default: anvil]"
+  echo "  --node=TYPE        Node type for Ethereum (anvil, geth) [default: anvil]"
   echo "  --duration=TIME    Duration to run the indexer (e.g., 5m, 1h) [default: 15m]"
   echo "  --ethereum-port=N  Port for Ethereum node [default: 8545]"
   echo "  --ethereum-host=H  Host for Ethereum node [default: localhost]"

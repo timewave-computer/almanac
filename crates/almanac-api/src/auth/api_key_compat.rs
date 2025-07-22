@@ -1,8 +1,8 @@
 //! Minimal API key compatibility layer for transitioning to new auth
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use std::collections::HashMap;
 
 /// API key information
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -58,12 +58,12 @@ impl Default for ApiKeyStore {
     }
 }
 
+use crate::types::ApiError;
 use axum::{
     extract::{Request, State},
     middleware::Next,
     response::Response,
 };
-use crate::types::ApiError;
 
 // Legacy middleware functions
 pub async fn auth_middleware(

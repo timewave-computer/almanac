@@ -219,7 +219,10 @@ mod health {
 
     async fn health_check(State(state): State<HealthState>) -> impl IntoResponse {
         let latest_slot = state.adapter.get_latest_block().await.unwrap_or(0);
-        let indexed_slot = 0; // TODO: Get from storage
+        let indexed_slot = state.storage
+            .get_latest_block_with_status(&state.adapter.chain_id(), almanac_core::BlockStatus::Processed)
+            .await
+            .unwrap_or(0);
         
         Json(HealthStatus {
             status: "healthy",
@@ -235,7 +238,7 @@ mod health {
     async fn readiness_check(State(state): State<HealthState>) -> impl IntoResponse {
         // Check if we can connect to both chain and storage
         let chain_ok = state.adapter.get_latest_block().await.is_ok();
-        let storage_ok = true; // TODO: Add storage health check
+        let storage_ok = state.storage.health_check().await.is_ok();
         
         if chain_ok && storage_ok {
             (axum::http::StatusCode::OK, "ready")

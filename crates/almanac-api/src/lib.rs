@@ -26,12 +26,14 @@ pub use error::HttpError;
 pub use server::{ApiServer, ServerConfig};
 pub use state::AppState;
 
+use crate::types::storage::MemoryStorageReader;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use crate::types::storage::MemoryStorageReader;
 
 #[cfg(feature = "fdb")]
-use almanac_storage::api_adapter::{StorageReader as StorageReaderTrait, ExtendedStorageReader as ExtendedStorageReaderTrait};
+use almanac_storage::api_adapter::{
+    ExtendedStorageReader as ExtendedStorageReaderTrait, StorageReader as StorageReaderTrait,
+};
 #[cfg(feature = "fdb")]
 use chrono;
 
@@ -64,7 +66,7 @@ impl AppConfig {
             Ok("foundationdb") | Ok("fdb") => StorageBackend::FoundationDB,
             _ => StorageBackend::Memory,
         };
-        
+
         Ok(Self {
             host: std::env::var("API_HOST").unwrap_or_else(|_| "0.0.0.0".to_string()),
             port: std::env::var("API_PORT")
@@ -96,7 +98,7 @@ impl AppConfig {
 /// Run the API server with the given configuration
 pub async fn run_server(config: AppConfig) -> anyhow::Result<()> {
     use crate::storage_ext::ExtendedStorageReader;
-    
+
     // Create storage based on configuration
     let storage: Arc<dyn ExtendedStorageReader> = match config.storage_backend {
         StorageBackend::Memory => {
@@ -108,17 +110,18 @@ pub async fn run_server(config: AppConfig) -> anyhow::Result<()> {
             #[cfg(feature = "fdb")]
             {
                 use almanac_storage::fdb::{FdbConfig, FdbStorageExt};
-                
+
                 let fdb_config = FdbConfig {
                     cluster_file: config.fdb_cluster_file.clone(),
                     namespace: config.fdb_namespace.clone(),
                     connection_timeout: 30,
                     max_retries: 3,
                 };
-                
-                let fdb_storage = FdbStorageExt::new(fdb_config).await
+
+                let fdb_storage = FdbStorageExt::new(fdb_config)
+                    .await
                     .map_err(|e| anyhow::anyhow!("Failed to create FDB storage: {}", e))?;
-                    
+
                 Arc::new(FdbStorageAdapter::new(fdb_storage))
             }
             #[cfg(not(feature = "fdb"))]
@@ -127,10 +130,10 @@ pub async fn run_server(config: AppConfig) -> anyhow::Result<()> {
             }
         }
     };
-    
+
     // Update AppState to use ExtendedStorageReader
     let app_state = AppState::new(storage);
-    
+
     // Create server config
     let server_config = ServerConfig {
         addr: SocketAddr::from(([0, 0, 0, 0], config.port)),
@@ -138,7 +141,7 @@ pub async fn run_server(config: AppConfig) -> anyhow::Result<()> {
         request_timeout_secs: 30,
         auth_config: None,
     };
-    
+
     // Create and run server
     let server = ApiServer::new(server_config, app_state.storage.clone());
     server.run().await
@@ -160,14 +163,20 @@ impl MemoryExtendedStorage {
 // Implement ExtendedStorageReader for MemoryExtendedStorage with stub methods
 #[async_trait::async_trait]
 impl crate::types::StorageReader for MemoryExtendedStorage {
-    async fn get_events(&self, filter: crate::types::EventFilter) -> crate::types::ApiResult<Vec<crate::types::ApiEvent>> {
+    async fn get_events(
+        &self,
+        filter: crate::types::EventFilter,
+    ) -> crate::types::ApiResult<Vec<crate::types::ApiEvent>> {
         self.base.get_events(filter).await
     }
-    
-    async fn get_latest_block(&self, chain: &crate::types::ChainId) -> crate::types::ApiResult<crate::types::BlockNumber> {
+
+    async fn get_latest_block(
+        &self,
+        chain: &crate::types::ChainId,
+    ) -> crate::types::ApiResult<crate::types::BlockNumber> {
         self.base.get_latest_block(chain).await
     }
-    
+
     async fn health_check(&self) -> crate::types::ApiResult<bool> {
         self.base.health_check().await
     }
@@ -186,7 +195,9 @@ impl crate::storage_ext::ExtendedStorageReader for MemoryExtendedStorage {
         _expires_at: Option<u64>,
         _conditions: Vec<String>,
     ) -> crate::types::ApiResult<()> {
-        Err(crate::types::ApiError::InternalError("Not implemented for memory storage".to_string()))
+        Err(crate::types::ApiError::InternalError(
+            "Not implemented for memory storage".to_string(),
+        ))
     }
 
     async fn revoke_trust(
@@ -196,22 +207,39 @@ impl crate::storage_ext::ExtendedStorageReader for MemoryExtendedStorage {
         _scope: crate::storage_ext::TrustScope,
         _reason: &str,
     ) -> crate::types::ApiResult<()> {
-        Err(crate::types::ApiError::InternalError("Not implemented for memory storage".to_string()))
+        Err(crate::types::ApiError::InternalError(
+            "Not implemented for memory storage".to_string(),
+        ))
     }
 
-    async fn get_trust_policy(&self, _developer_id: &str) -> crate::types::ApiResult<Option<crate::storage_ext::TrustPolicy>> {
+    async fn get_trust_policy(
+        &self,
+        _developer_id: &str,
+    ) -> crate::types::ApiResult<Option<crate::storage_ext::TrustPolicy>> {
         Ok(None)
     }
 
-    async fn update_trust_policy(&self, _developer_id: &str, _policy: crate::storage_ext::TrustPolicy) -> crate::types::ApiResult<()> {
-        Err(crate::types::ApiError::InternalError("Not implemented for memory storage".to_string()))
+    async fn update_trust_policy(
+        &self,
+        _developer_id: &str,
+        _policy: crate::storage_ext::TrustPolicy,
+    ) -> crate::types::ApiResult<()> {
+        Err(crate::types::ApiError::InternalError(
+            "Not implemented for memory storage".to_string(),
+        ))
     }
 
     async fn get_trusted_developers(
         &self,
         _trustor: &str,
         _min_level: crate::storage_ext::TrustLevel,
-    ) -> crate::types::ApiResult<Vec<(String, crate::storage_ext::TrustScope, crate::storage_ext::TrustLevel)>> {
+    ) -> crate::types::ApiResult<
+        Vec<(
+            String,
+            crate::storage_ext::TrustScope,
+            crate::storage_ext::TrustLevel,
+        )>,
+    > {
         Ok(vec![])
     }
 
@@ -234,7 +262,11 @@ impl crate::storage_ext::ExtendedStorageReader for MemoryExtendedStorage {
         Ok(false)
     }
 
-    async fn get_trust_graph(&self, _developer_id: &str) -> crate::types::ApiResult<std::collections::HashMap<String, crate::storage_ext::TrustLevel>> {
+    async fn get_trust_graph(
+        &self,
+        _developer_id: &str,
+    ) -> crate::types::ApiResult<std::collections::HashMap<String, crate::storage_ext::TrustLevel>>
+    {
         Ok(std::collections::HashMap::new())
     }
 
@@ -244,7 +276,9 @@ impl crate::storage_ext::ExtendedStorageReader for MemoryExtendedStorage {
         _key: crate::storage_ext::SemanticMetadataKey,
         _value: crate::storage_ext::SemanticMetadataValue,
     ) -> crate::types::ApiResult<()> {
-        Err(crate::types::ApiError::InternalError("Not implemented for memory storage".to_string()))
+        Err(crate::types::ApiError::InternalError(
+            "Not implemented for memory storage".to_string(),
+        ))
     }
 
     async fn get_semantic_metadata(
@@ -272,7 +306,9 @@ impl crate::storage_ext::ExtendedStorageReader for MemoryExtendedStorage {
         _method: &str,
         _explanation: &str,
     ) -> crate::types::ApiResult<()> {
-        Err(crate::types::ApiError::InternalError("Not implemented for memory storage".to_string()))
+        Err(crate::types::ApiError::InternalError(
+            "Not implemented for memory storage".to_string(),
+        ))
     }
 
     // Layout management methods
@@ -281,7 +317,9 @@ impl crate::storage_ext::ExtendedStorageReader for MemoryExtendedStorage {
         _key: crate::storage_ext::ContractLayoutKey,
         _value: crate::storage_ext::ContractLayoutValue,
     ) -> crate::types::ApiResult<()> {
-        Err(crate::types::ApiError::InternalError("Not implemented for memory storage".to_string()))
+        Err(crate::types::ApiError::InternalError(
+            "Not implemented for memory storage".to_string(),
+        ))
     }
 
     async fn get_layout(
@@ -309,23 +347,41 @@ impl crate::storage_ext::ExtendedStorageReader for MemoryExtendedStorage {
     }
 
     // View management methods
-    async fn register_view(&self, _definition: crate::storage_ext::ViewDefinition) -> crate::types::ApiResult<()> {
-        Err(crate::types::ApiError::InternalError("Not implemented for memory storage".to_string()))
+    async fn register_view(
+        &self,
+        _definition: crate::storage_ext::ViewDefinition,
+    ) -> crate::types::ApiResult<()> {
+        Err(crate::types::ApiError::InternalError(
+            "Not implemented for memory storage".to_string(),
+        ))
     }
 
-    async fn get_view(&self, _view_id: &str) -> crate::types::ApiResult<Option<crate::storage_ext::ViewDefinition>> {
+    async fn get_view(
+        &self,
+        _view_id: &str,
+    ) -> crate::types::ApiResult<Option<crate::storage_ext::ViewDefinition>> {
         Ok(None)
     }
 
-    async fn update_view(&self, _definition: crate::storage_ext::ViewDefinition) -> crate::types::ApiResult<()> {
-        Err(crate::types::ApiError::InternalError("Not implemented for memory storage".to_string()))
+    async fn update_view(
+        &self,
+        _definition: crate::storage_ext::ViewDefinition,
+    ) -> crate::types::ApiResult<()> {
+        Err(crate::types::ApiError::InternalError(
+            "Not implemented for memory storage".to_string(),
+        ))
     }
 
     async fn delete_view(&self, _view_id: &str) -> crate::types::ApiResult<()> {
-        Err(crate::types::ApiError::InternalError("Not implemented for memory storage".to_string()))
+        Err(crate::types::ApiError::InternalError(
+            "Not implemented for memory storage".to_string(),
+        ))
     }
 
-    async fn list_views_for_contract(&self, _contract_address: &str) -> crate::types::ApiResult<Vec<crate::storage_ext::ViewDefinition>> {
+    async fn list_views_for_contract(
+        &self,
+        _contract_address: &str,
+    ) -> crate::types::ApiResult<Vec<crate::storage_ext::ViewDefinition>> {
         Ok(vec![])
     }
 
@@ -337,7 +393,9 @@ impl crate::storage_ext::ExtendedStorageReader for MemoryExtendedStorage {
         _block_height: u64,
         _include_proofs: bool,
     ) -> crate::types::ApiResult<crate::storage_ext::ViewQueryResult> {
-        Err(crate::types::ApiError::InternalError("Not implemented for memory storage".to_string()))
+        Err(crate::types::ApiError::InternalError(
+            "Not implemented for memory storage".to_string(),
+        ))
     }
 
     // Storage proof methods
@@ -367,15 +425,17 @@ impl FdbStorageAdapter {
     fn new(storage: almanac_storage::fdb::FdbStorageExt) -> Self {
         Self { storage }
     }
-    
+
     /// Convert storage errors to API errors
     fn convert_error(err: almanac_storage::api_adapter::ApiError) -> crate::types::ApiError {
         crate::types::ApiError::StorageError(err.to_string())
     }
-    
+
     /// Convert API DeveloperTrustValue to storage DeveloperTrustValue
     #[allow(dead_code)]
-    fn convert_developer_trust_value_to_storage(api_val: crate::storage_ext::DeveloperTrustValue) -> almanac_storage::api_adapter::DeveloperTrustValue {
+    fn convert_developer_trust_value_to_storage(
+        api_val: crate::storage_ext::DeveloperTrustValue,
+    ) -> almanac_storage::api_adapter::DeveloperTrustValue {
         almanac_storage::api_adapter::DeveloperTrustValue {
             trustor: api_val.trustor,
             trustee: api_val.trustee,
@@ -383,11 +443,15 @@ impl FdbStorageAdapter {
             level: api_val.level,
             expires_at: api_val.expires_at,
             created_at: chrono::Utc::now().timestamp() as u64,
+            conditions: vec![], // Default to empty conditions for API conversion
+            revocation_reason: None, // Default to no revocation
         }
     }
-    
+
     /// Convert storage DeveloperTrustValue to API DeveloperTrustValue
-    fn convert_developer_trust_value_from_storage(storage_val: almanac_storage::api_adapter::DeveloperTrustValue) -> crate::storage_ext::DeveloperTrustValue {
+    fn convert_developer_trust_value_from_storage(
+        storage_val: almanac_storage::api_adapter::DeveloperTrustValue,
+    ) -> crate::storage_ext::DeveloperTrustValue {
         crate::storage_ext::DeveloperTrustValue {
             trustor: storage_val.trustor,
             trustee: storage_val.trustee,
@@ -397,9 +461,11 @@ impl FdbStorageAdapter {
             conditions: vec![], // Storage doesn't have conditions field
         }
     }
-    
+
     /// Convert API SemanticMetadataKey to storage SemanticMetadataKey
-    fn convert_semantic_key_to_storage(api_key: crate::storage_ext::SemanticMetadataKey) -> almanac_storage::api_adapter::SemanticMetadataKey {
+    fn convert_semantic_key_to_storage(
+        api_key: crate::storage_ext::SemanticMetadataKey,
+    ) -> almanac_storage::api_adapter::SemanticMetadataKey {
         almanac_storage::api_adapter::SemanticMetadataKey {
             chain_id: api_key.chain,
             contract_address: api_key.contract,
@@ -408,9 +474,11 @@ impl FdbStorageAdapter {
             project_id: None,
         }
     }
-    
+
     /// Convert API SemanticMetadataValue to storage SemanticMetadataValue
-    fn convert_semantic_value_to_storage(api_val: crate::storage_ext::SemanticMetadataValue) -> almanac_storage::api_adapter::SemanticMetadataValue {
+    fn convert_semantic_value_to_storage(
+        api_val: crate::storage_ext::SemanticMetadataValue,
+    ) -> almanac_storage::api_adapter::SemanticMetadataValue {
         almanac_storage::api_adapter::SemanticMetadataValue {
             data_type: api_val.data_type,
             semantic_tags: api_val.semantic_tags,
@@ -422,9 +490,11 @@ impl FdbStorageAdapter {
             updated_at: chrono::Utc::now().timestamp() as u64,
         }
     }
-    
+
     /// Convert storage SemanticMetadataValue to API SemanticMetadataValue
-    fn convert_semantic_value_from_storage(storage_val: almanac_storage::api_adapter::SemanticMetadataValue) -> crate::storage_ext::SemanticMetadataValue {
+    fn convert_semantic_value_from_storage(
+        storage_val: almanac_storage::api_adapter::SemanticMetadataValue,
+    ) -> crate::storage_ext::SemanticMetadataValue {
         crate::storage_ext::SemanticMetadataValue {
             data_type: storage_val.data_type,
             semantic_tags: storage_val.semantic_tags,
@@ -432,35 +502,43 @@ impl FdbStorageAdapter {
             confidence_level: storage_val.confidence_level,
         }
     }
-    
+
     /// Convert storage SemanticConflicts to API SemanticConflicts
-    fn convert_semantic_conflicts_from_storage(storage_val: almanac_storage::api_adapter::SemanticConflicts) -> crate::storage_ext::SemanticConflicts {
+    fn convert_semantic_conflicts_from_storage(
+        storage_val: almanac_storage::api_adapter::SemanticConflicts,
+    ) -> crate::storage_ext::SemanticConflicts {
         crate::storage_ext::SemanticConflicts {
             field: "unknown".to_string(), // Storage conflicts doesn't have field
             conflicting_interpretations: storage_val.conflicts,
         }
     }
-    
+
     /// Convert storage ContractLayoutValue to API ContractLayoutValue
-    fn convert_contract_layout_value_from_storage(storage_layout: almanac_storage::api_adapter::ContractLayoutValue) -> crate::storage_ext::ContractLayoutValue {
+    fn convert_contract_layout_value_from_storage(
+        storage_layout: almanac_storage::api_adapter::ContractLayoutValue,
+    ) -> crate::storage_ext::ContractLayoutValue {
         crate::storage_ext::ContractLayoutValue {
             layout: serde_json::Value::Object(serde_json::Map::new()),
             commitment: [0u8; 32], // Convert layout_commitment as needed
             developer: storage_layout.developer_id,
         }
     }
-    
+
     /// Convert API ContractLayoutKey to storage ContractLayoutKey
-    fn convert_contract_layout_key_to_storage(api_key: crate::storage_ext::ContractLayoutKey) -> almanac_storage::api_adapter::ContractLayoutKey {
+    fn convert_contract_layout_key_to_storage(
+        api_key: crate::storage_ext::ContractLayoutKey,
+    ) -> almanac_storage::api_adapter::ContractLayoutKey {
         almanac_storage::api_adapter::ContractLayoutKey {
             chain_id: api_key.chain,
             contract_address: api_key.contract,
             version: api_key.version,
         }
     }
-    
+
     /// Convert API ContractLayoutValue to storage ContractLayoutValue
-    fn convert_contract_layout_value_to_storage(api_val: crate::storage_ext::ContractLayoutValue) -> almanac_storage::api_adapter::ContractLayoutValue {
+    fn convert_contract_layout_value_to_storage(
+        api_val: crate::storage_ext::ContractLayoutValue,
+    ) -> almanac_storage::api_adapter::ContractLayoutValue {
         almanac_storage::api_adapter::ContractLayoutValue {
             layout_data: almanac_storage::api_adapter::LayoutData {
                 slots: vec![],
@@ -477,7 +555,10 @@ impl FdbStorageAdapter {
 #[cfg(feature = "fdb")]
 #[async_trait::async_trait]
 impl crate::types::StorageReader for FdbStorageAdapter {
-    async fn get_events(&self, filter: crate::types::EventFilter) -> crate::types::ApiResult<Vec<crate::types::ApiEvent>> {
+    async fn get_events(
+        &self,
+        filter: crate::types::EventFilter,
+    ) -> crate::types::ApiResult<Vec<crate::types::ApiEvent>> {
         // Convert from API EventFilter to storage EventFilter
         let storage_filter = almanac_storage::api_adapter::EventFilter {
             chain: filter.chain.map(|c| c.to_string()),
@@ -487,32 +568,41 @@ impl crate::types::StorageReader for FdbStorageAdapter {
             offset: filter.offset.map(|o| o as u64),
             limit: filter.limit.map(|l| l as u64),
         };
-        
+
         // Call storage and convert the result
-        let storage_events = StorageReaderTrait::get_events(&self.storage, storage_filter).await
+        let storage_events = StorageReaderTrait::get_events(&self.storage, storage_filter)
+            .await
             .map_err(Self::convert_error)?;
-        
+
         // Convert storage events to API events
-        let api_events = storage_events.into_iter().map(|storage_event| {
-            crate::types::ApiEvent::new(
-                storage_event.chain,
-                storage_event.block_number,
-                storage_event.event_type,
-                storage_event.data
-            )
-        }).collect();
-        
+        let api_events = storage_events
+            .into_iter()
+            .map(|storage_event| {
+                crate::types::ApiEvent::new(
+                    storage_event.chain,
+                    storage_event.block_number,
+                    storage_event.event_type,
+                    storage_event.data,
+                )
+            })
+            .collect();
+
         Ok(api_events)
     }
-    
-    async fn get_latest_block(&self, chain: &crate::types::ChainId) -> crate::types::ApiResult<crate::types::BlockNumber> {
+
+    async fn get_latest_block(
+        &self,
+        chain: &crate::types::ChainId,
+    ) -> crate::types::ApiResult<crate::types::BlockNumber> {
         let chain_str = chain.as_str();
-        StorageReaderTrait::get_latest_block(&self.storage, &chain_str.to_string()).await
+        StorageReaderTrait::get_latest_block(&self.storage, &chain_str.to_string())
+            .await
             .map_err(Self::convert_error)
     }
-    
+
     async fn health_check(&self) -> crate::types::ApiResult<bool> {
-        StorageReaderTrait::health_check(&self.storage).await
+        StorageReaderTrait::health_check(&self.storage)
+            .await
             .map_err(Self::convert_error)
     }
 }
@@ -529,8 +619,17 @@ impl crate::storage_ext::ExtendedStorageReader for FdbStorageAdapter {
         expires_at: Option<u64>,
         conditions: Vec<String>,
     ) -> crate::types::ApiResult<()> {
-        ExtendedStorageReaderTrait::grant_trust(&self.storage, trustor, trustee, scope, level, expires_at, conditions).await
-            .map_err(Self::convert_error)
+        ExtendedStorageReaderTrait::grant_trust(
+            &self.storage,
+            trustor,
+            trustee,
+            scope,
+            level,
+            expires_at,
+            conditions,
+        )
+        .await
+        .map_err(Self::convert_error)
     }
 
     async fn revoke_trust(
@@ -540,17 +639,30 @@ impl crate::storage_ext::ExtendedStorageReader for FdbStorageAdapter {
         scope: crate::storage_ext::TrustScope,
         reason: &str,
     ) -> crate::types::ApiResult<()> {
-        self.storage.revoke_trust(trustor, trustee, scope, reason).await
+        self.storage
+            .revoke_trust(trustor, trustee, scope, reason)
+            .await
             .map_err(Self::convert_error)
     }
 
-    async fn get_trust_policy(&self, developer_id: &str) -> crate::types::ApiResult<Option<crate::storage_ext::TrustPolicy>> {
-        self.storage.get_trust_policy(developer_id).await
+    async fn get_trust_policy(
+        &self,
+        developer_id: &str,
+    ) -> crate::types::ApiResult<Option<crate::storage_ext::TrustPolicy>> {
+        self.storage
+            .get_trust_policy(developer_id)
+            .await
             .map_err(Self::convert_error)
     }
 
-    async fn update_trust_policy(&self, developer_id: &str, policy: crate::storage_ext::TrustPolicy) -> crate::types::ApiResult<()> {
-        self.storage.update_trust_policy(developer_id, policy).await
+    async fn update_trust_policy(
+        &self,
+        developer_id: &str,
+        policy: crate::storage_ext::TrustPolicy,
+    ) -> crate::types::ApiResult<()> {
+        self.storage
+            .update_trust_policy(developer_id, policy)
+            .await
             .map_err(Self::convert_error)
     }
 
@@ -558,8 +670,16 @@ impl crate::storage_ext::ExtendedStorageReader for FdbStorageAdapter {
         &self,
         trustor: &str,
         min_level: crate::storage_ext::TrustLevel,
-    ) -> crate::types::ApiResult<Vec<(String, crate::storage_ext::TrustScope, crate::storage_ext::TrustLevel)>> {
-        self.storage.get_trusted_developers(trustor, min_level).await
+    ) -> crate::types::ApiResult<
+        Vec<(
+            String,
+            crate::storage_ext::TrustScope,
+            crate::storage_ext::TrustLevel,
+        )>,
+    > {
+        self.storage
+            .get_trusted_developers(trustor, min_level)
+            .await
             .map_err(Self::convert_error)
     }
 
@@ -569,9 +689,12 @@ impl crate::storage_ext::ExtendedStorageReader for FdbStorageAdapter {
         trustee: &str,
         scope: &crate::storage_ext::TrustScope,
     ) -> crate::types::ApiResult<Option<crate::storage_ext::DeveloperTrustValue>> {
-        let result = self.storage.get_trust_relationship(trustor, trustee, scope).await
+        let result = self
+            .storage
+            .get_trust_relationship(trustor, trustee, scope)
+            .await
             .map_err(Self::convert_error)?;
-        
+
         Ok(result.map(Self::convert_developer_trust_value_from_storage))
     }
 
@@ -582,12 +705,20 @@ impl crate::storage_ext::ExtendedStorageReader for FdbStorageAdapter {
         scope: &crate::storage_ext::TrustScope,
         required_level: crate::storage_ext::TrustLevel,
     ) -> crate::types::ApiResult<bool> {
-        self.storage.check_trust(trustor, trustee, scope, required_level).await
+        self.storage
+            .check_trust(trustor, trustee, scope, required_level)
+            .await
             .map_err(Self::convert_error)
     }
 
-    async fn get_trust_graph(&self, developer_id: &str) -> crate::types::ApiResult<std::collections::HashMap<String, crate::storage_ext::TrustLevel>> {
-        self.storage.get_trust_graph(developer_id).await
+    async fn get_trust_graph(
+        &self,
+        developer_id: &str,
+    ) -> crate::types::ApiResult<std::collections::HashMap<String, crate::storage_ext::TrustLevel>>
+    {
+        self.storage
+            .get_trust_graph(developer_id)
+            .await
             .map_err(Self::convert_error)
     }
 
@@ -598,7 +729,9 @@ impl crate::storage_ext::ExtendedStorageReader for FdbStorageAdapter {
     ) -> crate::types::ApiResult<()> {
         let storage_key = Self::convert_semantic_key_to_storage(key);
         let storage_value = Self::convert_semantic_value_to_storage(value);
-        self.storage.store_semantic_metadata(storage_key, storage_value).await
+        self.storage
+            .store_semantic_metadata(storage_key, storage_value)
+            .await
             .map_err(Self::convert_error)
     }
 
@@ -607,9 +740,12 @@ impl crate::storage_ext::ExtendedStorageReader for FdbStorageAdapter {
         key: &crate::storage_ext::SemanticMetadataKey,
     ) -> crate::types::ApiResult<Option<crate::storage_ext::SemanticMetadataValue>> {
         let storage_key = Self::convert_semantic_key_to_storage(key.clone());
-        let result = self.storage.get_semantic_metadata(&storage_key).await
+        let result = self
+            .storage
+            .get_semantic_metadata(&storage_key)
+            .await
             .map_err(Self::convert_error)?;
-        
+
         Ok(result.map(|v| Self::convert_semantic_value_from_storage(v)))
     }
 
@@ -619,9 +755,12 @@ impl crate::storage_ext::ExtendedStorageReader for FdbStorageAdapter {
         contract: &str,
         field: &str,
     ) -> crate::types::ApiResult<Option<crate::storage_ext::SemanticConflicts>> {
-        let result = self.storage.detect_semantic_conflicts(chain, contract, field).await
+        let result = self
+            .storage
+            .detect_semantic_conflicts(chain, contract, field)
+            .await
             .map_err(Self::convert_error)?;
-        
+
         Ok(result.map(Self::convert_semantic_conflicts_from_storage))
     }
 
@@ -634,7 +773,16 @@ impl crate::storage_ext::ExtendedStorageReader for FdbStorageAdapter {
         method: &str,
         explanation: &str,
     ) -> crate::types::ApiResult<()> {
-        self.storage.resolve_semantic_conflict(chain, contract, field, chosen_developer, method, explanation).await
+        self.storage
+            .resolve_semantic_conflict(
+                chain,
+                contract,
+                field,
+                chosen_developer,
+                method,
+                explanation,
+            )
+            .await
             .map_err(Self::convert_error)
     }
 
@@ -645,7 +793,9 @@ impl crate::storage_ext::ExtendedStorageReader for FdbStorageAdapter {
     ) -> crate::types::ApiResult<()> {
         let storage_key = Self::convert_contract_layout_key_to_storage(key);
         let storage_value = Self::convert_contract_layout_value_to_storage(value);
-        self.storage.submit_layout(storage_key, storage_value).await
+        self.storage
+            .submit_layout(storage_key, storage_value)
+            .await
             .map_err(Self::convert_error)
     }
 
@@ -654,9 +804,12 @@ impl crate::storage_ext::ExtendedStorageReader for FdbStorageAdapter {
         key: &crate::storage_ext::ContractLayoutKey,
     ) -> crate::types::ApiResult<Option<crate::storage_ext::ContractLayoutValue>> {
         let storage_key = Self::convert_contract_layout_key_to_storage(key.clone());
-        let result = self.storage.get_layout(&storage_key).await
+        let result = self
+            .storage
+            .get_layout(&storage_key)
+            .await
             .map_err(Self::convert_error)?;
-        
+
         Ok(result.map(Self::convert_contract_layout_value_from_storage))
     }
 
@@ -665,10 +818,16 @@ impl crate::storage_ext::ExtendedStorageReader for FdbStorageAdapter {
         chain: &str,
         contract: &str,
     ) -> crate::types::ApiResult<Vec<crate::storage_ext::ContractLayoutValue>> {
-        let result = self.storage.list_layouts(chain, contract).await
+        let result = self
+            .storage
+            .list_layouts(chain, contract)
+            .await
             .map_err(Self::convert_error)?;
-        
-        Ok(result.into_iter().map(Self::convert_contract_layout_value_from_storage).collect())
+
+        Ok(result
+            .into_iter()
+            .map(Self::convert_contract_layout_value_from_storage)
+            .collect())
     }
 
     async fn verify_layout_commitment(
@@ -677,32 +836,56 @@ impl crate::storage_ext::ExtendedStorageReader for FdbStorageAdapter {
         contract: &str,
         commitment: &[u8; 32],
     ) -> crate::types::ApiResult<bool> {
-        self.storage.verify_layout_commitment(chain, contract, commitment).await
+        self.storage
+            .verify_layout_commitment(chain, contract, commitment)
+            .await
             .map_err(Self::convert_error)
     }
 
-    async fn register_view(&self, definition: crate::storage_ext::ViewDefinition) -> crate::types::ApiResult<()> {
-        self.storage.register_view(definition).await
+    async fn register_view(
+        &self,
+        definition: crate::storage_ext::ViewDefinition,
+    ) -> crate::types::ApiResult<()> {
+        self.storage
+            .register_view(definition)
+            .await
             .map_err(Self::convert_error)
     }
 
-    async fn get_view(&self, view_id: &str) -> crate::types::ApiResult<Option<crate::storage_ext::ViewDefinition>> {
-        self.storage.get_view(view_id).await
+    async fn get_view(
+        &self,
+        view_id: &str,
+    ) -> crate::types::ApiResult<Option<crate::storage_ext::ViewDefinition>> {
+        self.storage
+            .get_view(view_id)
+            .await
             .map_err(Self::convert_error)
     }
 
-    async fn update_view(&self, definition: crate::storage_ext::ViewDefinition) -> crate::types::ApiResult<()> {
-        self.storage.update_view(definition).await
+    async fn update_view(
+        &self,
+        definition: crate::storage_ext::ViewDefinition,
+    ) -> crate::types::ApiResult<()> {
+        self.storage
+            .update_view(definition)
+            .await
             .map_err(Self::convert_error)
     }
 
     async fn delete_view(&self, view_id: &str) -> crate::types::ApiResult<()> {
-        self.storage.delete_view(view_id).await
+        self.storage
+            .delete_view(view_id)
+            .await
             .map_err(Self::convert_error)
     }
 
-    async fn list_views_for_contract(&self, contract_address: &str) -> crate::types::ApiResult<Vec<crate::storage_ext::ViewDefinition>> {
-        self.storage.list_views_for_contract(contract_address).await
+    async fn list_views_for_contract(
+        &self,
+        contract_address: &str,
+    ) -> crate::types::ApiResult<Vec<crate::storage_ext::ViewDefinition>> {
+        self.storage
+            .list_views_for_contract(contract_address)
+            .await
             .map_err(Self::convert_error)
     }
 
@@ -714,7 +897,9 @@ impl crate::storage_ext::ExtendedStorageReader for FdbStorageAdapter {
         block_height: u64,
         include_proofs: bool,
     ) -> crate::types::ApiResult<crate::storage_ext::ViewQueryResult> {
-        self.storage.query_view(view_id, chain, contract, block_height, include_proofs).await
+        self.storage
+            .query_view(view_id, chain, contract, block_height, include_proofs)
+            .await
             .map_err(Self::convert_error)
     }
 
@@ -725,15 +910,18 @@ impl crate::storage_ext::ExtendedStorageReader for FdbStorageAdapter {
         block_height: u64,
         storage_key: &[u8; 32],
     ) -> crate::types::ApiResult<Option<crate::storage_ext::StorageProofValue>> {
-        let result = self.storage.get_storage_proof(chain, contract, block_height, storage_key).await
+        let result = self
+            .storage
+            .get_storage_proof(chain, contract, block_height, storage_key)
+            .await
             .map_err(Self::convert_error)?;
-        
+
         // Convert storage StorageProofValue to API StorageProofValue
         match result {
             Some(storage_proof) => {
                 let api_proof = crate::storage_ext::StorageProofValue {
                     proof: storage_proof.proof_data,
-                    value: Some(vec![]), // Convert as needed
+                    value: Some(vec![]),   // Convert as needed
                     block_hash: [0u8; 32], // Convert as needed
                 };
                 Ok(Some(api_proof))
@@ -743,7 +931,9 @@ impl crate::storage_ext::ExtendedStorageReader for FdbStorageAdapter {
     }
 
     async fn get_latest_block_number(&self, chain: &str) -> crate::types::ApiResult<Option<u64>> {
-        self.storage.get_latest_block_number(chain).await
+        self.storage
+            .get_latest_block_number(chain)
+            .await
             .map_err(Self::convert_error)
     }
 }

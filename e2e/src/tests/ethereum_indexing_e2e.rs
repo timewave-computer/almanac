@@ -1,5 +1,5 @@
 //! End-to-end test for Ethereum node indexing with FoundationDB storage
-//! 
+//!
 //! This test sets up:
 //! 1. An Ethereum node (Geth) with test contracts
 //! 2. Indexer using FoundationDB storage  
@@ -8,17 +8,19 @@
 //! This demonstrates the full storage architecture with FoundationDB
 //! as the unified storage layer for all indexing operations.
 
+use anyhow::anyhow;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tokio::time::sleep;
 use tempfile::TempDir;
-use anyhow::anyhow;
+use tokio::time::sleep;
 
-use almanac_core::{Result, Event, EventFilter, BlockStatus, Storage, Error};
-use almanac_chains::adapters::{ethereum::EthereumAdapter, types::ChainConfig, traits::ChainAdapter};
+use almanac_chains::adapters::{
+    ethereum::EthereumAdapter, traits::ChainAdapter, types::ChainConfig,
+};
+use almanac_core::{BlockStatus, Error, Event, EventFilter, Result, Storage};
 use almanac_eventbus::EventBus;
-use almanac_storage::{StorageBackend, create_storage};
+use almanac_storage::{create_storage, StorageBackend};
 
 /// Test configuration for the E2E test
 #[derive(Debug)]
@@ -49,8 +51,12 @@ pub struct E2ETestConfig {
 impl Default for E2ETestConfig {
     fn default() -> Self {
         let temp_dir = TempDir::new().unwrap();
-        let geth_data_dir = temp_dir.path().join("geth-data").to_string_lossy().to_string();
-        
+        let geth_data_dir = temp_dir
+            .path()
+            .join("geth-data")
+            .to_string_lossy()
+            .to_string();
+
         Self {
             ethereum_rpc_url: "http://localhost:8545".to_string(),
             fdb_namespace: "almanac_e2e_test".to_string(),
@@ -80,35 +86,35 @@ impl Event for TestEvent {
     fn id(&self) -> &str {
         &self.id
     }
-    
+
     fn chain(&self) -> &str {
         &self.chain
     }
-    
+
     fn block_number(&self) -> u64 {
         self.block_number
     }
-    
+
     fn block_hash(&self) -> &str {
         &self.block_hash
     }
-    
+
     fn tx_hash(&self) -> &str {
         &self.tx_hash
     }
-    
+
     fn timestamp(&self) -> SystemTime {
         self.timestamp
     }
-    
+
     fn event_type(&self) -> &str {
         &self.event_type
     }
-    
+
     fn raw_data(&self) -> &[u8] {
         &self.raw_data
     }
-    
+
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
@@ -146,19 +152,19 @@ impl E2ETestInfrastructure {
 
         // Step 1: Setup Ethereum node (Geth)
         self.setup_ethereum_node().await?;
-        
+
         // Step 2: Setup storage layers
         self.setup_storage_layers().await?;
-        
+
         // Step 3: Setup Ethereum client
         self.setup_ethereum_client().await?;
-        
+
         // Step 4: Setup event bus
         self.setup_event_bus().await?;
-        
+
         // Step 5: Deploy test contracts
         self.deploy_test_contracts().await?;
-        
+
         println!("E2E test infrastructure setup complete");
         Ok(())
     }
@@ -169,9 +175,7 @@ impl E2ETestInfrastructure {
         println!("Setting up Ethereum node (Anvil)...");
 
         // Stop any existing anvil processes
-        let _ = Command::new("pkill")
-            .args(["-f", "anvil"])
-            .output();
+        let _ = Command::new("pkill").args(["-f", "anvil"]).output();
 
         // Create data directory
         std::fs::create_dir_all(&self.config.geth_data_dir)
@@ -180,13 +184,20 @@ impl E2ETestInfrastructure {
         // Start anvil (simpler and more reliable than geth)
         let anvil_process = Command::new("anvil")
             .args([
-                "--host", "0.0.0.0",
-                "--port", "8545",
-                "--chain-id", "31337",
-                "--accounts", "10",
-                "--balance", "10000",
-                "--gas-limit", "30000000",
-                "--gas-price", "1"
+                "--host",
+                "0.0.0.0",
+                "--port",
+                "8545",
+                "--chain-id",
+                "31337",
+                "--accounts",
+                "10",
+                "--balance",
+                "10000",
+                "--gas-limit",
+                "30000000",
+                "--gas-price",
+                "1",
             ])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -198,7 +209,7 @@ impl E2ETestInfrastructure {
         // Wait for anvil to be ready
         let start_time = Instant::now();
         let timeout_duration = Duration::from_secs(30); // Reduced timeout for anvil
-        
+
         loop {
             if start_time.elapsed() > timeout_duration {
                 return Err(anyhow!("Anvil startup timeout").into());
@@ -207,17 +218,22 @@ impl E2ETestInfrastructure {
             // Check if anvil is responding
             let output = Command::new("curl")
                 .args([
-                    "-s", "-X", "POST",
-                    "-H", "Content-Type: application/json",
-                    "--data", r#"{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}"#,
-                    &self.config.ethereum_rpc_url
+                    "-s",
+                    "-X",
+                    "POST",
+                    "-H",
+                    "Content-Type: application/json",
+                    "--data",
+                    r#"{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}"#,
+                    &self.config.ethereum_rpc_url,
                 ])
                 .output();
 
             if let Ok(output) = output {
                 if output.status.success() {
                     let response = String::from_utf8_lossy(&output.stdout);
-                    if response.contains("0x7a69") { // Chain ID 31337 in hex
+                    if response.contains("0x7a69") {
+                        // Chain ID 31337 in hex
                         break;
                     }
                 }
@@ -237,9 +253,10 @@ impl E2ETestInfrastructure {
 
         // For E2E tests, we'll use in-memory storage since it's fully implemented
         // and faster for testing. In production, this would use FoundationDB.
-        let storage = create_storage(StorageBackend::Memory).await
+        let storage = create_storage(StorageBackend::Memory)
+            .await
             .map_err(|e| Error::storage(format!("Failed to create storage: {}", e)))?;
-        
+
         self.storage = Some(storage);
 
         println!("Storage backend configured");
@@ -247,7 +264,6 @@ impl E2ETestInfrastructure {
         println!("   - Namespace: {}", self.config.fdb_namespace);
         Ok(())
     }
-
 
     /// Setup Ethereum client
     #[allow(dead_code)]
@@ -264,7 +280,9 @@ impl E2ETestInfrastructure {
             extra: serde_json::Value::Null,
         };
 
-        let ethereum_client = EthereumAdapter::new(ethereum_config).await.map_err(|e| anyhow!("Failed to create Ethereum adapter: {}", e))?;
+        let ethereum_client = EthereumAdapter::new(ethereum_config)
+            .await
+            .map_err(|e| anyhow!("Failed to create Ethereum adapter: {}", e))?;
         self.ethereum_client = Some(ethereum_client);
 
         println!("Ethereum client configured");
@@ -293,10 +311,15 @@ impl E2ETestInfrastructure {
             .args(["run", ".#forge", "--", "forge"])
             .args([
                 "create",
-                "--rpc-url", &self.config.ethereum_rpc_url,
-                "--private-key", "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80", // Default dev key
-                "contracts/solidity/TestToken.sol:TestToken",
-                "--constructor-args", "TestToken", "TEST", "1000000000000000000000000" // 1M tokens
+                "--rpc-url",
+                &self.config.ethereum_rpc_url,
+                "--private-key",
+                "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80", // Default dev key
+                "fixtures/contracts/solidity/TestToken.sol:TestToken",
+                "--constructor-args",
+                "TestToken",
+                "TEST",
+                "1000000000000000000000000", // 1M tokens
             ])
             .current_dir("../") // Go to project root
             .output();
@@ -304,9 +327,11 @@ impl E2ETestInfrastructure {
         if let Ok(output) = deploy_output {
             if output.status.success() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
-                
+
                 // Parse deployed contract address
-                if let Some(deployed_to_line) = stdout.lines().find(|line| line.contains("Deployed to:")) {
+                if let Some(deployed_to_line) =
+                    stdout.lines().find(|line| line.contains("Deployed to:"))
+                {
                     if let Some(address) = deployed_to_line.split("Deployed to:").nth(1) {
                         let address = address.trim().to_string();
                         println!("TestToken deployed to: {}", address);
@@ -329,24 +354,33 @@ impl E2ETestInfrastructure {
     pub async fn start_indexing(&self) -> Result<()> {
         println!("Starting indexing process...");
 
-        let storage = self.storage.as_ref()
+        let storage = self
+            .storage
+            .as_ref()
             .ok_or_else(|| anyhow!("Storage not initialized"))?;
 
-        let ethereum_client = self.ethereum_client.as_ref()
+        let ethereum_client = self
+            .ethereum_client
+            .as_ref()
             .ok_or_else(|| anyhow!("Ethereum client not initialized"))?;
 
         // Index a few blocks synchronously for the test
-        let latest_block = ethereum_client.get_latest_block().await
+        let latest_block = ethereum_client
+            .get_latest_block()
+            .await
             .map_err(|e| Error::storage(format!("Failed to get latest block: {}", e)))?;
         let start_block = latest_block.saturating_sub(5);
-        
+
         for block_num in start_block..=latest_block {
             if let Err(e) = Self::index_block(storage, block_num).await {
                 eprintln!("Failed to index block {}: {}", block_num, e);
             }
         }
 
-        println!("Indexing process completed for blocks {} to {}", start_block, latest_block);
+        println!(
+            "Indexing process completed for blocks {} to {}",
+            start_block, latest_block
+        );
         Ok(())
     }
 
@@ -372,12 +406,12 @@ impl E2ETestInfrastructure {
         storage.store_event(Box::new(event)).await?;
 
         // Update block status
-        storage.update_block_status("ethereum", block_number, BlockStatus::Finalized).await?;
+        storage
+            .update_block_status("ethereum", block_number, BlockStatus::Finalized)
+            .await?;
 
         Ok(())
     }
-
-
 
     /// Generate test transactions
     #[allow(dead_code)]
@@ -388,9 +422,14 @@ impl E2ETestInfrastructure {
             // Send a simple ETH transfer using geth's personal account
             let output = Command::new("curl")
                 .args([
-                    "-s", "-X", "POST",
-                    "-H", "Content-Type: application/json",
-                    "--data", &format!(r#"{{
+                    "-s",
+                    "-X",
+                    "POST",
+                    "-H",
+                    "Content-Type: application/json",
+                    "--data",
+                    &format!(
+                        r#"{{
                         "jsonrpc":"2.0",
                         "method":"eth_sendTransaction",
                         "params":[{{
@@ -400,8 +439,10 @@ impl E2ETestInfrastructure {
                             "gas":"0x5208"
                         }}],
                         "id":{}
-                    }}"#, i + 1),
-                    &self.config.ethereum_rpc_url
+                    }}"#,
+                        i + 1
+                    ),
+                    &self.config.ethereum_rpc_url,
                 ])
                 .output();
 
@@ -432,7 +473,9 @@ impl E2ETestInfrastructure {
     pub async fn validate_indexed_data(&self) -> Result<()> {
         println!("Validating indexed data...");
 
-        let storage = self.storage.as_ref()
+        let storage = self
+            .storage
+            .as_ref()
             .ok_or_else(|| anyhow!("Storage not initialized"))?;
 
         // Check latest block
@@ -470,9 +513,7 @@ impl E2ETestInfrastructure {
         }
 
         // Kill any remaining anvil processes
-        let _ = Command::new("pkill")
-            .args(["-f", "anvil"])
-            .output();
+        let _ = Command::new("pkill").args(["-f", "anvil"]).output();
 
         // Drop storage connection
         self.storage = None;
@@ -567,4 +608,4 @@ mod tests {
         assert_eq!(event.block_number(), 100);
         assert_eq!(event.event_type(), "transaction");
     }
-} 
+}

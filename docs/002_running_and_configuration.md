@@ -4,27 +4,52 @@ This guide covers how to build, configure, and run the Almanac multi-chain index
 
 ## Architecture Overview
 
-Almanac uses a single API server with pluggable chain adapters and FoundationDB storage:
+Almanac uses a distributed microservices architecture where chain-specific indexing nodes and an API server connect to a shared FoundationDB data layer:
 
 ```
-┌───────────────────────────────────────────────────────────────┐
-│                     almanac-api (HTTP/WebSocket)              │
-│  • Chain adapter integration   • FoundationDB storage         │
-│  • REST endpoints              • Real-time subscriptions      │
-└───────────────────────────────────────────────────────────────┘
-                                 │
-┌────────────────────────────────┼──────────────────────────────┐
-│                                │                              │
-▼                                ▼                              ▼
-┌──────────────────┐  ┌─────────────────┐  ┌────────────────────┐
-│ Ethereum Adapter │  │  Cosmos Adapter │  │   Solana Adapter   │
-│  (in-process)    │  │   (in-process)  │  │    (in-process)    │
-└──────────────────┘  └─────────────────┘  └────────────────────┘
-                                 │
-                    ┌─────────────────────┐
-                    │   FoundationDB      │
-                    │   (shared storage)  │
-                    └─────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                         External Clients                        │
+│         • Web Apps  • CLI Tools  • Dashboards                   │
+└─────────────────────────┬───────────────────────────────────────┘
+                          │
+                          ▼ HTTP/WebSocket
+┌─────────────────────────────────────────────────────────────────┐
+│                     almanac-api                                 │
+│  • HTTP API Server        • WebSocket Support                   │
+│  • Authentication         • Rate Limiting                       │
+│  • OpenAPI Documentation  • Response Caching                    │
+│  • Read-only operations   • Query optimization                  │
+└─────────────────────────┬───────────────────────────────────────┘
+                          │ Reads
+                          ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                  FoundationDB Cluster                           │
+│  • Distributed ACID transactions                                │
+│  • Automatic replication and sharding                           │
+│  • Multi-dimensional tuple indexing                             │
+│  • 13 keyspaces for multi-chain data                            │
+└─────────────────────────▲───────────────────────────────────────┘
+                          │ Writes
+       ┌──────────────────┼───────────────────┐
+       │                  │                   │
+┌──────▼──────────┐ ┌─────▼──────────┐ ┌──────▼──────────┐
+│ almanac-ethereum│ │almanac-cosmos  │ │almanac-solana   │
+│     :9091       │ │     :9092      │ │    :9093        │
+├─────────────────┤ ├────────────────┤ ├─────────────────┤
+│ • Event indexing│ │• Event indexing│ │• Account data   │
+│ • Reorg handling│ │• BFT consensus │ │• PoH validation │
+│ • State proofs  │ │• IBC tracking  │ │• Program logs   │
+│ • EVM traces    │ │• Module events │ │• Slot tracking  │
+│ • Health :9091  │ │• Health :9092  │ │• Health :9093   │
+│ • Metrics       │ │• Metrics       │ │• Metrics        │
+└─────────────────┘ └────────────────┘ └─────────────────┘
+        │                    │                  │
+        ▼ RPC                ▼ RPC              ▼ RPC
+┌─────────────────────────────────────────────────────────────────┐
+│                      Blockchain Networks                        │
+│  • Ethereum/Anvil       • Cosmos/Neutron      • Solana          │
+│  • :8545                • :26657               • :8899          │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ## Prerequisites
@@ -80,7 +105,7 @@ nix develop --command cargo build --all --features ethereum,cosmos
 nix develop .#fdb --command cargo build --all --features fdb
 
 # Build API server only
-nix develop --command cargo build -p almanac-api
+nix develop --command cargo build --bin almanac-api
 
 # Release build
 nix develop --command cargo build --all --release
@@ -161,7 +186,7 @@ batch_size = 50
 ```bash
 # Start FoundationDB and run API
 nix develop .#fdb
-cargo run -p almanac-api --features fdb
+cargo run --bin almanac-api --features fdb
 
 # Or run tests
 nix run .#run-e2e-tests
@@ -178,20 +203,20 @@ export FDB_CLUSTER_FILE=./data/fdb.cluster
 export FDB_NAMESPACE=almanac
 
 # Run API server
-cargo run -p almanac-api --features fdb
+cargo run --bin almanac-api --features fdb
 
 # Or use memory storage for development
 export STORAGE_BACKEND=memory
-cargo run -p almanac-api
+cargo run --bin almanac-api
 ```
 
 ### Using Configuration Files
 ```bash
 # Run with specific config
-nix develop --command cargo run -p almanac-api -- --config config/dev.toml
+nix develop --command cargo run --bin almanac-api -- --config config/dev.toml
 
 # Override specific settings
-ALMANAC_API_PORT=8081 nix develop --command cargo run -p almanac-api
+ALMANAC_API_PORT=8081 nix develop --command cargo run --bin almanac-api
 ```
 
 ### Health Checks
@@ -199,15 +224,24 @@ ALMANAC_API_PORT=8081 nix develop --command cargo run -p almanac-api
 # Check API health
 curl http://localhost:8080/health
 
-# Check specific endpoints (corrected paths)
+# Check API liveness
+curl http://localhost:8080/liveness
+
+# Check API readiness
+curl http://localhost:8080/readiness
+
+# Check specific endpoints
 curl http://localhost:8080/api/v1/events
 curl http://localhost:8080/swagger-ui
+curl http://localhost:8080/openapi.json
 ```
 
 ## API Endpoints
 
 ### Core Endpoints
 - `GET /health` - Service health check
+- `GET /liveness` - Liveness probe
+- `GET /readiness` - Readiness probe
 - `GET /swagger-ui` - Interactive API documentation
 - `GET /openapi.json` - OpenAPI specification
 - `GET /api/v1/events` - Query blockchain events
@@ -216,11 +250,11 @@ curl http://localhost:8080/swagger-ui
 - `GET /api/v1/chains/{chain}/latest-block` - Latest block info
 
 ### Authentication
-Some endpoints may require authentication tokens. Configure in your environment:
+Some endpoints may require API key authentication. Include your API key in the `X-API-Key` header:
 
 ```bash
-export ALMANAC_AUTH_TOKEN=your-token-here
-curl -H "Authorization: Bearer $ALMANAC_AUTH_TOKEN" http://localhost:8080/api/v1/events
+export API_KEY="your-api-key"
+curl -H "X-API-Key: $API_KEY" "http://localhost:8080/api/v1/events"
 ```
 
 ## Troubleshooting
@@ -266,7 +300,7 @@ env | grep FDB
 - Use `RUST_LOG=debug` for verbose logging
 - Use memory storage for faster iteration: `export STORAGE_BACKEND=memory`
 - Check `docs/003_foundationdb_setup_and_usage.md` for FDB-specific setup
-- Run `cargo clippy` and `cargo fmt` before committing
+- Run `nix develop -c cargo clippy` and `nix develop -c cargo fmt` before committing
 - Use `nix develop` for consistent development environment
 
 For more detailed information, see:
