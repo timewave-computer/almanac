@@ -20,5 +20,5 @@ uuid = { workspace = true, features = ["v4"] }
 tracing = { workspace = true }
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
+tokio = { workspace = true, features = ["macros", "rt", "test-util", "time"] }
 serde = { workspace = true, features = ["derive"] }

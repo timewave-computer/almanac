@@ -59,8 +59,8 @@ nix run .#sim-cluster -- logs all
 
 #### Configuration Generator
 ```bash
-# Generate configuration for specific chains
-nix run .#sim-config -- ethereum,cosmos,fdb ./config/simulation
+# Generate configuration for specific chains (default output: ./config/)
+nix run .#sim-config -- ethereum,cosmos,fdb
 ```
 
 #### Blockchain Nodes
@@ -114,7 +114,7 @@ After starting the simulation, the following endpoints will be available:
 - **Solana RPC**: http://localhost:8899 (where supported)
 - **Almanac API**: http://localhost:3000
   - Health check: http://localhost:3000/health
-  - OpenAPI docs: http://localhost:3000/swagger-ui/
+  - OpenAPI docs: http://localhost:3000/swagger-ui
 
 ## Directory Structure
 
@@ -122,9 +122,8 @@ The simulation creates the following directory structure:
 
 ```
 ./
-├── config/simulation/
-│   ├── simulation.json          # Main simulation configuration
-│   └── almanac-indexer.toml     # Almanac indexer configuration
+├── config/
+│   └── simulation.toml          # Main simulation configuration
 ├── data/
 │   ├── fdb.cluster              # FoundationDB cluster file
 │   ├── foundationdb/            # FoundationDB data
@@ -167,7 +166,7 @@ The simulation sets up the following environment variables for Almanac services:
 
 ### Indexer Service
 - `RUST_LOG=almanac_indexing=info,almanac_core=debug`
-- `ALMANAC_CONFIG=$PWD/config/simulation/almanac-indexer.toml`
+- `ALMANAC_CONFIG=$PWD/config/simulation.toml`
 
 ## Troubleshooting
 
@@ -212,7 +211,7 @@ To completely reset the simulation:
 nix run .#sim-cluster -- stop
 
 # Remove data and logs (optional)
-rm -rf data/ logs/ config/simulation/
+rm -rf data/ logs/
 
 # Reinitialize
 nix run .#sim-cluster -- init

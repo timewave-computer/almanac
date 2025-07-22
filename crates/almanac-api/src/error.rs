@@ -1,9 +1,9 @@
+use crate::types::{response::ErrorResponse, ApiError as CoreApiError};
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
     Json,
 };
-use crate::types::{ApiError as CoreApiError, response::ErrorResponse};
 use uuid::Uuid;
 
 /// HTTP-specific error type
@@ -11,13 +11,13 @@ use uuid::Uuid;
 pub enum HttpError {
     #[error("API error: {0}")]
     Api(#[from] CoreApiError),
-    
+
     #[error("Internal server error: {0}")]
     Internal(String),
-    
+
     #[error("Bad request: {0}")]
     BadRequest(String),
-    
+
     #[error("Not found: {0}")]
     NotFound(String),
 }
@@ -26,11 +26,11 @@ impl HttpError {
     pub fn internal(msg: impl Into<String>) -> Self {
         Self::Internal(msg.into())
     }
-    
+
     pub fn bad_request(msg: impl Into<String>) -> Self {
         Self::BadRequest(msg.into())
     }
-    
+
     pub fn not_found(msg: impl Into<String>) -> Self {
         Self::NotFound(msg.into())
     }
@@ -54,16 +54,14 @@ impl IntoResponse for HttpError {
                 "BAD_REQUEST".to_string(),
                 msg.clone(),
             ),
-            HttpError::NotFound(msg) => (
-                StatusCode::NOT_FOUND,
-                "NOT_FOUND".to_string(),
-                msg.clone(),
-            ),
+            HttpError::NotFound(msg) => {
+                (StatusCode::NOT_FOUND, "NOT_FOUND".to_string(), msg.clone())
+            }
         };
-        
-        let error_response = ErrorResponse::new(code, message)
-            .with_request_id(Uuid::new_v4().to_string());
-        
+
+        let error_response =
+            ErrorResponse::new(code, message).with_request_id(Uuid::new_v4().to_string());
+
         (status, Json(error_response)).into_response()
     }
 }
@@ -86,11 +84,10 @@ impl From<crate::types::auth::PermissionError> for HttpError {
         match err {
             crate::types::auth::PermissionError::InsufficientPermissions(msg) => {
                 HttpError::Api(CoreApiError::Forbidden(msg))
-            },
+            }
             crate::types::auth::PermissionError::InvalidOperation(msg) => {
                 HttpError::Api(CoreApiError::BadRequest(msg))
-            },
+            }
         }
     }
 }
-

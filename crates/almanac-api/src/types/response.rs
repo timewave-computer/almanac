@@ -1,29 +1,30 @@
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 /// Standard API response wrapper
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ApiResponse<T> {
     /// Response data
     pub data: T,
-    
+
     /// Response metadata
     pub meta: ResponseMetadata,
 }
 
 /// Response metadata
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ResponseMetadata {
     /// Request ID for correlation
     pub request_id: String,
-    
+
     /// Response timestamp
     pub timestamp: DateTime<Utc>,
-    
+
     /// Processing duration in milliseconds
     pub duration_ms: u64,
-    
+
     /// API version
     pub version: String,
 }
@@ -38,13 +39,13 @@ impl ResponseMetadata {
             version: "v1".to_string(),
         }
     }
-    
+
     /// Set the request ID
     pub fn with_request_id(mut self, id: impl Into<String>) -> Self {
         self.request_id = id.into();
         self
     }
-    
+
     /// Set the duration
     pub fn with_duration_ms(mut self, duration: u64) -> Self {
         self.duration_ms = duration;
@@ -66,12 +67,12 @@ impl<T> ApiResponse<T> {
             meta: ResponseMetadata::new(),
         }
     }
-    
+
     /// Create with specific metadata
     pub fn with_meta(data: T, meta: ResponseMetadata) -> Self {
         Self { data, meta }
     }
-    
+
     /// Map the data to a different type
     pub fn map<U, F>(self, f: F) -> ApiResponse<U>
     where
@@ -81,6 +82,16 @@ impl<T> ApiResponse<T> {
             data: f(self.data),
             meta: self.meta,
         }
+    }
+
+    /// Create a successful response
+    pub fn success(data: T) -> Self {
+        Self::new(data)
+    }
+
+    /// Create an error response (for compatibility)
+    pub fn error(data: T) -> Self {
+        Self::new(data)
     }
 }
 
@@ -98,25 +109,25 @@ impl<T> ApiResponseBuilder<T> {
             meta: ResponseMetadata::new(),
         }
     }
-    
+
     /// Set the request ID
     pub fn request_id(mut self, id: impl Into<String>) -> Self {
         self.meta.request_id = id.into();
         self
     }
-    
+
     /// Set the duration
     pub fn duration_ms(mut self, duration: u64) -> Self {
         self.meta.duration_ms = duration;
         self
     }
-    
+
     /// Set the API version
     pub fn version(mut self, version: impl Into<String>) -> Self {
         self.meta.version = version.into();
         self
     }
-    
+
     /// Build the response
     pub fn build(self) -> ApiResponse<T> {
         ApiResponse {
@@ -131,16 +142,16 @@ impl<T> ApiResponseBuilder<T> {
 pub struct PaginatedResponse<T> {
     /// Items in this page
     pub items: Vec<T>,
-    
+
     /// Total number of items
     pub total: u64,
-    
+
     /// Current page (0-based)
     pub page: u32,
-    
+
     /// Items per page
     pub per_page: u32,
-    
+
     /// Whether there are more pages
     pub has_more: bool,
 }
@@ -166,7 +177,7 @@ pub struct EventResponse {
 }
 
 /// Response for multiple events
-#[derive(Debug, Clone, Serialize, Deserialize)]  
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventsResponse {
     pub events: Vec<crate::types::ApiEvent>,
     pub pagination: PaginationInfo,
@@ -186,17 +197,17 @@ pub struct PaginationInfo {
 pub struct ErrorResponse {
     /// Error code
     pub code: String,
-    
+
     /// Error message
     pub message: String,
-    
+
     /// Additional details
     #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<serde_json::Value>,
-    
+
     /// Request ID for correlation
     pub request_id: String,
-    
+
     /// Timestamp
     pub timestamp: DateTime<Utc>,
 }
@@ -212,13 +223,13 @@ impl ErrorResponse {
             timestamp: Utc::now(),
         }
     }
-    
+
     /// Add details to the error
     pub fn with_details(mut self, details: serde_json::Value) -> Self {
         self.details = Some(details);
         self
     }
-    
+
     /// Set the request ID
     pub fn with_request_id(mut self, id: impl Into<String>) -> Self {
         self.request_id = id.into();
@@ -229,14 +240,14 @@ impl ErrorResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_api_response() {
         let response = ApiResponse::new(vec![1, 2, 3]);
         assert_eq!(response.data, vec![1, 2, 3]);
         assert_eq!(response.meta.version, "v1");
     }
-    
+
     #[test]
     fn test_response_builder() {
         let response = ApiResponseBuilder::new("test")
@@ -244,13 +255,13 @@ mod tests {
             .duration_ms(42)
             .version("v2")
             .build();
-            
+
         assert_eq!(response.data, "test");
         assert_eq!(response.meta.request_id, "req-123");
         assert_eq!(response.meta.duration_ms, 42);
         assert_eq!(response.meta.version, "v2");
     }
-    
+
     #[test]
     fn test_paginated_response() {
         let response = PaginatedResponse::new(vec![1, 2, 3], 10, 0, 3);

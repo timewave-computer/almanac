@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use utoipa::{IntoParams, ToSchema};
 
 /// Chain identifier
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -9,7 +10,7 @@ impl ChainId {
     pub fn new(id: impl Into<String>) -> Self {
         Self(id.into())
     }
-    
+
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -42,27 +43,27 @@ pub struct EventFilter {
     /// Chain to filter by
     #[serde(skip_serializing_if = "Option::is_none")]
     pub chain: Option<ChainId>,
-    
+
     /// Starting block number (inclusive)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub from_block: Option<BlockNumber>,
-    
+
     /// Ending block number (inclusive)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub to_block: Option<BlockNumber>,
-    
+
     /// Event types to filter by
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub event_types: Vec<String>,
-    
+
     /// Contract addresses to filter by
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub addresses: Vec<String>,
-    
+
     /// Maximum number of results
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
-    
+
     /// Offset for pagination
     #[serde(skip_serializing_if = "Option::is_none")]
     pub offset: Option<u32>,
@@ -81,32 +82,32 @@ impl EventFilter {
             offset: None,
         }
     }
-    
+
     /// Filter by chain
     pub fn chain(mut self, chain: impl Into<ChainId>) -> Self {
         self.chain = Some(chain.into());
         self
     }
-    
+
     /// Filter by block range
     pub fn block_range(mut self, from: BlockNumber, to: BlockNumber) -> Self {
         self.from_block = Some(from);
         self.to_block = Some(to);
         self
     }
-    
+
     /// Filter by event type
     pub fn event_type(mut self, event_type: impl Into<String>) -> Self {
         self.event_types.push(event_type.into());
         self
     }
-    
+
     /// Filter by contract address
     pub fn address(mut self, address: impl Into<String>) -> Self {
         self.addresses.push(address.into());
         self
     }
-    
+
     /// Set pagination
     pub fn paginate(mut self, limit: u32, offset: u32) -> Self {
         self.limit = Some(limit);
@@ -140,10 +141,10 @@ impl Default for SortOrder {
 pub struct HealthStatus {
     /// Overall health status
     pub status: HealthState,
-    
+
     /// Individual component statuses
     pub components: Vec<ComponentHealth>,
-    
+
     /// Additional details
     #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<serde_json::Value>,
@@ -173,7 +174,7 @@ impl ApiKey {
     pub fn new(key: impl Into<String>) -> Self {
         Self(key.into())
     }
-    
+
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -186,17 +187,63 @@ impl fmt::Display for ApiKey {
     }
 }
 
+/// Pagination parameters for API requests
+#[derive(Debug, Clone, Deserialize, IntoParams)]
+pub struct PaginationParams {
+    /// Page number (1-based)
+    pub page: Option<u32>,
+    /// Number of items per page
+    pub page_size: Option<u32>,
+}
+
+impl Default for PaginationParams {
+    fn default() -> Self {
+        Self {
+            page: Some(1),
+            page_size: Some(50),
+        }
+    }
+}
+
+/// Paginated response wrapper
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct PaginatedResponse<T> {
+    /// The actual data
+    pub data: Vec<T>,
+    /// Current page number
+    pub page: u32,
+    /// Number of items per page
+    pub page_size: u32,
+    /// Total number of pages
+    pub total_pages: u32,
+    /// Total number of items
+    pub total_items: u64,
+}
+
+impl<T> PaginatedResponse<T> {
+    pub fn new(data: Vec<T>, page: u32, page_size: u32, total_items: u64) -> Self {
+        let total_pages = ((total_items as f64) / (page_size as f64)).ceil() as u32;
+        Self {
+            data,
+            page,
+            page_size,
+            total_pages,
+            total_items,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_chain_id() {
         let chain = ChainId::new("ethereum");
         assert_eq!(chain.as_str(), "ethereum");
         assert_eq!(chain.to_string(), "ethereum");
     }
-    
+
     #[test]
     fn test_event_filter() {
         let filter = EventFilter::new()
@@ -205,7 +252,7 @@ mod tests {
             .event_type("Transfer")
             .address("0x123")
             .paginate(100, 0);
-            
+
         assert_eq!(filter.chain.unwrap().as_str(), "ethereum");
         assert_eq!(filter.from_block, Some(1000));
         assert_eq!(filter.to_block, Some(2000));
@@ -214,7 +261,7 @@ mod tests {
         assert_eq!(filter.limit, Some(100));
         assert_eq!(filter.offset, Some(0));
     }
-    
+
     #[test]
     fn test_api_key_display() {
         let key = ApiKey::new("secret-key-123");

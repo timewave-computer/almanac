@@ -41,11 +41,8 @@ Almanac provides a REST API for querying multi-chain blockchain data. The system
 For development, start the API server locally:
 
 ```bash
-# Enter nix development environment
+# Enter nix development environment (automatically sets up library paths)
 nix develop
-
-# Set up FoundationDB library path (macOS)
-export DYLD_LIBRARY_PATH=/nix/store/*foundationdb*/lib:$DYLD_LIBRARY_PATH
 
 # Start FoundationDB
 fdb-manage start
@@ -164,7 +161,75 @@ curl -H "X-API-Key: $ALMANAC_API_KEY" \
 
 ## Advanced Features
 
+### Admin API
+
+Manage API keys:
+
+```bash
+# Create a new API key
+curl -X POST "http://localhost:8080/admin/keys" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my-key", "rate_limit": 1000}'
+
+# List all API keys
+curl "http://localhost:8080/admin/keys"
+
+# Delete an API key
+curl -X DELETE "http://localhost:8080/admin/keys/ak_...
+
+# Update an API key
+curl -X PATCH "http://localhost:8080/admin/keys/ak_..." \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": false}'
+```
+
+### Traverse API
+
+Integration with Traverse ZK proofs:
+
+```bash
+# Generate a Traverse verification request
+curl -X POST "http://localhost:8080/api/v1/traverse/request/ethereum/0x1234..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "block_height": 12345678,
+    "storage_slots": [
+      {"storage_key": "0x00..."}
+    ],
+    "developer_id": "dev123"
+  }'
+
+# Verify a Traverse witness
+curl -X POST "http://localhost:8080/api/v1/traverse/verify" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "request_id": "traverse-...",
+    "witness_data": {},
+    "proof": {},
+    "developer_id": "dev123"
+  }'
+```
+
+### Subscriptions API
+
+Manage account subscriptions for real-time updates:
+
+```bash
+# Add accounts to a subscription
+curl -X POST "http://localhost:8080/api/v1/subscriptions/accounts" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "accounts": [
+      {"chain_id": "ethereum", "address": "0x..."}
+    ]
+  }'
+
+# Get subscription statistics
+curl "http://localhost:8080/api/v1/subscriptions/stats"
+```
+
 ### Storage Proofs
+
 
 Verify blockchain state with cryptographic proofs:
 
@@ -179,7 +244,7 @@ Submit and query contract storage layouts:
 
 ```bash
 # Submit a layout (requires API key)
-curl -X POST "http://localhost:8080/api/v1/layouts" \
+curl -X POST "http://localhost:8080/api/v1/chains/ethereum/contracts/0x1234.../layouts" \
   -H "Content-Type: application/json" \
   -H "X-API-Key: your-api-key" \
   -d '{
@@ -195,7 +260,7 @@ curl -X POST "http://localhost:8080/api/v1/layouts" \
   }'
 
 # Query a layout
-curl "http://localhost:8080/api/v1/layouts/ethereum/0x1234..."
+curl "http://localhost:8080/api/v1/chains/ethereum/contracts/0x1234.../layouts"
 ```
 
 ### Trust Management
@@ -215,7 +280,7 @@ curl -X POST "http://localhost:8080/api/v1/trust/grant" \
   }'
 
 # Check trust relationships
-curl "http://localhost:8080/api/v1/trust/alice"
+curl "http://localhost:8080/api/v1/trust/relationships"
 ```
 
 ### Semantic Metadata
@@ -224,10 +289,10 @@ Query semantic interpretations of contract fields:
 
 ```bash
 # Get semantic interpretation
-curl "http://localhost:8080/api/v1/semantics/ethereum/0x1234.../balanceOf?trust_policy=permissive"
+curl "http://localhost:8080/api/v1/chains/ethereum/contracts/0x1234.../semantics/balanceOf?trust_policy=permissive"
 
 # Submit semantic interpretation (requires API key)
-curl -X POST "http://localhost:8080/api/v1/semantics/ethereum/0x1234.../balanceOf" \
+curl -X POST "http://localhost:8080/api/v1/chains/ethereum/contracts/0x1234.../semantics/balanceOf" \
   -H "Content-Type: application/json" \
   -H "X-API-Key: your-api-key" \
   -d '{
@@ -390,7 +455,7 @@ For interactive API exploration, use the built-in Swagger UI:
 # Start Swagger UI server
 nix run .#swagger-ui --allow-dirty
 
-# Access at: http://localhost:8080/api/swagger-ui
+# Access at: http://localhost:8080/swagger-ui
 ```
 
 The Swagger UI provides:

@@ -14,6 +14,7 @@ fdb = ["foundationdb"]
 [dependencies]
 # Core types
 almanac-core = { path = "../almanac-core" }
+almanac-chains = { path = "../almanac-chains" }
 
 # Async runtime
 tokio = { workspace = true }
@@ -37,6 +38,7 @@ foundationdb = { version = "0.8", optional = true, features = ["embedded-fdb-inc
 # Utilities
 uuid = { workspace = true, features = ["v4", "serde"] }
 bytes = { workspace = true }
+hex = { workspace = true }
 sha2 = { version = "0.10" }  # For layout commitments
 sha3 = { version = "0.10" }  # For mapping slot calculation
 

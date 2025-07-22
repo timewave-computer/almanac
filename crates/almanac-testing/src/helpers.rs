@@ -1,13 +1,13 @@
 //! Test helpers for Almanac testing
 
-use almanac_core::{UnifiedEvent, EventFilter, Storage, BlockStatus};
-use almanac_storage::MemoryStorage;
-use almanac_indexing::pipeline::{IndexingPipeline, PipelineConfig};
-use almanac_eventbus::EventBus;
 use almanac_chains::ChainConfig;
+use almanac_core::{BlockStatus, EventFilter, Storage, UnifiedEvent};
+use almanac_eventbus::EventBus;
+use almanac_indexing::pipeline::{IndexingPipeline, PipelineConfig};
+use almanac_storage::MemoryStorage;
+use anyhow::Result;
 use std::sync::Arc;
 use tokio::time::{timeout, Duration};
-use anyhow::Result;
 
 /// Create a test memory storage instance
 pub async fn create_memory_storage() -> Arc<MemoryStorage> {
@@ -72,7 +72,7 @@ pub async fn create_test_reorg_detector() -> Result<()> {
 
 /// Create a test finality processor
 pub async fn create_test_finality_processor() -> Result<()> {
-    // Placeholder for finality processor creation  
+    // Placeholder for finality processor creation
     Ok(())
 }
 
@@ -82,7 +82,7 @@ pub async fn start_test_pipeline(pipeline: &Arc<IndexingPipeline>) -> Result<()>
     tokio::spawn(async move {
         let _ = pipeline_clone.start().await;
     });
-    
+
     // Give it a moment to start
     tokio::time::sleep(Duration::from_millis(10)).await;
     Ok(())
@@ -113,31 +113,64 @@ pub async fn trigger_test_reorg(_reorg_detector: &(), _depth: u64) -> Result<()>
 pub async fn assert_event_count(storage: &Arc<dyn Storage>, expected_count: usize) -> Result<()> {
     let filter = EventFilter::new();
     let events = storage.get_events(vec![filter]).await?;
-    assert_eq!(events.len(), expected_count, "Expected {} events, found {}", expected_count, events.len());
+    assert_eq!(
+        events.len(),
+        expected_count,
+        "Expected {} events, found {}",
+        expected_count,
+        events.len()
+    );
     Ok(())
 }
 
 /// Assert the latest block number for a chain
-pub async fn assert_latest_block(storage: &Arc<dyn Storage>, chain_id: &str, expected_block: u64) -> Result<()> {
+pub async fn assert_latest_block(
+    storage: &Arc<dyn Storage>,
+    chain_id: &str,
+    expected_block: u64,
+) -> Result<()> {
     let latest_block = storage.get_latest_block(chain_id).await?;
-    assert_eq!(latest_block, expected_block, "Expected latest block {}, found {}", expected_block, latest_block);
+    assert_eq!(
+        latest_block, expected_block,
+        "Expected latest block {}, found {}",
+        expected_block, latest_block
+    );
     Ok(())
 }
 
 /// Assert block status
-pub async fn assert_block_status(storage: &Arc<dyn Storage>, chain_id: &str, block_number: u64, expected_status: BlockStatus) -> Result<()> {
-    let status = storage.get_latest_block_with_status(chain_id, expected_status).await?;
+pub async fn assert_block_status(
+    storage: &Arc<dyn Storage>,
+    chain_id: &str,
+    block_number: u64,
+    expected_status: BlockStatus,
+) -> Result<()> {
+    let status = storage
+        .get_latest_block_with_status(chain_id, expected_status)
+        .await?;
     // This is a simplified check - in a real implementation we'd have more specific block status queries
-    assert!(status <= block_number, "Expected block {} to have status {:?}", block_number, expected_status);
+    assert!(
+        status <= block_number,
+        "Expected block {} to have status {:?}",
+        block_number,
+        expected_status
+    );
     Ok(())
 }
 
 // Pipeline assertion helpers
 
 /// Assert pipeline has processed a number of events
-pub async fn assert_pipeline_processed(pipeline: &Arc<IndexingPipeline>, expected_count: u64) -> Result<()> {
+pub async fn assert_pipeline_processed(
+    pipeline: &Arc<IndexingPipeline>,
+    expected_count: u64,
+) -> Result<()> {
     let processed_count = pipeline.get_processed_events();
-    assert_eq!(processed_count, expected_count, "Expected {} processed events, found {}", expected_count, processed_count);
+    assert_eq!(
+        processed_count, expected_count,
+        "Expected {} processed events, found {}",
+        expected_count, processed_count
+    );
     Ok(())
 }
 
@@ -164,16 +197,28 @@ pub async fn assert_event_received(event_bus: &Arc<EventBus>, event_type: &str) 
 }
 
 /// Assert event bus has subscribers
-pub async fn assert_event_bus_subscribers(_event_bus: &Arc<EventBus>, _topic: &str, expected_count: usize) -> Result<()> {
+pub async fn assert_event_bus_subscribers(
+    _event_bus: &Arc<EventBus>,
+    _topic: &str,
+    expected_count: usize,
+) -> Result<()> {
     let subscriber_count = 0; // Mock implementation - EventBus doesn't expose subscriber count
-    assert_eq!(subscriber_count, expected_count, "Expected {} subscribers, found {}", expected_count, subscriber_count);
+    assert_eq!(
+        subscriber_count, expected_count,
+        "Expected {} subscribers, found {}",
+        expected_count, subscriber_count
+    );
     Ok(())
 }
 
 // Consensus assertion helpers
 
 /// Assert finality level
-pub async fn assert_finality_level(_finality_processor: &(), _block_number: u64, _expected_level: ()) -> Result<()> {
+pub async fn assert_finality_level(
+    _finality_processor: &(),
+    _block_number: u64,
+    _expected_level: (),
+) -> Result<()> {
     // Placeholder for finality level assertion
     Ok(())
 }
@@ -200,19 +245,23 @@ where
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
-    }).await;
+    })
+    .await;
 
     match result {
         Ok(_) => Ok(()),
-        Err(_) => Err(anyhow::anyhow!("Condition timed out after {:?}", timeout_duration)),
+        Err(_) => Err(anyhow::anyhow!(
+            "Condition timed out after {:?}",
+            timeout_duration
+        )),
     }
 }
 
 /// Wait for storage to have expected event count
 pub async fn wait_for_event_count(
-    storage: &Arc<dyn Storage>, 
-    expected_count: usize, 
-    timeout_duration: Duration
+    storage: &Arc<dyn Storage>,
+    expected_count: usize,
+    timeout_duration: Duration,
 ) -> Result<()> {
     let storage_clone = storage.clone();
     wait_for_condition(
@@ -227,36 +276,37 @@ pub async fn wait_for_event_count(
                 }
             }
         },
-        timeout_duration
-    ).await
+        timeout_duration,
+    )
+    .await
 }
 
 /// Wait for pipeline to process expected count
 pub async fn wait_for_pipeline_processed(
     pipeline: &Arc<IndexingPipeline>,
     expected_count: u64,
-    timeout_duration: Duration
+    timeout_duration: Duration,
 ) -> Result<()> {
     let pipeline_clone = pipeline.clone();
     wait_for_condition(
         move || {
             let pipeline = pipeline_clone.clone();
-            async move {
-                pipeline.get_processed_events() >= expected_count
-            }
+            async move { pipeline.get_processed_events() >= expected_count }
         },
-        timeout_duration
-    ).await
+        timeout_duration,
+    )
+    .await
 }
 
 // Test data setup helpers
 
 /// Setup test environment with storage and pipeline
-pub async fn setup_test_environment() -> Result<(Arc<dyn Storage>, Arc<IndexingPipeline>, Arc<EventBus>)> {
+pub async fn setup_test_environment(
+) -> Result<(Arc<dyn Storage>, Arc<IndexingPipeline>, Arc<EventBus>)> {
     let storage = create_test_storage().await;
     let pipeline = create_test_pipeline().await;
     let event_bus = create_test_event_bus().await;
-    
+
     Ok((storage, pipeline, event_bus))
 }
 
@@ -331,23 +381,22 @@ mod tests {
     async fn test_assert_event_count() {
         let storage = create_test_storage().await;
         let events = fixtures::create_test_events(5);
-        
+
         for event in events {
             storage.store_event(Box::new(event)).await.unwrap();
         }
-        
+
         assert_event_count(&storage, 5).await.unwrap();
     }
 
     #[tokio::test]
     async fn test_wait_for_condition() {
         let start = std::time::Instant::now();
-        
-        wait_for_condition(
-            || async { true },
-            Duration::from_millis(100)
-        ).await.unwrap();
-        
+
+        wait_for_condition(|| async { true }, Duration::from_millis(100))
+            .await
+            .unwrap();
+
         assert!(start.elapsed() < Duration::from_millis(50));
     }
 }

@@ -18,7 +18,7 @@ pub type EventLogger = Box<dyn Fn(&dyn Event, &str) + Send + Sync>;
 pub trait EventHandler: Send + Sync {
     /// Handle an event
     async fn handle(&self, event: Arc<dyn Event>) -> HandlerResult;
-    
+
     /// Get the event types this handler can handle
     fn handles(&self) -> Vec<TypeId>;
 }
@@ -49,7 +49,7 @@ where
     async fn handle(&self, event: Arc<dyn Event>) -> HandlerResult {
         (self.handler_fn)(event)
     }
-    
+
     fn handles(&self) -> Vec<TypeId> {
         self.event_types.clone()
     }
@@ -79,7 +79,7 @@ where
     async fn handle(&self, event: Arc<dyn Event>) -> HandlerResult {
         (self.handler_fn)(event).await
     }
-    
+
     fn handles(&self) -> Vec<TypeId> {
         self.event_types.clone()
     }
@@ -112,7 +112,7 @@ impl<H: EventHandler> EventHandler for FilteredHandler<H> {
             Ok(())
         }
     }
-    
+
     fn handles(&self) -> Vec<TypeId> {
         self.inner.handles()
     }
@@ -147,7 +147,7 @@ impl<H: EventHandler> EventHandler for LoggingHandler<H> {
         }
         result
     }
-    
+
     fn handles(&self) -> Vec<TypeId> {
         self.inner.handles()
     }
@@ -156,8 +156,8 @@ impl<H: EventHandler> EventHandler for LoggingHandler<H> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::event::{SystemStartedEvent, EventMetadata};
-    
+    use crate::event::{EventMetadata, SystemStartedEvent};
+
     #[tokio::test]
     async fn test_fn_handler() {
         let handler = FnHandler::new(
@@ -167,14 +167,14 @@ mod tests {
             },
             vec![TypeId::of::<SystemStartedEvent>()],
         );
-        
+
         let event = Arc::new(SystemStartedEvent {
             metadata: EventMetadata::new("test"),
         }) as Arc<dyn Event>;
-        
+
         assert!(handler.handle(event).await.is_ok());
     }
-    
+
     #[tokio::test]
     async fn test_async_fn_handler() {
         let handler = AsyncFnHandler::new(
@@ -184,11 +184,11 @@ mod tests {
             },
             vec![TypeId::of::<SystemStartedEvent>()],
         );
-        
+
         let event = Arc::new(SystemStartedEvent {
             metadata: EventMetadata::new("test"),
         }) as Arc<dyn Event>;
-        
+
         assert!(handler.handle(event).await.is_ok());
     }
 }

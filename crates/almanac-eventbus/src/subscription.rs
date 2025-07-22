@@ -1,6 +1,6 @@
 use std::sync::Arc;
-use uuid::Uuid;
 use tokio::sync::mpsc;
+use uuid::Uuid;
 
 use super::event::Event;
 use super::handler::EventFilter;
@@ -42,7 +42,7 @@ impl Subscription {
             sender,
         }
     }
-    
+
     /// Create a subscription with a filter
     pub fn with_filter<F>(
         event_types: Vec<&'static str>,
@@ -59,14 +59,14 @@ impl Subscription {
             sender,
         }
     }
-    
+
     /// Check if this subscription should receive an event
     pub fn matches(&self, event: &dyn Event) -> bool {
         // Check event type
         if !self.event_types.is_empty() && !self.event_types.contains(&event.event_type()) {
             return false;
         }
-        
+
         // Apply filter if present
         if let Some(filter) = &self.filter {
             filter(event)
@@ -74,9 +74,12 @@ impl Subscription {
             true
         }
     }
-    
+
     /// Send an event to the subscriber
-    pub fn send(&self, event: Arc<dyn Event>) -> Result<(), mpsc::error::SendError<Arc<dyn Event>>> {
+    pub fn send(
+        &self,
+        event: Arc<dyn Event>,
+    ) -> Result<(), mpsc::error::SendError<Arc<dyn Event>>> {
         self.sender.send(event)
     }
 }
@@ -94,19 +97,19 @@ impl SubscriptionBuilder {
             filter: None,
         }
     }
-    
+
     /// Add event types to subscribe to
     pub fn event_types(mut self, types: Vec<&'static str>) -> Self {
         self.event_types = types;
         self
     }
-    
+
     /// Add a single event type
     pub fn event_type(mut self, event_type: &'static str) -> Self {
         self.event_types.push(event_type);
         self
     }
-    
+
     /// Add a filter function
     pub fn filter<F>(mut self, filter: F) -> Self
     where
@@ -115,7 +118,7 @@ impl SubscriptionBuilder {
         self.filter = Some(Box::new(filter));
         self
     }
-    
+
     /// Build the subscription
     pub fn build(self, sender: mpsc::UnboundedSender<Arc<dyn Event>>) -> Subscription {
         Subscription {
@@ -136,36 +139,33 @@ impl Default for SubscriptionBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::event::{SystemStartedEvent, EventMetadata};
-    
+    use crate::event::{EventMetadata, SystemStartedEvent};
+
     #[test]
     fn test_subscription_matching() {
         let (tx, _rx) = mpsc::unbounded_channel();
         let subscription = Subscription::new(vec!["system.started"], tx);
-        
+
         let event = SystemStartedEvent {
             metadata: EventMetadata::new("test"),
         };
-        
+
         assert!(subscription.matches(&event));
     }
-    
+
     #[test]
     fn test_subscription_filter() {
         let (tx, _rx) = mpsc::unbounded_channel();
-        let subscription = Subscription::with_filter(
-            vec![],
-            |event| event.event_type() == "system.started",
-            tx,
-        );
-        
+        let subscription =
+            Subscription::with_filter(vec![], |event| event.event_type() == "system.started", tx);
+
         let event = SystemStartedEvent {
             metadata: EventMetadata::new("test"),
         };
-        
+
         assert!(subscription.matches(&event));
     }
-    
+
     #[test]
     fn test_subscription_builder() {
         let (tx, _rx) = mpsc::unbounded_channel();
@@ -174,7 +174,7 @@ mod tests {
             .event_type("system.stopped")
             .filter(|_| true)
             .build(tx);
-            
+
         assert_eq!(subscription.event_types.len(), 2);
         assert!(subscription.filter.is_some());
     }

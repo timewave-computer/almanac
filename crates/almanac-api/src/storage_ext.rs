@@ -3,12 +3,11 @@
 //! This trait extends the basic StorageReader with all the methods needed
 //! by the API handlers for trust, semantics, layouts, and views.
 
+use crate::types::{ApiResult, StorageReader};
 use async_trait::async_trait;
-use crate::types::{StorageReader, ApiResult};
 // Import from api_adapter which provides FDB-independent types
 pub use almanac_storage::api_adapter::{
-    TrustScope, TrustLevel, TrustPolicy,
-    ViewDefinition, ViewQueryResult,
+    TrustLevel, TrustPolicy, TrustScope, ViewDefinition, ViewQueryResult,
 };
 
 // Stub types for the missing ones - these would be properly implemented when FDB is integrated
@@ -151,10 +150,7 @@ pub trait ExtendedStorageReader: StorageReader {
         value: ContractLayoutValue,
     ) -> ApiResult<()>;
 
-    async fn get_layout(
-        &self,
-        key: &ContractLayoutKey,
-    ) -> ApiResult<Option<ContractLayoutValue>>;
+    async fn get_layout(&self, key: &ContractLayoutKey) -> ApiResult<Option<ContractLayoutValue>>;
 
     async fn list_layouts(
         &self,
@@ -178,7 +174,10 @@ pub trait ExtendedStorageReader: StorageReader {
 
     async fn delete_view(&self, view_id: &str) -> ApiResult<()>;
 
-    async fn list_views_for_contract(&self, contract_address: &str) -> ApiResult<Vec<ViewDefinition>>;
+    async fn list_views_for_contract(
+        &self,
+        contract_address: &str,
+    ) -> ApiResult<Vec<ViewDefinition>>;
 
     async fn query_view(
         &self,
@@ -208,11 +207,17 @@ impl<T> StorageReader for std::sync::Arc<T>
 where
     T: StorageReader + ?Sized,
 {
-    async fn get_events(&self, filter: crate::types::EventFilter) -> ApiResult<Vec<crate::types::ApiEvent>> {
+    async fn get_events(
+        &self,
+        filter: crate::types::EventFilter,
+    ) -> ApiResult<Vec<crate::types::ApiEvent>> {
         (**self).get_events(filter).await
     }
 
-    async fn get_latest_block(&self, chain: &crate::types::ChainId) -> ApiResult<crate::types::BlockNumber> {
+    async fn get_latest_block(
+        &self,
+        chain: &crate::types::ChainId,
+    ) -> ApiResult<crate::types::BlockNumber> {
         (**self).get_latest_block(chain).await
     }
 
@@ -236,7 +241,9 @@ where
         expires_at: Option<u64>,
         conditions: Vec<String>,
     ) -> ApiResult<()> {
-        (**self).grant_trust(trustor, trustee, scope, level, expires_at, conditions).await
+        (**self)
+            .grant_trust(trustor, trustee, scope, level, expires_at, conditions)
+            .await
     }
 
     async fn revoke_trust(
@@ -271,7 +278,9 @@ where
         trustee: &str,
         scope: &TrustScope,
     ) -> ApiResult<Option<DeveloperTrustValue>> {
-        (**self).get_trust_relationship(trustor, trustee, scope).await
+        (**self)
+            .get_trust_relationship(trustor, trustee, scope)
+            .await
     }
 
     async fn check_trust(
@@ -281,7 +290,9 @@ where
         scope: &TrustScope,
         required_level: TrustLevel,
     ) -> ApiResult<bool> {
-        (**self).check_trust(trustor, trustee, scope, required_level).await
+        (**self)
+            .check_trust(trustor, trustee, scope, required_level)
+            .await
     }
 
     async fn get_trust_graph(&self, developer_id: &str) -> ApiResult<HashMap<String, TrustLevel>> {
@@ -309,7 +320,9 @@ where
         contract: &str,
         field: &str,
     ) -> ApiResult<Option<SemanticConflicts>> {
-        (**self).detect_semantic_conflicts(chain, contract, field).await
+        (**self)
+            .detect_semantic_conflicts(chain, contract, field)
+            .await
     }
 
     async fn resolve_semantic_conflict(
@@ -321,7 +334,16 @@ where
         method: &str,
         explanation: &str,
     ) -> ApiResult<()> {
-        (**self).resolve_semantic_conflict(chain, contract, field, chosen_developer, method, explanation).await
+        (**self)
+            .resolve_semantic_conflict(
+                chain,
+                contract,
+                field,
+                chosen_developer,
+                method,
+                explanation,
+            )
+            .await
     }
 
     async fn submit_layout(
@@ -332,10 +354,7 @@ where
         (**self).submit_layout(key, value).await
     }
 
-    async fn get_layout(
-        &self,
-        key: &ContractLayoutKey,
-    ) -> ApiResult<Option<ContractLayoutValue>> {
+    async fn get_layout(&self, key: &ContractLayoutKey) -> ApiResult<Option<ContractLayoutValue>> {
         (**self).get_layout(key).await
     }
 
@@ -353,7 +372,9 @@ where
         contract: &str,
         commitment: &[u8; 32],
     ) -> ApiResult<bool> {
-        (**self).verify_layout_commitment(chain, contract, commitment).await
+        (**self)
+            .verify_layout_commitment(chain, contract, commitment)
+            .await
     }
 
     async fn register_view(&self, definition: ViewDefinition) -> ApiResult<()> {
@@ -372,7 +393,10 @@ where
         (**self).delete_view(view_id).await
     }
 
-    async fn list_views_for_contract(&self, contract_address: &str) -> ApiResult<Vec<ViewDefinition>> {
+    async fn list_views_for_contract(
+        &self,
+        contract_address: &str,
+    ) -> ApiResult<Vec<ViewDefinition>> {
         (**self).list_views_for_contract(contract_address).await
     }
 
@@ -384,7 +408,9 @@ where
         block_height: u64,
         include_proofs: bool,
     ) -> ApiResult<ViewQueryResult> {
-        (**self).query_view(view_id, chain, contract, block_height, include_proofs).await
+        (**self)
+            .query_view(view_id, chain, contract, block_height, include_proofs)
+            .await
     }
 
     async fn get_storage_proof(
@@ -394,7 +420,9 @@ where
         block_height: u64,
         storage_key: &[u8; 32],
     ) -> ApiResult<Option<StorageProofValue>> {
-        (**self).get_storage_proof(chain, contract, block_height, storage_key).await
+        (**self)
+            .get_storage_proof(chain, contract, block_height, storage_key)
+            .await
     }
 
     async fn get_latest_block_number(&self, chain: &str) -> ApiResult<Option<u64>> {

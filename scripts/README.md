@@ -24,8 +24,7 @@ scripts/
     ├── stop-all.sh             # Stop all blockchain simulations
     ├── indexers/               # Chain-specific indexing scripts
     │   ├── index-cosmwasm.sh   # Index CosmWasm contracts
-    │   ├── index-ethereum-anvil.sh # Index Ethereum with Anvil
-    │   └── index-ethereum-reth.sh  # Index Ethereum with Reth
+    │   └── index-ethereum-anvil.sh # Index Ethereum with Anvil
     └── tests/
         └── run-e2e-test.sh     # Run simulation E2E tests
 ```

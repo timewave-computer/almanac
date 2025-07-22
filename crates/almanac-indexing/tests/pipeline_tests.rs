@@ -1,7 +1,7 @@
-use almanac_indexing::{IndexingPipeline, PipelineConfig};
 use almanac_core::Event;
-use std::time::SystemTime;
+use almanac_indexing::{IndexingPipeline, PipelineConfig};
 use serde::{Deserialize, Serialize};
+use std::time::SystemTime;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct TestEvent {
@@ -16,35 +16,35 @@ impl Event for TestEvent {
     fn id(&self) -> &str {
         &self.id
     }
-    
+
     fn chain(&self) -> &str {
         &self.chain_id
     }
-    
+
     fn block_number(&self) -> u64 {
         self.block_number
     }
-    
+
     fn block_hash(&self) -> &str {
         "0x0000000000000000000000000000000000000000000000000000000000000000"
     }
-    
+
     fn tx_hash(&self) -> &str {
         "0x0000000000000000000000000000000000000000000000000000000000000000"
     }
-    
+
     fn timestamp(&self) -> SystemTime {
         SystemTime::now()
     }
-    
+
     fn event_type(&self) -> &str {
         &self.event_type
     }
-    
+
     fn raw_data(&self) -> &[u8] {
         self.data.as_bytes()
     }
-    
+
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
@@ -64,7 +64,7 @@ async fn test_pipeline_config_creation() {
         enable_ordering: true,
         checkpoint_interval: 1000,
     };
-    
+
     assert_eq!(config.chain_id, "ethereum");
     assert_eq!(config.batch_size, 100);
     assert_eq!(config.interval_ms, 1000);
@@ -91,9 +91,9 @@ async fn test_pipeline_creation() {
         enable_ordering: true,
         checkpoint_interval: 500,
     };
-    
+
     let _pipeline = IndexingPipeline::new(config);
-    
+
     // Test that we can create a pipeline
     // Basic creation test - if we reach this point, pipeline creation succeeded
 }
@@ -112,9 +112,9 @@ async fn test_ethereum_pipeline_config() {
         enable_ordering: true,
         checkpoint_interval: 1000,
     };
-    
+
     let _pipeline = IndexingPipeline::new(config);
-    
+
     // Test Ethereum-specific configuration
     // Configuration test - if we reach this point, Ethereum config is valid
 }
@@ -133,9 +133,9 @@ async fn test_cosmos_pipeline_config() {
         enable_ordering: true,
         checkpoint_interval: 100,
     };
-    
+
     let _pipeline = IndexingPipeline::new(config);
-    
+
     // Test Cosmos-specific configuration
     // Configuration test - if we reach this point, Cosmos config is valid
 }
@@ -154,9 +154,9 @@ async fn test_solana_pipeline_config() {
         enable_ordering: true,
         checkpoint_interval: 2000,
     };
-    
+
     let _pipeline = IndexingPipeline::new(config);
-    
+
     // Test Solana-specific configuration
     // Configuration test - if we reach this point, Solana config is valid
 }
@@ -176,7 +176,7 @@ async fn test_pipeline_config_validation() {
         enable_ordering: true,
         checkpoint_interval: 1000,
     };
-    
+
     assert!(valid_config.batch_size > 0);
     assert!(valid_config.max_concurrent_batches > 0);
     assert!(valid_config.retry_attempts > 0);
@@ -201,7 +201,7 @@ async fn test_pipeline_performance_config() {
         enable_ordering: false,   // Disable for performance
         checkpoint_interval: 10000,
     };
-    
+
     // Test low-latency configuration
     let low_latency_config = PipelineConfig {
         chain_id: "ethereum".to_string(),
@@ -215,7 +215,7 @@ async fn test_pipeline_performance_config() {
         enable_ordering: true,
         checkpoint_interval: 10,
     };
-    
+
     // Performance vs latency tradeoffs
     assert!(high_perf_config.batch_size > low_latency_config.batch_size);
     assert!(high_perf_config.max_concurrent_batches > low_latency_config.max_concurrent_batches);
@@ -229,7 +229,7 @@ async fn test_pipeline_chain_specific_settings() {
         ("cosmos", 1, 200, 100),
         ("solana", 32, 1000, 2000),
     ];
-    
+
     for (chain_id, confirmations, batch_size, checkpoint_interval) in chains {
         let config = PipelineConfig {
             chain_id: chain_id.to_string(),
@@ -243,9 +243,9 @@ async fn test_pipeline_chain_specific_settings() {
             enable_ordering: true,
             checkpoint_interval,
         };
-        
+
         let _pipeline = IndexingPipeline::new(config);
-        
+
         // Test that each chain can have its own configuration
         // Chain-specific test - if we reach this point, chain config is valid
     }
@@ -266,7 +266,7 @@ async fn test_pipeline_error_handling_config() {
         enable_ordering: true,
         checkpoint_interval: 100,
     };
-    
+
     // Test configuration for stable environments
     let aggressive_config = PipelineConfig {
         chain_id: "ethereum".to_string(),
@@ -280,7 +280,7 @@ async fn test_pipeline_error_handling_config() {
         enable_ordering: false,
         checkpoint_interval: 5000,
     };
-    
+
     // Robust vs aggressive configurations
     assert!(robust_config.retry_attempts > aggressive_config.retry_attempts);
     assert!(robust_config.retry_delay_ms > aggressive_config.retry_delay_ms);
@@ -302,17 +302,23 @@ async fn test_pipeline_config_serialization() {
         enable_ordering: true,
         checkpoint_interval: 1000,
     };
-    
+
     // Test that config can be serialized/deserialized
     let serialized = serde_json::to_string(&config).unwrap();
     let deserialized: PipelineConfig = serde_json::from_str(&serialized).unwrap();
-    
+
     assert_eq!(config.chain_id, deserialized.chain_id);
     assert_eq!(config.batch_size, deserialized.batch_size);
-    assert_eq!(config.max_concurrent_batches, deserialized.max_concurrent_batches);
+    assert_eq!(
+        config.max_concurrent_batches,
+        deserialized.max_concurrent_batches
+    );
     assert_eq!(config.retry_attempts, deserialized.retry_attempts);
     assert_eq!(config.retry_delay_ms, deserialized.retry_delay_ms);
-    assert_eq!(config.finality_confirmations, deserialized.finality_confirmations);
+    assert_eq!(
+        config.finality_confirmations,
+        deserialized.finality_confirmations
+    );
     assert_eq!(config.enable_validation, deserialized.enable_validation);
     assert_eq!(config.enable_ordering, deserialized.enable_ordering);
     assert_eq!(config.checkpoint_interval, deserialized.checkpoint_interval);

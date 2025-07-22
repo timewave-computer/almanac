@@ -1,5 +1,5 @@
 //! Testing utilities for Almanac
-//! 
+//!
 //! This crate provides comprehensive testing utilities for the Almanac blockchain indexing system,
 //! including fixtures for test data generation, helpers for common testing patterns, and mock
 //! implementations for testing isolated components.

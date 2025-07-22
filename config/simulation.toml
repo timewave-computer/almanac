@@ -3,7 +3,7 @@
 
 [simulation]
 name = "almanac-local-cluster"
-chains = ["ethereum", "fdb"]
+chains = ["--help"]
 
 [almanac]
 name = "local-simulation"
@@ -15,17 +15,17 @@ backend = "foundationdb"
 cluster_file = "/Users/hxrts/projects/timewave/almanac/data/fdb.cluster"
 
 [services.foundationdb]
-enabled = true
+enabled = false
 cluster_file = "/Users/hxrts/projects/timewave/almanac/data/fdb.cluster"
 data_dir = "/Users/hxrts/projects/timewave/almanac/data/foundationdb"
 log_dir = "/Users/hxrts/projects/timewave/almanac/logs/foundationdb"
 
 [services.ethereum]
-enabled = true
+enabled = false
 node_type = "anvil"
 rpc_port = 8545
 ws_port = 8546
-chain_id = "31337"
+chain_id = 31337
 data_dir = "/Users/hxrts/projects/timewave/almanac/data/ethereum"
 log_file = "/Users/hxrts/projects/timewave/almanac/logs/anvil.log"
 
@@ -46,11 +46,3 @@ rpc_port = 8899
 ws_port = 8900
 data_dir = "/Users/hxrts/projects/timewave/almanac/data/solana"
 log_file = "/Users/hxrts/projects/timewave/almanac/logs/solana.log"
-
-[[chains.ethereum]]
-name = "ethereum-local"
-rpc_url = "http://localhost:8545"
-ws_url = "ws://localhost:8546"
-chain_id = "31337"
-starting_block = 1
-batch_size = 100

@@ -28,8 +28,16 @@ pub enum TupleKeyspace {
     CircuitKeys = 10,
     /// Solana account data
     SolanaAccounts = 11,
+    /// Account subscriptions for real-time updates
+    Subscriptions = 12,
+    /// Contract layout storage
+    ContractLayout = 13,
     /// State change logs
-    ChangeTracking = 12,
+    ChangeTracking = 14,
+    /// Proposer validator signatures
+    ValidatorSignatures = 15,
+    /// Developer trust policies
+    TrustPolicies = 16,
 }
 
 impl TupleKeyspace {
@@ -37,7 +45,7 @@ impl TupleKeyspace {
     pub fn id(&self) -> u8 {
         *self as u8
     }
-    
+
     /// Get a human-readable name for the keyspace
     pub fn name(&self) -> &'static str {
         match self {
@@ -53,6 +61,10 @@ impl TupleKeyspace {
             TupleKeyspace::CircuitKeys => "circuit_keys",
             TupleKeyspace::SolanaAccounts => "solana_accounts",
             TupleKeyspace::ChangeTracking => "change_tracking",
+            TupleKeyspace::ValidatorSignatures => "validator_signatures",
+            TupleKeyspace::TrustPolicies => "trust_policies",
+            TupleKeyspace::Subscriptions => "subscriptions",
+            TupleKeyspace::ContractLayout => "contract_layout",
         }
     }
 }

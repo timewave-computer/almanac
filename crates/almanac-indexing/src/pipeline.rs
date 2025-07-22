@@ -1,11 +1,11 @@
 //! Indexing pipeline
 
-use almanac_core::{Result, Error};
-use serde::{Serialize, Deserialize};
-use std::sync::Arc;
+use almanac_core::{Error, Result};
+use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
 use tokio::time::{sleep, Duration};
-use tracing::{info, debug};
+use tracing::{debug, info};
 
 /// Pipeline configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -62,7 +62,7 @@ pub struct IndexingPipeline {
 impl IndexingPipeline {
     /// Create a new pipeline
     pub fn new(config: PipelineConfig) -> Self {
-        Self { 
+        Self {
             config,
             is_running: Arc::new(AtomicBool::new(false)),
             last_indexed_block: Arc::new(AtomicU64::new(0)),
@@ -70,52 +70,59 @@ impl IndexingPipeline {
             processed_events: Arc::new(AtomicU64::new(0)),
         }
     }
-    
+
     /// Start the pipeline
     pub async fn start(&self) -> Result<()> {
         if self.is_running.load(Ordering::Relaxed) {
             return Err(Error::generic("Pipeline is already running"));
         }
-        
+
         self.is_running.store(true, Ordering::Relaxed);
-        info!("Starting indexing pipeline for chain: {}", self.config.chain_id);
-        
+        info!(
+            "Starting indexing pipeline for chain: {}",
+            self.config.chain_id
+        );
+
         // Simulate indexing process
         let mut current_block = 1u64;
         let mut last_checkpoint = std::time::Instant::now();
-        
+
         while self.is_running.load(Ordering::Relaxed) {
             // Process batch of blocks
             let batch_end = current_block + self.config.batch_size as u64;
-            
-            debug!("Processing blocks {} to {} for chain {}", 
-                current_block, batch_end, self.config.chain_id);
-            
+
+            debug!(
+                "Processing blocks {} to {} for chain {}",
+                current_block, batch_end, self.config.chain_id
+            );
+
             // Simulate block processing
             for block_num in current_block..batch_end {
                 if !self.is_running.load(Ordering::Relaxed) {
                     break;
                 }
-                
+
                 // Simulate block processing time
                 sleep(Duration::from_millis(10)).await;
-                
+
                 // Simulate events per block (1-5 events)
                 let events_in_block = (block_num % 5) + 1;
-                self.processed_events.fetch_add(events_in_block, Ordering::Relaxed);
-                
+                self.processed_events
+                    .fetch_add(events_in_block, Ordering::Relaxed);
+
                 // Update last indexed block
                 self.last_indexed_block.store(block_num, Ordering::Relaxed);
-                
+
                 // Simulate validation if enabled
                 if self.config.enable_validation {
                     sleep(Duration::from_millis(1)).await;
                 }
             }
-            
-            self.processed_blocks.fetch_add(batch_end - current_block, Ordering::Relaxed);
+
+            self.processed_blocks
+                .fetch_add(batch_end - current_block, Ordering::Relaxed);
             current_block = batch_end;
-            
+
             // Checkpoint logging
             if last_checkpoint.elapsed().as_millis() >= self.config.checkpoint_interval.into() {
                 info!("Pipeline checkpoint - Chain: {}, Last block: {}, Total blocks: {}, Total events: {}", 
@@ -126,35 +133,38 @@ impl IndexingPipeline {
                 );
                 last_checkpoint = std::time::Instant::now();
             }
-            
+
             // Wait for next batch
             sleep(Duration::from_millis(self.config.interval_ms)).await;
         }
-        
-        info!("Indexing pipeline stopped for chain: {}", self.config.chain_id);
+
+        info!(
+            "Indexing pipeline stopped for chain: {}",
+            self.config.chain_id
+        );
         Ok(())
     }
-    
+
     /// Stop the pipeline
     pub fn stop(&self) {
         self.is_running.store(false, Ordering::Relaxed);
     }
-    
+
     /// Get the last indexed block number
     pub fn get_last_indexed_block(&self) -> u64 {
         self.last_indexed_block.load(Ordering::Relaxed)
     }
-    
+
     /// Get total processed blocks
     pub fn get_processed_blocks(&self) -> u64 {
         self.processed_blocks.load(Ordering::Relaxed)
     }
-    
+
     /// Get total processed events
     pub fn get_processed_events(&self) -> u64 {
         self.processed_events.load(Ordering::Relaxed)
     }
-    
+
     /// Check if pipeline is running
     pub fn is_running(&self) -> bool {
         self.is_running.load(Ordering::Relaxed)

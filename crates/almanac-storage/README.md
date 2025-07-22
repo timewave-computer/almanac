@@ -16,76 +16,85 @@ This crate provides the storage implementation for Almanac, featuring a Foundati
 
 ### FoundationDB Integration
 - `FdbConfig` - Configuration for FoundationDB connections
-- `FdbStorageExt` - Extended FoundationDB operations
 - Tuple-based key encoding for efficient querying
 - Transaction support with ACID guarantees
 
 ### Storage Traits
-- `Storage` - Core storage trait from almanac-core
-- `ExtendedStorageReader` - Extended read operations
-- `StorageReader` - API adapter for read operations
+- `StorageWriter` - Trait for write operations (e.g., storing events, updating block status)
+- `StorageReader` - Trait for read operations (e.g., querying events, retrieving latest blocks)
+- `Storage` - Convenience trait for types implementing both `StorageWriter` and `StorageReader`
 - Async trait implementations for all operations
-
-### API Adapter
-- `StorageReader` - Adapter for API layer integration
-- `ExtendedStorageReader` - Extended query capabilities
-- Read-only operations for API consumers
-- Optimized query performance
 
 ## Usage
 
 ### Basic Storage Operations
 
 ```rust
-use almanac_storage::{create_storage, StorageBackend, FdbConfig};
-use almanac_core::{Event, EventFilter, BlockStatus};
+use almanac_storage::{create_storage, StorageBackend, FdbConfig, MemoryStorage};
+use almanac_core::{Event, EventFilter, BlockStatus, UnifiedEvent, ChainId};
+use std::time::SystemTime;
 
-// Create FoundationDB storage
-let fdb_config = FdbConfig {
-    cluster_file: Some("/etc/foundationdb/fdb.cluster".to_string()),
-    namespace: "almanac".to_string(),
-    connection_timeout: 30,
-    max_retries: 3,
-};
+// Helper to create a test event
+fn create_test_event() -> UnifiedEvent {
+    UnifiedEvent {
+        id: "test_event_1".to_string(),
+        chain: ChainId::Ethereum.to_string(),
+        block_number: 1000,
+        block_hash: "0xabc".to_string(),
+        tx_hash: "0xdef".to_string(),
+        timestamp: SystemTime::now(),
+        event_type: "Transfer".to_string(),
+        contract_address: None,
+        raw_data: vec![1, 2, 3],
+        attributes: std::collections::HashMap::new(),
+        source: almanac_core::EventSource::Chain,
+    }
+}
 
-let storage = create_storage(StorageBackend::Fdb(fdb_config)).await?;
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Create FoundationDB storage
+    let fdb_config = FdbConfig {
+        cluster_file: None, // Use default cluster file
+        namespace: "almanac_example".to_string(),
+        connection_timeout: 30,
+        max_retries: 3,
+    };
 
-// Store events
-let event = create_test_event();
-storage.store_event(Box::new(event)).await?;
+    let storage = create_storage(StorageBackend::Fdb(fdb_config)).await?;
 
-// Query events
-let filter = EventFilter::builder()
-    .chain_id(ChainId::Ethereum)
-    .from_block(1000)
-    .to_block(2000)
-    .limit(100)
-    .build();
+    // Store events
+    let event = create_test_event();
+    storage.store_event(Box::new(event)).await?;
 
-let events = storage.get_events(&filter).await?;
+    // Query events
+    let filter = EventFilter {
+        chain: Some(ChainId::Ethereum.to_string()),
+        block_range: Some((1000, 2000)),
+        limit: Some(100),
+        offset: Some(0),
+        ..Default::default()
+    };
 
-// Get latest block
-let latest_block = storage.get_latest_block("ethereum").await?;
+    let events = storage.get_events(vec![filter]).await?;
 
-// Track block status
-storage.set_block_status("ethereum", 1000, BlockStatus::Finalized).await?;
-let status = storage.get_block_status("ethereum", 1000).await?;
-```
+    // Get latest block
+    let latest_block = storage.get_latest_block(ChainId::Ethereum.as_str()).await?;
 
-### Memory Storage for Testing
+    // Update block status
+    storage.update_block_status(ChainId::Ethereum.as_str(), 1000, BlockStatus::Finalized).await?;
+    let latest_finalized_block = storage.get_latest_block_with_status(ChainId::Ethereum.as_str(), BlockStatus::Finalized).await?;
 
-```rust
-use almanac_storage::MemoryStorage;
+    // Memory Storage for Testing
+    let memory_storage = MemoryStorage::new();
+    let event = create_test_event();
+    memory_storage.store_event(Box::new(event)).await?;
 
-// Create in-memory storage for testing
-let storage = MemoryStorage::new();
+    let filter = EventFilter::default();
+    let events = memory_storage.get_events(vec![filter]).await?;
 
-// All storage operations work the same way
-let event = create_test_event();
-storage.store_event(Box::new(event)).await?;
-
-let filter = EventFilter::default();
-let events = storage.get_events(&filter).await?;
+    Ok(())
+}
 ```
 
 ### Configuration
@@ -119,25 +128,22 @@ let memory_storage = create_storage(StorageBackend::Memory).await?;
 
 ## FoundationDB Schema
 
-### Event Storage
-```
-("events", chain_id, block_number, event_index) -> event_data
-("events_by_type", chain_id, event_type, block_number, event_index) -> event_id
-("events_by_tx", chain_id, tx_hash, event_index) -> event_id
-```
-
-### Block Status
-```
-("blocks", chain_id, block_number) -> block_status
-("latest_block", chain_id) -> block_number
-```
-
-### Indexes
-```
-("index_chain_block", chain_id, block_number) -> [event_ids]
-("index_chain_type", chain_id, event_type) -> [event_ids]
-("index_chain_tx", chain_id, tx_hash) -> [event_ids]
-```
+### Keyspaces
+- `ContractState` (1): Contract storage slots
+- `BlockMeta` (2): Block headers and consensus data
+- `StorageProofs` (3): Merkle proofs for verification
+- `SemanticMeta` (4): Trust-scoped semantic interpretations
+- `TrustGraph` (5): Developer trust relationships
+- `ContractLayouts` (6): Layout commitments from Traverse
+- `ViewRegistry` (7): Custom view definitions
+- `LightwaveState` (8): Recursive proof coordination
+- `TrustedCheckpoints` (9): Network checkpoints
+- `SolanaAccounts` (10): Solana account data
+- `NetworkConfig` (11): Blockchain network configuration
+- `CircuitKeys` (12): SP1 verification keys
+- `ChangeTracking` (13): State change logs
+- `ValidatorSignatures` (14): Proposer validator signatures
+- `TrustPolicies` (15): Developer trust policies
 
 ## Performance Characteristics
 
@@ -160,13 +166,14 @@ let memory_storage = create_storage(StorageBackend::Memory).await?;
 ### Efficient Queries
 ```rust
 // Use specific filters for better performance
-let filter = EventFilter::builder()
-    .chain_id(ChainId::Ethereum)          // Indexed
-    .event_type("Transfer")               // Indexed
-    .from_block(1000)                     // Range query
-    .to_block(2000)                       // Range query
-    .limit(100)                           // Limit results
-    .build();
+let filter = EventFilter {
+    chain: Some(ChainId::Ethereum.to_string()),          // Indexed
+    event_type: Some("Transfer".to_string()),               // Indexed
+    block_range: Some((1000, 2000)),                     // Range query
+    limit: Some(100),                           // Limit results
+    offset: Some(0),
+    ..Default::default()
+};
 
 // Avoid broad queries without filters
 let broad_filter = EventFilter::default(); // Less efficient
@@ -179,19 +186,20 @@ let batch_size = 1000;
 let mut offset = 0;
 
 loop {
-    let filter = EventFilter::builder()
-        .chain_id(ChainId::Ethereum)
-        .limit(batch_size)
-        .offset(offset)
-        .build();
+    let filter = EventFilter {
+        chain: Some(ChainId::Ethereum.to_string()),
+        limit: Some(batch_size),
+        offset: Some(offset),
+        ..Default::default()
+    };
     
-    let events = storage.get_events(&filter).await?;
+    let events = storage.get_events(vec![filter]).await?;
     if events.is_empty() {
         break;
     }
     
     // Process batch
-    process_events(events).await?;
+    // process_events(events).await?;
     offset += batch_size;
 }
 ```
@@ -203,7 +211,7 @@ use almanac_core::Result;
 
 // Storage operations return Result<T>
 async fn store_event_safely(
-    storage: &dyn Storage,
+    storage: &dyn almanac_core::StorageWriter,
     event: Box<dyn Event>,
 ) -> Result<()> {
     storage.store_event(event).await.map_err(|e| {
@@ -213,8 +221,8 @@ async fn store_event_safely(
 }
 
 // Handle specific storage errors
-match storage.get_events(&filter).await {
-    Ok(events) => process_events(events).await,
+match storage.get_events(vec![filter]).await {
+    Ok(events) => { /* process events */ },
     Err(e) => {
         eprintln!("Query failed: {}", e);
         // Handle error or retry
@@ -226,16 +234,16 @@ match storage.get_events(&filter).await {
 
 Run tests with:
 ```bash
-cargo test -p almanac-storage
+nix develop -c cargo test -p almanac-storage
 ```
 
 For FoundationDB tests:
 ```bash
 # Start FoundationDB locally
-fdbserver --config-file /etc/foundationdb/fdb.cluster
+nix run .#fdb-manage -- start
 
 # Run tests with FDB feature
-cargo test -p almanac-storage --features fdb
+nix develop -c cargo test -p almanac-storage --features fdb
 ```
 
 The test suite covers:
@@ -250,10 +258,9 @@ The test suite covers:
 
 ### FoundationDB
 - `cluster_file`: Path to FDB cluster file
-- `api_version`: FDB API version (recommended: 720)
-- `transaction_timeout_ms`: Transaction timeout
-- `retry_limit`: Number of retry attempts
-- `max_connections`: Connection pool size
+- `namespace`: Namespace for key isolation
+- `connection_timeout`: Connection timeout in seconds
+- `max_retries`: Number of retry attempts
 
 ### Memory Storage
 - No configuration required

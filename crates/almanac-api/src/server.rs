@@ -1,26 +1,26 @@
+use crate::storage_ext::ExtendedStorageReader;
+use crate::{
+    auth::{AuthServiceConfig, HttpAuthService},
+    config::AuthConfig,
+    routes::create_router,
+    state::AppState,
+};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::signal;
-use crate::storage_ext::ExtendedStorageReader;
-use crate::{
-    routes::create_router,
-    state::AppState,
-    auth::{HttpAuthService, AuthServiceConfig},
-    config::AuthConfig,
-};
 
 /// Server configuration
 #[derive(Debug, Clone)]
 pub struct ServerConfig {
     /// Address to bind to
     pub addr: SocketAddr,
-    
+
     /// Enable graceful shutdown
     pub graceful_shutdown: bool,
-    
+
     /// Request timeout in seconds
     pub request_timeout_secs: u64,
-    
+
     /// Optional authentication configuration
     pub auth_config: Option<AuthConfig>,
 }
@@ -46,7 +46,7 @@ impl ApiServer {
     /// Create a new API server
     pub fn new(config: ServerConfig, storage: Arc<dyn ExtendedStorageReader>) -> Self {
         let mut state = AppState::new(storage);
-        
+
         // Configure authentication if provided
         if let Some(auth_config) = &config.auth_config {
             if auth_config.enabled {
@@ -55,20 +55,20 @@ impl ApiServer {
                 state = state.with_auth_service(auth_service);
             }
         }
-        
+
         Self { config, state }
     }
-    
+
     /// Run the server
     pub async fn run(self) -> anyhow::Result<()> {
         // Create the app with all middleware
         let app = create_router(self.state);
-        
+
         tracing::info!("Starting API server on {}", self.config.addr);
-        
+
         // Create the server
         let listener = tokio::net::TcpListener::bind(self.config.addr).await?;
-        
+
         if self.config.graceful_shutdown {
             // Run with graceful shutdown
             axum::serve(listener, app)
@@ -78,7 +78,7 @@ impl ApiServer {
             // Run without graceful shutdown
             axum::serve(listener, app).await?;
         }
-        
+
         Ok(())
     }
 }
@@ -114,13 +114,13 @@ async fn shutdown_signal() {
 mod tests {
     use super::*;
     use crate::types::MemoryStorageReader;
-    
+
     #[tokio::test]
     async fn test_server_creation() {
         let storage = Arc::new(MemoryStorageReader::new());
         let config = ServerConfig::default();
         let server = ApiServer::new(config, storage);
-        
+
         assert_eq!(server.config.addr.port(), 3000);
         assert!(server.config.graceful_shutdown);
     }

@@ -116,7 +116,7 @@ This script:
 
 **Submit Semantic Interpretation:**
 ```bash
-POST /api/v1/semantics/{chain}/{contract}/{field}
+POST /api/v1/chains/{chain}/contracts/{contract}/semantics/{field}
 {
   "developer_id": "developer-123",
   "chain_id": "ethereum-mainnet",
@@ -137,14 +137,14 @@ POST /api/v1/semantics/{chain}/{contract}/{field}
 
 **Get Semantic Interpretations:**
 ```bash
-GET /api/v1/semantics/{chain}/{contract}/{field}?trust_policy=permissive
+GET /api/v1/chains/{chain}/contracts/{contract}/semantics/{field}?trust_policy=permissive
 ```
 
 ### Contract Layouts
 
 **Submit Layout:**
 ```bash
-POST /api/v1/layouts
+POST /api/v1/chains/{chain}/contracts/{contract}/layouts
 {
   "chain_id": "ethereum-mainnet",
   "contract_address": "0x...",
@@ -157,12 +157,12 @@ POST /api/v1/layouts
 
 **Get Layout:**
 ```bash
-GET /api/v1/layouts/{chain}/{contract}?trust_policy=strict
+GET /api/v1/chains/{chain}/contracts/{contract}/layouts?trust_policy=strict
 ```
 
 **Detect Conflicts:**
 ```bash
-GET /api/v1/layouts/{chain}/{contract}/conflicts
+GET /api/v1/chains/{chain}/contracts/{contract}/layouts/conflicts
 ```
 
 ### Trust Management
@@ -192,7 +192,7 @@ GET /api/v1/trust/graph/{developer_id}
 
 **Register View:**
 ```bash
-POST /api/v1/views
+POST /api/v1/chains/{chain}/contracts/{contract}/views
 {
   "view_id": "erc20-balances",
   "contract_address": "0x...",
@@ -204,7 +204,7 @@ POST /api/v1/views
 
 **Query View:**
 ```bash
-GET /api/v1/views/{view_id}/query?chain={chain}&contract={contract}&block={height}
+GET /api/v1/chains/{chain}/contracts/{contract}/views/{view_id}/query?block={height}
 ```
 
 ## Storage Schema
@@ -221,7 +221,7 @@ The FDB storage uses a tuple-based key structure:
    - Key: `[namespace, 1, chain_id, contract, block, storage_key]`
    - Value: Storage value bytes
 
-2. **BlockMeta (2)**: Block headers
+2. **BlockMeta (2)**: Block headers and consensus data
    - Key: `[namespace, 2, chain_id, block_identifier]`
    - Value: Block metadata
 
@@ -229,7 +229,7 @@ The FDB storage uses a tuple-based key structure:
    - Key: `[namespace, 3, chain_id, contract, storage_key, block]`
    - Value: Proof data
 
-4. **SemanticMeta (4)**: Semantic interpretations
+4. **SemanticMeta (4)**: Trust-scoped semantic interpretations
    - Key: `[namespace, 4, chain_id, contract, storage_key, developer_id]`
    - Value: Semantic metadata
 
@@ -241,9 +241,41 @@ The FDB storage uses a tuple-based key structure:
    - Key: `[namespace, 6, chain_id, contract, version]`
    - Value: Layout data
 
-7. **ViewRegistry (7)**: View definitions
+7. **ViewRegistry (7)**: Custom view definitions
    - Key: `[namespace, 7, view_id]`
    - Value: View configuration
+
+8. **LightwaveState (8)**: Recursive proof coordination
+   - Key: `[namespace, 8, chain_id, block_identifier]`
+   - Value: Lightwave state data
+
+9. **TrustedCheckpoints (9)**: Network checkpoints
+   - Key: `[namespace, 9, chain_id, checkpoint_type, height_or_slot]`
+   - Value: Checkpoint data
+
+10. **SolanaAccounts (10)**: Solana account data
+    - Key: `[namespace, 10, account_address, slot]`
+    - Value: Account data
+
+11. **NetworkConfig (11)**: Blockchain network configuration
+    - Key: `[namespace, 11, chain_id, config_name]`
+    - Value: Network configuration data
+
+12. **CircuitKeys (12)**: SP1 verification keys
+    - Key: `[namespace, 12, circuit_type, version]`
+    - Value: Verification key data
+
+13. **ChangeTracking (13)**: State change logs
+    - Key: `[namespace, 13, chain_id, block_number, transaction_index, log_index]`
+    - Value: Change data
+
+14. **ValidatorSignatures (14)**: Proposer validator signatures
+    - Key: `[namespace, 14, chain_id, block_number, validator_id]`
+    - Value: Signature data
+
+15. **TrustPolicies (15)**: Developer trust policies
+    - Key: `[namespace, 15, developer_id]`
+    - Value: Trust policy data
 
 ## Trust Policies
 

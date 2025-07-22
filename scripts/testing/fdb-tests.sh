@@ -247,7 +247,7 @@ test_fdb_e2e() {
     export FDB_NAMESPACE=almanac_e2e_test
     
     # Run FDB-specific E2E tests
-    if cargo test --package e2e fdb ${VERBOSE:+--verbose} 2>&1; then
+    if cargo test --package almanac-tests fdb ${VERBOSE:+--verbose} 2>&1; then
         print_success "FoundationDB E2E tests passed"
         ((PASSED_TESTS++))
     else

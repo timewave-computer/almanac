@@ -17,7 +17,7 @@ if [ -z "${IN_NIX_SHELL:-}" ]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Default values
 SERVICE_NAME="almanac-api"
@@ -72,11 +72,11 @@ load_config() {
 
 check_prerequisites() {
     # Check if API binary exists
-    if ! command -v almanac-api-http &> /dev/null; then
+    if ! command -v almanac-api &> /dev/null; then
         # Try to build it
         echo -e "${YELLOW}API binary not found. Building...${NC}"
         cd "$PROJECT_ROOT"
-        cargo build -p almanac-api-http --release
+        cargo build -p almanac-api --release --bin almanac-api
         
         # Add to PATH if built
         export PATH="$PROJECT_ROOT/target/release:$PATH"
@@ -127,7 +127,7 @@ start_service() {
     
     if [ "$daemon_mode" = true ]; then
         # Start as daemon
-        nohup almanac-api-http >> "$LOG_FILE" 2>&1 &
+        nohup almanac-api >> "$LOG_FILE" 2>&1 &
         local pid=$!
         echo $pid > "$PID_FILE"
         
@@ -144,7 +144,7 @@ start_service() {
         fi
     else
         # Start in foreground
-        exec almanac-api-http
+        exec almanac-api
     fi
 }
 

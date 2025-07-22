@@ -8,9 +8,9 @@ This crate provides the core event indexing functionality, processing blockchain
 
 ## Key Components
 
-### Indexing Pipeline
-- `IndexingPipeline` - Main pipeline orchestrator
-- `PipelineConfig` - Configuration for batch sizes, intervals, and chain-specific settings
+### Indexing Service
+- `IndexingService` - Main indexing orchestrator
+- `IndexingConfig` - Configuration for batch sizes, intervals, and chain-specific settings
 - Configurable processing intervals and batch sizes
 - Chain-specific optimization parameters
 
@@ -47,11 +47,18 @@ This crate provides the core event indexing functionality, processing blockchain
 ## Usage
 
 ```rust
-use almanac_indexing::{IndexingPipeline, PipelineConfig};
-use almanac_core::Event;
+use almanac_indexing::{IndexingService, IndexingConfig};
+use almanac_core::Storage;
+use almanac_chains::ChainAdapter;
+use almanac_consensus::{create_fork_choice, ForkChoiceRule};
+use std::sync::Arc;
 
-// Configure the indexing pipeline
-let config = PipelineConfig {
+// Assume you have a ChainAdapter and Storage implementation
+// let chain_adapter: Arc<dyn ChainAdapter> = ...;
+// let storage: Arc<dyn Storage> = ...;
+
+// Configure the indexing service
+let config = IndexingConfig {
     chain_id: "ethereum".to_string(),
     batch_size: 100,
     max_concurrent_batches: 10,
@@ -61,13 +68,23 @@ let config = PipelineConfig {
     enable_validation: true,
     enable_ordering: true,
     checkpoint_interval: 1000,
+    start_block: 0,
 };
 
-// Create and start the pipeline
-let pipeline = IndexingPipeline::new(config);
-pipeline.start().await?;
+// Create a fork choice rule (e.g., LongestChain)
+let fork_choice = create_fork_choice(ForkChoiceRule::LongestChain, /* initial_block_info */);
 
-// The pipeline will automatically:
+// Create and run the indexing service
+let indexer = IndexingService::builder()
+    .chain_adapter(chain_adapter)
+    .storage(storage)
+    .fork_choice(fork_choice)
+    .config(config)
+    .build();
+
+indexer.run().await?;
+
+// The service will automatically:
 // 1. Ingest events from blockchain adapters
 // 2. Validate event data
 // 3. Order events correctly
@@ -82,7 +99,7 @@ pipeline.start().await?;
 
 ```rust
 // Ethereum configuration (higher latency, more confirmations)
-let eth_config = PipelineConfig {
+let eth_config = IndexingConfig {
     chain_id: "ethereum".to_string(),
     batch_size: 100,
     max_concurrent_batches: 10,
@@ -92,10 +109,11 @@ let eth_config = PipelineConfig {
     enable_validation: true,
     enable_ordering: true,
     checkpoint_interval: 1000,
+    start_block: 0,
 };
 
 // Cosmos configuration (instant finality, higher throughput)
-let cosmos_config = PipelineConfig {
+let cosmos_config = IndexingConfig {
     chain_id: "cosmos".to_string(),
     batch_size: 200,
     max_concurrent_batches: 20,
@@ -105,10 +123,11 @@ let cosmos_config = PipelineConfig {
     enable_validation: true,
     enable_ordering: true,
     checkpoint_interval: 100,
+    start_block: 0,
 };
 
 // Solana configuration (high throughput, slot-based finality)
-let solana_config = PipelineConfig {
+let solana_config = IndexingConfig {
     chain_id: "solana".to_string(),
     batch_size: 1000,
     max_concurrent_batches: 50,
@@ -118,6 +137,7 @@ let solana_config = PipelineConfig {
     enable_validation: true,
     enable_ordering: true,
     checkpoint_interval: 2000,
+    start_block: 0,
 };
 ```
 
@@ -125,7 +145,7 @@ let solana_config = PipelineConfig {
 
 ```rust
 // High-performance configuration
-let high_perf_config = PipelineConfig {
+let high_perf_config = IndexingConfig {
     chain_id: "ethereum".to_string(),
     batch_size: 1000,
     max_concurrent_batches: 100,
@@ -135,10 +155,11 @@ let high_perf_config = PipelineConfig {
     enable_validation: false, // Disable for performance
     enable_ordering: false,   // Disable for performance
     checkpoint_interval: 10000,
+    start_block: 0,
 };
 
 // Low-latency configuration
-let low_latency_config = PipelineConfig {
+let low_latency_config = IndexingConfig {
     chain_id: "ethereum".to_string(),
     batch_size: 10,
     max_concurrent_batches: 2,
@@ -148,6 +169,7 @@ let low_latency_config = PipelineConfig {
     enable_validation: true,
     enable_ordering: true,
     checkpoint_interval: 10,
+    start_block: 0,
 };
 ```
 
@@ -199,13 +221,13 @@ let low_latency_config = PipelineConfig {
 The pipeline provides comprehensive error handling:
 
 ```rust
-// Pipeline errors are logged and handled gracefully
-pipeline.start().await.map_err(|e| {
-    eprintln!("Pipeline error: {}", e);
+// Indexer errors are logged and handled gracefully
+indexer.run().await.map_err(|e| {
+    eprintln!("Indexer error: {}", e);
     e
 })?;
 
-// Individual event errors don't stop the pipeline
+// Individual event errors don't stop the the indexer
 // Failed events are retried with exponential backoff
 // Persistent failures are logged and skipped
 ```
@@ -214,7 +236,7 @@ pipeline.start().await.map_err(|e| {
 
 Run tests with:
 ```bash
-cargo test -p almanac-indexing
+nix develop -c cargo test -p almanac-indexing
 ```
 
 The test suite covers:

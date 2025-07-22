@@ -11,20 +11,47 @@ pub use self::mock_impl::*;
 #[cfg(feature = "fdb")]
 mod fdb_impl {
     use super::super::{
-        TupleKeyspace, 
-        SemanticMetadataKey, SemanticMetadataValue,
-        BlockDataKey, BlockIdentifier,
-        ContractLayoutKey, ContractLayoutValue,
-        DeveloperTrustKey, DeveloperTrustValue, TrustScope, TrustPolicy,
-        TrustedCheckpointKey, TrustedCheckpointValue, CheckpointType,
-        StorageProofKey,
-        SolanaAccountKey,
+        BlockDataKey, BlockIdentifier, CheckpointType, ContractLayoutKey, ContractLayoutValue,
+        DeveloperTrustKey, DeveloperTrustValue, SemanticMetadataKey, SemanticMetadataValue,
+        SolanaAccountKey, StorageProofKey, TrustPolicy, TrustScope, TrustedCheckpointKey,
+        TrustedCheckpointValue, TupleKeyspace,
     };
-    use foundationdb::Database;
-    use foundationdb::tuple::{Element, Subspace, Bytes, pack, unpack};
+    use anyhow::{anyhow, Result};
+    use foundationdb::options::StreamingMode;
+    use foundationdb::tuple::{pack, unpack, Bytes, Element, Subspace};
+    use foundationdb::{Database, RangeOption, Transaction};
     use std::sync::Arc;
-    use anyhow::{Result, anyhow};
-    use tracing::{info, debug};
+    use tracing::{debug, info};
+
+    // Helper function for prefix-based range scanning with foundationdb 0.8 API
+    async fn scan_with_prefix(
+        tx: &Transaction,
+        prefix: &[u8],
+        limit: usize,
+    ) -> Result<Vec<(Vec<u8>, Vec<u8>)>> {
+        let subspace = Subspace::from_bytes(prefix);
+        let range = subspace.range();
+
+        let range_opt = RangeOption {
+            limit: Some(limit),
+            reverse: false,
+            mode: StreamingMode::WantAll,
+            ..RangeOption::from((range.0.as_slice(), range.1.as_slice()))
+        };
+
+        let kvs = tx
+            .get_range(&range_opt, 1, false)
+            .await
+            .map_err(|e| anyhow!("Range scan failed: {}", e))?;
+
+        // Convert FdbValues to (Vec<u8>, Vec<u8>) tuples
+        let mut results = Vec::new();
+        for kv in kvs {
+            results.push((kv.key().to_vec(), kv.value().to_vec()));
+        }
+
+        Ok(results)
+    }
 
     /// Actual FDB tuple storage implementation
     pub struct TupleFdbStorage {
@@ -38,9 +65,9 @@ mod fdb_impl {
         pub async fn new(db: Arc<Database>, namespace: String) -> Result<Self> {
             // Create a subspace for our namespace
             let subspace = Subspace::from_bytes(namespace.as_bytes());
-            
-            Ok(Self { 
-                db, 
+
+            Ok(Self {
+                db,
                 namespace,
                 subspace,
             })
@@ -51,10 +78,22 @@ mod fdb_impl {
             Element::Int(keyspace as i64)
         }
 
+        /// Create a transaction for external use
+        pub fn create_transaction(&self) -> Result<Transaction> {
+            Ok(self.db.create_trx()?)
+        }
+
+        /// Get the namespace for this storage instance
+        pub fn namespace(&self) -> &str {
+            &self.namespace
+        }
+
         /// Build a tuple key for semantic metadata
         pub fn build_semantic_key(&self, key: &SemanticMetadataKey) -> Vec<Element<'static>> {
             let mut tuple = Vec::new();
-            tuple.push(Element::Bytes(Bytes::from(self.namespace.clone().into_bytes())));
+            tuple.push(Element::Bytes(Bytes::from(
+                self.namespace.clone().into_bytes(),
+            )));
             tuple.push(Self::keyspace_element(TupleKeyspace::SemanticMeta));
             tuple.push(Element::String(key.chain_id.clone().into()));
             tuple.push(Element::String(key.contract_address.clone().into()));
@@ -69,23 +108,27 @@ mod fdb_impl {
         /// Build a tuple key for block data
         pub fn build_block_key(&self, key: &BlockDataKey) -> Vec<Element<'static>> {
             let mut tuple = Vec::new();
-            tuple.push(Element::Bytes(Bytes::from(self.namespace.clone().into_bytes())));
+            tuple.push(Element::Bytes(Bytes::from(
+                self.namespace.clone().into_bytes(),
+            )));
             tuple.push(Self::keyspace_element(TupleKeyspace::BlockMeta));
             tuple.push(Element::String(key.chain_id.clone().into()));
-            
+
             match &key.block_identifier {
                 BlockIdentifier::Height(h) => tuple.push(Element::Int(*h as i64)),
                 BlockIdentifier::Hash(h) => tuple.push(Element::Bytes(Bytes::from(h.to_vec()))),
                 BlockIdentifier::Slot(s) => tuple.push(Element::Int(*s as i64)),
             }
-            
+
             tuple
         }
 
         /// Build a tuple key for contract layout
         pub fn build_layout_key(&self, key: &ContractLayoutKey) -> Vec<Element<'static>> {
             let mut tuple = Vec::new();
-            tuple.push(Element::Bytes(Bytes::from(self.namespace.clone().into_bytes())));
+            tuple.push(Element::Bytes(Bytes::from(
+                self.namespace.clone().into_bytes(),
+            )));
             tuple.push(Self::keyspace_element(TupleKeyspace::ContractLayouts));
             tuple.push(Element::String(key.chain_id.clone().into()));
             tuple.push(Element::String(key.contract_address.clone().into()));
@@ -98,49 +141,70 @@ mod fdb_impl {
         /// Build a tuple key for trust relationships
         pub fn build_trust_key(&self, key: &DeveloperTrustKey) -> Vec<Element<'static>> {
             let mut tuple = Vec::new();
-            tuple.push(Element::Bytes(Bytes::from(self.namespace.clone().into_bytes())));
+            tuple.push(Element::Bytes(Bytes::from(
+                self.namespace.clone().into_bytes(),
+            )));
             tuple.push(Self::keyspace_element(TupleKeyspace::TrustGraph));
             tuple.push(Element::String(key.trustor.clone().into()));
             tuple.push(Element::String(key.trustee.clone().into()));
-            
+
             match &key.scope {
                 TrustScope::Global => tuple.push(Element::String("global".to_string().into())),
-                TrustScope::Contract(addr) => {
+                TrustScope::Contract {
+                    chain_id,
+                    contract_address,
+                } => {
                     tuple.push(Element::String("contract".to_string().into()));
-                    tuple.push(Element::String(addr.clone().into()));
-                },
-                TrustScope::Field(addr, field) => {
+                    tuple.push(Element::String(chain_id.clone().into()));
+                    tuple.push(Element::String(contract_address.clone().into()));
+                }
+                TrustScope::Field {
+                    chain_id,
+                    contract_address,
+                    field,
+                } => {
                     tuple.push(Element::String("field".to_string().into()));
-                    tuple.push(Element::String(addr.clone().into()));
+                    tuple.push(Element::String(chain_id.clone().into()));
+                    tuple.push(Element::String(contract_address.clone().into()));
                     tuple.push(Element::String(field.clone().into()));
-                },
+                }
             }
-            
+
             tuple
         }
 
         /// Build a tuple key for storage proofs
         pub fn build_proof_key(&self, key: &StorageProofKey) -> Vec<Element<'static>> {
             let mut tuple = Vec::new();
-            tuple.push(Element::Bytes(Bytes::from(self.namespace.clone().into_bytes())));
+            tuple.push(Element::Bytes(Bytes::from(
+                self.namespace.clone().into_bytes(),
+            )));
             tuple.push(Self::keyspace_element(TupleKeyspace::StorageProofs));
             tuple.push(Element::String(key.chain_id.clone().into()));
             tuple.push(Element::String(key.contract_address.clone().into()));
             tuple.push(Element::Bytes(Bytes::from(key.storage_key.to_vec())));
-            
+
             match &key.block_identifier {
                 BlockIdentifier::Height(h) => tuple.push(Element::Int(*h as i64)),
                 BlockIdentifier::Hash(h) => tuple.push(Element::Bytes(Bytes::from(h.to_vec()))),
                 BlockIdentifier::Slot(s) => tuple.push(Element::Int(*s as i64)),
             }
-            
+
             tuple
         }
 
         /// Build a tuple key for contract state
-        pub fn build_state_key(&self, chain_id: &str, contract: &str, block: u64, key: &[u8; 32]) -> Vec<Element<'static>> {
+        pub fn build_state_key(
+            &self,
+            chain_id: &str,
+            contract: &str,
+            block: u64,
+            key: &[u8; 32],
+        ) -> Vec<Element<'static>> {
             let mut tuple = Vec::new();
-            tuple.push(Element::Bytes(Bytes::from(self.namespace.clone().into_bytes())));
+            tuple.push(Element::Bytes(Bytes::from(
+                self.namespace.clone().into_bytes(),
+            )));
             tuple.push(Self::keyspace_element(TupleKeyspace::ContractState));
             tuple.push(Element::String(chain_id.to_string().into()));
             tuple.push(Element::String(contract.to_string().into()));
@@ -152,7 +216,9 @@ mod fdb_impl {
         /// Build a tuple key for Lightwave checkpoints
         pub fn build_checkpoint_key(&self, key: &TrustedCheckpointKey) -> Vec<Element<'static>> {
             let mut tuple = Vec::new();
-            tuple.push(Element::Bytes(Bytes::from(self.namespace.clone().into_bytes())));
+            tuple.push(Element::Bytes(Bytes::from(
+                self.namespace.clone().into_bytes(),
+            )));
             tuple.push(Self::keyspace_element(TupleKeyspace::TrustedCheckpoints));
             tuple.push(Element::String(key.chain_id.clone().into()));
             tuple.push(Element::Int(key.checkpoint_type as i64));
@@ -163,7 +229,9 @@ mod fdb_impl {
         /// Build a tuple key for Solana accounts
         pub fn build_solana_account_key(&self, key: &SolanaAccountKey) -> Vec<Element<'static>> {
             let mut tuple = Vec::new();
-            tuple.push(Element::Bytes(Bytes::from(self.namespace.clone().into_bytes())));
+            tuple.push(Element::Bytes(Bytes::from(
+                self.namespace.clone().into_bytes(),
+            )));
             tuple.push(Self::keyspace_element(TupleKeyspace::SolanaAccounts));
             tuple.push(Element::Bytes(Bytes::from(key.account_address.to_vec())));
             tuple.push(Element::Int(key.slot as i64));
@@ -179,11 +247,16 @@ mod fdb_impl {
             let tx = self.db.create_trx()?;
             let tuple_key = self.build_semantic_key(&key);
             let serialized = bincode::serialize(&value)?;
-            
+
             tx.set(&pack(&tuple_key), &serialized);
-            tx.commit().await.map_err(|e| anyhow!("Transaction commit failed: {:?}", e))?;
-            
-            debug!("Stored semantic metadata for {}/{}", key.chain_id, key.contract_address);
+            tx.commit()
+                .await
+                .map_err(|e| anyhow!("Transaction commit failed: {:?}", e))?;
+
+            debug!(
+                "Stored semantic metadata for {}/{}",
+                key.chain_id, key.contract_address
+            );
             Ok(())
         }
 
@@ -195,7 +268,7 @@ mod fdb_impl {
             trusted_developers: &[String],
         ) -> Result<Option<SemanticMetadataValue>> {
             let tx = self.db.create_trx()?;
-            
+
             // Build key prefix without developer_id to get all interpretations
             let mut prefix_tuple = Vec::new();
             prefix_tuple.push(Element::Bytes(Bytes::from(self.namespace.as_bytes())));
@@ -203,7 +276,7 @@ mod fdb_impl {
             prefix_tuple.push(Element::String(key.chain_id.clone().into()));
             prefix_tuple.push(Element::String(key.contract_address.clone().into()));
             prefix_tuple.push(Element::Bytes(Bytes::from(&key.storage_key[..])));
-            
+
             let prefix = pack(&prefix_tuple);
             let mut end_key = prefix.clone();
             // Create a range by incrementing the last byte for prefix scanning
@@ -216,46 +289,59 @@ mod fdb_impl {
             } else {
                 end_key.push(0);
             }
-            
-            // For now, skip range queries and return empty results
-            // TODO: Implement proper range scanning for foundationdb 0.8
-            let kvs: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
-            
+
+            // Implement proper range scanning for foundationdb 0.8
+            let kvs = match scan_with_prefix(&tx, &prefix, 1000).await {
+                Ok(range_results) => range_results,
+                Err(e) => {
+                    tracing::error!("Range scan failed: {}", e);
+                    Vec::new()
+                }
+            };
+
             // Filter based on trust policy
             let mut best_value: Option<(SemanticMetadataValue, String)> = None;
-            
+
             for (k, v) in kvs {
                 let tuple: Vec<Element> = unpack(&k)?;
-                
+
                 // Get developer_id from tuple position 5
                 if let Some(Element::String(developer_id)) = tuple.get(5) {
                     let value: SemanticMetadataValue = bincode::deserialize(&v)?;
-                    
+
                     match trust_policy {
                         TrustPolicy::Permissive => {
                             // Accept first trusted developer, or any if no trusted found
-                            if trusted_developers.iter().any(|d| d == developer_id.as_ref()) {
+                            if trusted_developers
+                                .iter()
+                                .any(|d| d == developer_id.as_ref())
+                            {
                                 return Ok(Some(value));
                             } else if best_value.is_none() {
                                 best_value = Some((value, developer_id.to_string()));
                             }
-                        },
+                        }
                         TrustPolicy::Strict => {
                             // Only accept trusted developers
-                            if trusted_developers.iter().any(|d| d == developer_id.as_ref()) {
+                            if trusted_developers
+                                .iter()
+                                .any(|d| d == developer_id.as_ref())
+                            {
                                 return Ok(Some(value));
                             }
-                        },
-                        TrustPolicy::Explicit => {
+                        }
+                        TrustPolicy::Explicit {
+                            developer_id: ref expected_dev,
+                        } => {
                             // Only accept explicitly requested developer
-                            if developer_id == &key.developer_id {
+                            if developer_id == expected_dev {
                                 return Ok(Some(value));
                             }
-                        },
+                        }
                     }
                 }
             }
-            
+
             Ok(best_value.map(|(v, _)| v))
         }
 
@@ -268,11 +354,16 @@ mod fdb_impl {
             let tx = self.db.create_trx()?;
             let tuple_key = self.build_layout_key(&key);
             let serialized = bincode::serialize(&value)?;
-            
+
             tx.set(&pack(&tuple_key), &serialized);
-            tx.commit().await.map_err(|e| anyhow!("Transaction commit failed: {:?}", e))?;
-            
-            info!("Stored contract layout for {}/{}", key.chain_id, key.contract_address);
+            tx.commit()
+                .await
+                .map_err(|e| anyhow!("Transaction commit failed: {:?}", e))?;
+
+            info!(
+                "Stored contract layout for {}/{}",
+                key.chain_id, key.contract_address
+            );
             Ok(())
         }
 
@@ -283,7 +374,7 @@ mod fdb_impl {
         ) -> Result<Option<ContractLayoutValue>> {
             let tx = self.db.create_trx()?;
             let tuple_key = self.build_layout_key(key);
-            
+
             if let Some(value) = tx.get(&pack(&tuple_key), false).await? {
                 let layout: ContractLayoutValue = bincode::deserialize(&value)?;
                 Ok(Some(layout))
@@ -301,11 +392,16 @@ mod fdb_impl {
             let tx = self.db.create_trx()?;
             let tuple_key = self.build_trust_key(&key);
             let serialized = bincode::serialize(&value)?;
-            
+
             tx.set(&pack(&tuple_key), &serialized);
-            tx.commit().await.map_err(|e| anyhow!("Transaction commit failed: {:?}", e))?;
-            
-            debug!("Stored trust relationship: {} -> {}", key.trustor, key.trustee);
+            tx.commit()
+                .await
+                .map_err(|e| anyhow!("Transaction commit failed: {:?}", e))?;
+
+            debug!(
+                "Stored trust relationship: {} -> {}",
+                key.trustor, key.trustee
+            );
             Ok(())
         }
 
@@ -315,12 +411,12 @@ mod fdb_impl {
             trustor: &str,
         ) -> Result<Vec<(DeveloperTrustKey, DeveloperTrustValue)>> {
             let tx = self.db.create_trx()?;
-            
+
             let mut prefix_tuple = Vec::new();
             prefix_tuple.push(Element::Bytes(Bytes::from(self.namespace.as_bytes())));
             prefix_tuple.push(Self::keyspace_element(TupleKeyspace::TrustGraph));
             prefix_tuple.push(Element::String(trustor.to_string().into()));
-            
+
             let prefix = pack(&prefix_tuple);
             let mut end_key = prefix.clone();
             // Create a range by incrementing the last byte for prefix scanning
@@ -333,51 +429,168 @@ mod fdb_impl {
             } else {
                 end_key.push(0);
             }
-            
-            // For now, skip range queries and return empty results
-            // TODO: Implement proper range scanning for foundationdb 0.8
-            let kvs: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
-            
+
+            // Implement proper range scanning for foundationdb 0.8
+            let kvs = match scan_with_prefix(&tx, &prefix, 1000).await {
+                Ok(range_results) => range_results,
+                Err(e) => {
+                    tracing::error!("Range scan failed: {}", e);
+                    Vec::new()
+                }
+            };
+
             let mut relationships = Vec::new();
-            
+
             for (k, v) in kvs {
                 let tuple: Vec<Element> = unpack(&k)?;
-                
-                if let (Some(Element::String(trustee)), Some(Element::String(scope_type))) = 
-                    (tuple.get(3), tuple.get(4)) {
-                    
+
+                if let (Some(Element::String(trustee)), Some(Element::String(scope_type))) =
+                    (tuple.get(3), tuple.get(4))
+                {
                     let scope = match scope_type.as_ref() {
                         "global" => TrustScope::Global,
                         "contract" => {
-                            if let Some(Element::String(addr)) = tuple.get(5) {
-                                TrustScope::Contract(addr.to_string())
+                            if let (
+                                Some(Element::String(chain_id)),
+                                Some(Element::String(contract_address)),
+                            ) = (tuple.get(5), tuple.get(6))
+                            {
+                                TrustScope::Contract {
+                                    chain_id: chain_id.to_string(),
+                                    contract_address: contract_address.to_string(),
+                                }
                             } else {
                                 continue;
                             }
-                        },
+                        }
                         "field" => {
-                            if let (Some(Element::String(addr)), Some(Element::String(field))) = 
-                                (tuple.get(5), tuple.get(6)) {
-                                TrustScope::Field(addr.to_string(), field.to_string())
+                            if let (
+                                Some(Element::String(chain_id)),
+                                Some(Element::String(contract_address)),
+                                Some(Element::String(field)),
+                            ) = (tuple.get(5), tuple.get(6), tuple.get(7))
+                            {
+                                TrustScope::Field {
+                                    chain_id: chain_id.to_string(),
+                                    contract_address: contract_address.to_string(),
+                                    field: field.to_string(),
+                                }
                             } else {
                                 continue;
                             }
-                        },
+                        }
                         _ => continue,
                     };
-                    
+
                     let key = DeveloperTrustKey {
                         trustor: trustor.to_string(),
                         trustee: trustee.to_string(),
                         scope,
                     };
-                    
+
                     let value: DeveloperTrustValue = bincode::deserialize(&v)?;
                     relationships.push((key, value));
                 }
             }
-            
+
             Ok(relationships)
+        }
+
+        /// Revoke trust relationship with reason
+        pub async fn revoke_trust_relationship(
+            &self,
+            key: &DeveloperTrustKey,
+            reason: &str,
+        ) -> Result<()> {
+            let tx = self.db.create_trx()?;
+            let tuple_key = self.build_trust_key(key);
+
+            // Get the existing relationship to modify it
+            if let Some(existing_data) = tx.get(&pack(&tuple_key), false).await? {
+                let mut trust_value: DeveloperTrustValue = bincode::deserialize(&existing_data)?;
+
+                // Mark as revoked by setting level to None and adding revocation reason
+                trust_value.level = crate::api_adapter::TrustLevel::None;
+                trust_value.expires_at = Some(chrono::Utc::now().timestamp() as u64); // Expire immediately
+
+                // Store the updated value
+                let serialized = bincode::serialize(&trust_value)?;
+                tx.set(&pack(&tuple_key), &serialized);
+            } else {
+                // If relationship doesn't exist, create a revoked entry
+                let trust_value = DeveloperTrustValue {
+                    trustor: key.trustor.clone(),
+                    trustee: key.trustee.clone(),
+                    scope: key.scope.clone(),
+                    level: crate::api_adapter::TrustLevel::None,
+                    created_at: chrono::Utc::now().timestamp() as u64,
+                    expires_at: Some(chrono::Utc::now().timestamp() as u64), // Already expired
+                    conditions: vec![],
+                    revocation_reason: Some("Revoked".to_string()),
+                };
+
+                let serialized = bincode::serialize(&trust_value)?;
+                tx.set(&pack(&tuple_key), &serialized);
+            }
+
+            tx.commit()
+                .await
+                .map_err(|e| anyhow!("Transaction commit failed: {:?}", e))?;
+
+            tracing::info!(
+                "Revoked trust relationship: {} -> {} (reason: {})",
+                key.trustor,
+                key.trustee,
+                reason
+            );
+            Ok(())
+        }
+
+        /// Get trust policy for a developer
+        pub async fn get_trust_policy(
+            &self,
+            developer_id: &str,
+        ) -> Result<Option<crate::api_adapter::TrustPolicy>> {
+            let tx = self.db.create_trx()?;
+
+            let mut tuple = Vec::new();
+            tuple.push(Element::Bytes(Bytes::from(self.namespace.as_bytes())));
+            tuple.push(Self::keyspace_element(TupleKeyspace::TrustPolicies));
+            tuple.push(Element::String(developer_id.to_string().into()));
+
+            let tuple_key = pack(&tuple);
+
+            if let Some(data) = tx.get(&tuple_key, false).await? {
+                let policy: crate::api_adapter::TrustPolicy = bincode::deserialize(&data)?;
+                Ok(Some(policy))
+            } else {
+                Ok(None)
+            }
+        }
+
+        /// Store trust policy for a developer
+        pub async fn store_trust_policy(
+            &self,
+            developer_id: &str,
+            policy: &crate::api_adapter::TrustPolicy,
+        ) -> Result<()> {
+            let tx = self.db.create_trx()?;
+
+            let mut tuple = Vec::new();
+            tuple.push(Element::Bytes(Bytes::from(self.namespace.as_bytes())));
+            tuple.push(Self::keyspace_element(TupleKeyspace::TrustPolicies));
+            tuple.push(Element::String(developer_id.to_string().into()));
+
+            let tuple_key = pack(&tuple);
+            let serialized = bincode::serialize(policy)?;
+
+            tx.set(&tuple_key, &serialized);
+            tx.commit()
+                .await
+                .map_err(|e| anyhow!("Transaction commit failed: {:?}", e))?;
+
+            tracing::info!("Stored trust policy for developer: {}", developer_id);
+            Ok(())
         }
 
         /// Store Lightwave checkpoint
@@ -389,11 +602,16 @@ mod fdb_impl {
             let tx = self.db.create_trx()?;
             let tuple_key = self.build_checkpoint_key(&key);
             let serialized = bincode::serialize(&value)?;
-            
+
             tx.set(&pack(&tuple_key), &serialized);
-            tx.commit().await.map_err(|e| anyhow!("Transaction commit failed: {:?}", e))?;
-            
-            info!("Stored checkpoint for {} at height {}", key.chain_id, key.height_or_slot);
+            tx.commit()
+                .await
+                .map_err(|e| anyhow!("Transaction commit failed: {:?}", e))?;
+
+            info!(
+                "Stored checkpoint for {} at height {}",
+                key.chain_id, key.height_or_slot
+            );
             Ok(())
         }
 
@@ -405,13 +623,13 @@ mod fdb_impl {
             min_verification_count: u32,
         ) -> Result<Vec<(TrustedCheckpointKey, TrustedCheckpointValue)>> {
             let tx = self.db.create_trx()?;
-            
+
             let mut prefix_tuple = Vec::new();
             prefix_tuple.push(Element::Bytes(Bytes::from(self.namespace.as_bytes())));
             prefix_tuple.push(Self::keyspace_element(TupleKeyspace::TrustedCheckpoints));
             prefix_tuple.push(Element::String(chain_id.to_string().into()));
             prefix_tuple.push(Element::Int(checkpoint_type as i64));
-            
+
             let prefix = pack(&prefix_tuple);
             let mut end_key = prefix.clone();
             // Create a range by incrementing the last byte for prefix scanning
@@ -424,16 +642,21 @@ mod fdb_impl {
             } else {
                 end_key.push(0);
             }
-            
-            // For now, skip range queries and return empty results
-            // TODO: Implement proper range scanning for foundationdb 0.8
-            let kvs: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
-            
+
+            // Implement proper range scanning for foundationdb 0.8
+            let kvs = match scan_with_prefix(&tx, &prefix, 1000).await {
+                Ok(range_results) => range_results,
+                Err(e) => {
+                    tracing::error!("Range scan failed: {}", e);
+                    Vec::new()
+                }
+            };
+
             let mut checkpoints = Vec::new();
-            
+
             for (k, v) in kvs {
                 let value: TrustedCheckpointValue = bincode::deserialize(&v)?;
-                
+
                 if value.verification_count >= min_verification_count {
                     let tuple: Vec<Element> = unpack(&k)?;
                     if let Some(Element::Int(height)) = tuple.get(4) {
@@ -446,7 +669,7 @@ mod fdb_impl {
                     }
                 }
             }
-            
+
             Ok(checkpoints)
         }
     }
@@ -455,9 +678,9 @@ mod fdb_impl {
 #[cfg(not(feature = "fdb"))]
 mod mock_impl {
     use super::super::*;
+    use anyhow::{anyhow, Result};
     use async_trait::async_trait;
     use std::sync::Arc;
-    use anyhow::{Result, anyhow};
 
     /// Mock implementation when FDB is not available
     pub struct TupleFdbStorage {
@@ -513,6 +736,29 @@ mod mock_impl {
             &self,
             _trustor: &str,
         ) -> Result<Vec<(DeveloperTrustKey, DeveloperTrustValue)>> {
+            Err(anyhow!("FoundationDB not available (feature not enabled)"))
+        }
+
+        pub async fn revoke_trust_relationship(
+            &self,
+            _key: &DeveloperTrustKey,
+            _reason: &str,
+        ) -> Result<()> {
+            Err(anyhow!("FoundationDB not available (feature not enabled)"))
+        }
+
+        pub async fn get_trust_policy(
+            &self,
+            _developer_id: &str,
+        ) -> Result<Option<crate::api_adapter::TrustPolicy>> {
+            Err(anyhow!("FoundationDB not available (feature not enabled)"))
+        }
+
+        pub async fn store_trust_policy(
+            &self,
+            _developer_id: &str,
+            _policy: &crate::api_adapter::TrustPolicy,
+        ) -> Result<()> {
             Err(anyhow!("FoundationDB not available (feature not enabled)"))
         }
 

@@ -51,18 +51,14 @@ Almanac uses Nix for reproducible builds and deployments, ensuring consistent en
 
 #### Build All Services
 ```bash
-# Build all Almanac services
-nix build .#almanac-api
-nix build .#almanac-ethereum  
-nix build .#almanac-cosmos
-nix build .#almanac-solana
+# Build all Almanac services using cargo in nix environment
+nix develop --command cargo build --all --release
 
 # Build with specific features
-nix build .#almanac-api --override-input nixpkgs nixpkgs/nixos-unstable
+nix develop --command cargo build --all --features fdb
 
-# Cross-platform builds
-nix build .#almanac-api --system x86_64-linux
-nix build .#almanac-api --system aarch64-linux
+# Build specific crate
+nix develop --command cargo build --bin almanac-api --features fdb
 ```
 
 #### Service Packages
@@ -141,18 +137,14 @@ echo "Deploying Almanac to ${ENVIRONMENT} on ${TARGET_HOST}"
 
 # Build all services
 echo "Building services..."
-nix build .#almanac-api
-nix build .#almanac-ethereum
-nix build .#almanac-cosmos
-nix build .#almanac-solana
+nix develop --command cargo build --all --release
 
 # Copy binaries to target
 echo "Copying binaries to ${TARGET_HOST}..."
-nix copy --to ssh://${TARGET_HOST} \
-  ./result-almanac-api \
-  ./result-almanac-ethereum \
-  ./result-almanac-cosmos \
-  ./result-almanac-solana
+scp target/release/almanac-api ${TARGET_HOST}:/opt/almanac/bin/
+scp target/release/almanac-ethereum ${TARGET_HOST}:/opt/almanac/bin/
+scp target/release/almanac-cosmos ${TARGET_HOST}:/opt/almanac/bin/
+scp target/release/almanac-solana ${TARGET_HOST}:/opt/almanac/bin/
 
 # Deploy systemd services
 echo "Deploying systemd services..."
@@ -195,7 +187,7 @@ Type=simple
 User=almanac
 Group=almanac
 WorkingDirectory=/opt/almanac
-ExecStart=/nix/store/.../bin/almanac-api
+ExecStart=/opt/almanac/bin/almanac-api
 Restart=always
 RestartSec=10
 
@@ -232,7 +224,7 @@ Type=simple
 User=almanac
 Group=almanac
 WorkingDirectory=/opt/almanac
-ExecStart=/nix/store/.../bin/almanac-ethereum --node-name=ethereum-prod-1 --config=/etc/almanac/ethereum.toml
+ExecStart=/opt/almanac/bin/almanac-node-ethereum --node-name=ethereum-prod-1 --config=/etc/almanac/ethereum.toml
 Restart=always
 RestartSec=15
 
@@ -267,7 +259,7 @@ Type=simple
 User=almanac
 Group=almanac
 WorkingDirectory=/opt/almanac
-ExecStart=/nix/store/.../bin/almanac-cosmos --node-name=cosmos-prod-1 --config=/etc/almanac/cosmos.toml
+ExecStart=/opt/almanac/bin/almanac-node-cosmos --node-name=cosmos-prod-1 --config=/etc/almanac/cosmos.toml
 Restart=always
 RestartSec=15
 
@@ -751,9 +743,9 @@ data:
 
 ```bash
 # Production FoundationDB configuration
-fdbcli --exec "configure memory"
-fdbcli --exec "configure storage_engine=ssd-redwood-1"
-fdbcli --exec "configure redundancy_mode=triple"
+nix run .#fdb-manage -- cli --exec "configure memory"
+nix run .#fdb-manage -- cli --exec "configure storage_engine=ssd-redwood-1"
+nix run .#fdb-manage -- cli --exec "configure redundancy_mode=triple"
 
 # Set process classes for dedicated roles
 fdbserver --class=storage --memory=32GiB --storage_memory=8GiB
@@ -968,7 +960,7 @@ aws s3 sync s3://almanac-backups/${BACKUP_DATE}/ ${BACKUP_DIR}
 fdbrestore start -r ${BACKUP_DIR} -w
 
 # Verify restoration
-fdbcli --exec "status"
+nix run .#fdb-manage -- cli --exec "status"
 ```
 
 ## Scaling
@@ -1018,7 +1010,7 @@ Type=simple
 User=almanac
 Group=almanac
 WorkingDirectory=/opt/almanac
-ExecStart=/nix/store/.../bin/almanac-api
+ExecStart=/opt/almanac/bin/almanac-api
 Restart=always
 RestartSec=10
 

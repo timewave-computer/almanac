@@ -1,7 +1,7 @@
 //! Test fixtures for Almanac testing
 
-use almanac_core::{UnifiedEvent, EventSource, EventFilter};
 use almanac_chains::{BlockMetadata, ChainDataIR, ConsensusMetadata, FinalityStatus, StateChange};
+use almanac_core::{EventFilter, EventSource, UnifiedEvent};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::time::SystemTime;
@@ -156,29 +156,36 @@ pub fn create_pending_block(chain_id: &str, block_number: u64) -> BlockMetadata 
         parent_hash: format!("{}_block_{}", chain_id, block_number - 1),
         timestamp: 1640995200 + block_number * 12,
         state_root: format!("{}_pending_state_root_{}", chain_id, block_number),
-        receipts_root: Some(format!("{}_pending_receipts_root_{}", chain_id, block_number)),
-        transactions_root: Some(format!("{}_pending_transactions_root_{}", chain_id, block_number)),
+        receipts_root: Some(format!(
+            "{}_pending_receipts_root_{}",
+            chain_id, block_number
+        )),
+        transactions_root: Some(format!(
+            "{}_pending_transactions_root_{}",
+            chain_id, block_number
+        )),
     }
 }
 
 /// Create Ethereum chain data
 pub fn create_ethereum_chain_data() -> ChainDataIR {
     let block_metadata = create_finalized_block("ethereum", 18000000);
-    let state_changes = vec![
-        StateChange {
-            contract_address: "0x1234567890123456789012345678901234567890".to_string(),
-            storage_slot: [1u8; 32],
-            previous_value: Some([0u8; 32]),
-            new_value: [100u8; 32],
-            proof: None,
-        }
-    ];
-    
+    let state_changes = vec![StateChange {
+        contract_address: "0x1234567890123456789012345678901234567890".to_string(),
+        storage_slot: [1u8; 32],
+        previous_value: Some([0u8; 32]),
+        new_value: [100u8; 32],
+        proof: None,
+    }];
+
     let mut extra = HashMap::new();
     extra.insert("gas_limit".to_string(), serde_json::json!("30000000"));
     extra.insert("gas_used".to_string(), serde_json::json!("21000"));
-    extra.insert("difficulty".to_string(), serde_json::json!("15000000000000000"));
-    
+    extra.insert(
+        "difficulty".to_string(),
+        serde_json::json!("15000000000000000"),
+    );
+
     let consensus_metadata = ConsensusMetadata {
         validator_set_hash: None,
         proposer: Some("0x0000000000000000000000000000000000000000".to_string()),
@@ -198,20 +205,21 @@ pub fn create_ethereum_chain_data() -> ChainDataIR {
 /// Create Cosmos chain data
 pub fn create_cosmos_chain_data() -> ChainDataIR {
     let block_metadata = create_finalized_block("cosmos", 12345678);
-    let state_changes = vec![
-        StateChange {
-            contract_address: "cosmos1abc123def456ghi789".to_string(),
-            storage_slot: [2u8; 32],
-            previous_value: Some([0u8; 32]),
-            new_value: [200u8; 32],
-            proof: None,
-        }
-    ];
-    
+    let state_changes = vec![StateChange {
+        contract_address: "cosmos1abc123def456ghi789".to_string(),
+        storage_slot: [2u8; 32],
+        previous_value: Some([0u8; 32]),
+        new_value: [200u8; 32],
+        proof: None,
+    }];
+
     let mut extra = HashMap::new();
     extra.insert("chain_id".to_string(), serde_json::json!("cosmoshub-4"));
-    extra.insert("app_hash".to_string(), serde_json::json!("7D1A1C3E5B2F8A9C"));
-    
+    extra.insert(
+        "app_hash".to_string(),
+        serde_json::json!("7D1A1C3E5B2F8A9C"),
+    );
+
     let consensus_metadata = ConsensusMetadata {
         validator_set_hash: Some("validator_set_hash_123".to_string()),
         proposer: Some("cosmosvaloper1abc123".to_string()),
@@ -231,20 +239,18 @@ pub fn create_cosmos_chain_data() -> ChainDataIR {
 /// Create Solana chain data
 pub fn create_solana_chain_data() -> ChainDataIR {
     let block_metadata = create_finalized_block("solana", 150000000);
-    let state_changes = vec![
-        StateChange {
-            contract_address: "11111111111111111111111111111112".to_string(),
-            storage_slot: [3u8; 32],
-            previous_value: Some([0u8; 32]),
-            new_value: [255u8; 32],
-            proof: None,
-        }
-    ];
-    
+    let state_changes = vec![StateChange {
+        contract_address: "11111111111111111111111111111112".to_string(),
+        storage_slot: [3u8; 32],
+        previous_value: Some([0u8; 32]),
+        new_value: [255u8; 32],
+        proof: None,
+    }];
+
     let mut extra = HashMap::new();
     extra.insert("slot".to_string(), serde_json::json!(150000000));
     extra.insert("bank_hash".to_string(), serde_json::json!("BankHashABC123"));
-    
+
     let consensus_metadata = ConsensusMetadata {
         validator_set_hash: None,
         proposer: Some("SolanaValidator123".to_string()),
@@ -285,9 +291,9 @@ fn create_test_event_with_id(id: String) -> UnifiedEvent {
 /// Create an arbitrary event for property testing
 #[cfg(feature = "proptest")]
 pub fn arbitrary_event() -> impl proptest::strategy::Strategy<Value = UnifiedEvent> {
-    use proptest::prelude::*;
     use proptest::option;
-    
+    use proptest::prelude::*;
+
     (
         "[a-z0-9-]{10,20}",
         "[a-z]{3,10}",
@@ -296,25 +302,28 @@ pub fn arbitrary_event() -> impl proptest::strategy::Strategy<Value = UnifiedEve
         "[a-f0-9]{8,64}",
         option::of("[a-f0-9]{8,40}"),
         "[A-Z][a-zA-Z]{3,20}",
-    ).prop_map(|(id, chain, block_number, block_hash, tx_hash, contract_addr, event_type)| {
-        UnifiedEvent {
-            id,
-            chain,
-            block_number,
-            block_hash,
-            tx_hash,
-            timestamp: SystemTime::now(),
-            event_type,
-            contract_address: contract_addr,
-            raw_data: b"test_data".to_vec(),
-            attributes: {
-                let mut attrs = HashMap::new();
-                attrs.insert("test".to_string(), serde_json::json!("data"));
-                attrs
+    )
+        .prop_map(
+            |(id, chain, block_number, block_hash, tx_hash, contract_addr, event_type)| {
+                UnifiedEvent {
+                    id,
+                    chain,
+                    block_number,
+                    block_hash,
+                    tx_hash,
+                    timestamp: SystemTime::now(),
+                    event_type,
+                    contract_address: contract_addr,
+                    raw_data: b"test_data".to_vec(),
+                    attributes: {
+                        let mut attrs = HashMap::new();
+                        attrs.insert("test".to_string(), serde_json::json!("data"));
+                        attrs
+                    },
+                    source: EventSource::Chain,
+                }
             },
-            source: EventSource::Chain,
-        }
-    })
+        )
 }
 
 /// Create event filter for testing

@@ -1,14 +1,14 @@
 //! Chain reorganization detection and handling
 
+use async_trait::async_trait;
+use dashmap::DashMap;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::SystemTime;
-use serde::{Deserialize, Serialize};
-use async_trait::async_trait;
-use dashmap::DashMap;
 
-use almanac_core::Result;
 use crate::types::{BlockInfo, ForkInfo};
+use almanac_core::Result;
 
 /// Type of reorganization detected
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -89,13 +89,13 @@ impl Default for ReorgConfig {
 pub trait ReorgHandler: Send + Sync {
     /// Handle a detected reorganization
     async fn handle_reorganization(&self, reorg: &Reorganization) -> Result<()>;
-    
+
     /// Rollback events from reorganized blocks
     async fn rollback_blocks(&self, chain: &str, from_block: u64, to_block: u64) -> Result<u64>;
-    
+
     /// Notify about reorganization
     async fn notify_reorganization(&self, reorg: &Reorganization) -> Result<()>;
-    
+
     /// Get reorganization statistics
     async fn get_reorg_stats(&self, chain: &str) -> Result<ReorgStats>;
 }
@@ -142,27 +142,28 @@ impl ReorgDetector {
             stats: Arc::new(DashMap::new()),
         }
     }
-    
+
     /// Process a new block
     pub async fn process_block(&self, block: BlockInfo) -> Result<Option<Reorganization>> {
         let chain = &self.config.chain;
-        
+
         // Add block to history
         let mut history = self.block_history.entry(chain.clone()).or_default();
-        
+
         // Check for reorganization
         if let Some(parent_idx) = history.iter().position(|b| b.hash == block.parent_hash) {
             if parent_idx != history.len() - 1 {
                 // Reorganization detected
                 let fork_block = history[parent_idx].number;
-                let original_blocks: Vec<String> = history.iter()
+                let original_blocks: Vec<String> = history
+                    .iter()
                     .skip(parent_idx + 1)
                     .map(|b| b.hash.clone())
                     .collect();
-                
+
                 let depth = block.number - fork_block;
                 let reorg_type = self.classify_reorg(depth);
-                
+
                 let reorg = Reorganization {
                     chain: chain.clone(),
                     reorg_type,
@@ -176,28 +177,28 @@ impl ReorgDetector {
                     rollback_performed: false,
                     metadata: HashMap::new(),
                 };
-                
+
                 // Update stats
                 self.update_stats(&reorg).await;
-                
+
                 // Trim history to fork point
                 history.truncate(parent_idx + 1);
-                
+
                 return Ok(Some(reorg));
             }
         }
-        
+
         // Add block to history
         history.push_back(block.clone());
-        
+
         // Maintain history size
         while history.len() > self.config.tracking_depth as usize {
             history.pop_front();
         }
-        
+
         Ok(None)
     }
-    
+
     /// Classify reorganization type based on depth
     fn classify_reorg(&self, depth: u64) -> ReorgType {
         match depth {
@@ -206,40 +207,40 @@ impl ReorgDetector {
             _ => ReorgType::Critical,
         }
     }
-    
+
     /// Calculate confidence score
     fn calculate_confidence(&self, depth: u64, confirmations: u64) -> f64 {
         let depth_factor = 1.0 / (1.0 + depth as f64);
         let conf_factor = confirmations as f64 / self.config.min_confirmations as f64;
         (depth_factor + conf_factor) / 2.0
     }
-    
+
     /// Update reorganization statistics
     async fn update_stats(&self, reorg: &Reorganization) {
-        let mut stats = self.stats.entry(reorg.chain.clone())
-            .or_default();
-        
+        let mut stats = self.stats.entry(reorg.chain.clone()).or_default();
+
         stats.total_reorgs += 1;
-        *stats.reorgs_by_type.entry(reorg.reorg_type.clone()).or_insert(0) += 1;
-        
+        *stats
+            .reorgs_by_type
+            .entry(reorg.reorg_type.clone())
+            .or_insert(0) += 1;
+
         // Update average depth
-        let new_avg = (stats.avg_depth * (stats.total_reorgs - 1) as f64 + reorg.depth as f64) 
+        let new_avg = (stats.avg_depth * (stats.total_reorgs - 1) as f64 + reorg.depth as f64)
             / stats.total_reorgs as f64;
         stats.avg_depth = new_avg;
-        
+
         // Update max depth
         if reorg.depth > stats.max_depth {
             stats.max_depth = reorg.depth;
         }
-        
+
         stats.total_blocks_affected += reorg.depth;
         stats.last_reorg = Some(reorg.clone());
     }
-    
+
     /// Get reorganization statistics
     pub async fn get_stats(&self, chain: &str) -> ReorgStats {
-        self.stats.get(chain)
-            .map(|s| s.clone())
-            .unwrap_or_default()
+        self.stats.get(chain).map(|s| s.clone()).unwrap_or_default()
     }
 }

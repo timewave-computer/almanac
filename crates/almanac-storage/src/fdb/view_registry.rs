@@ -1,6 +1,6 @@
 //! View registry types for FDB storage
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// View definition

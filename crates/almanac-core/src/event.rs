@@ -1,45 +1,45 @@
 //! Core event types and traits
 
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::any::Any;
 use std::collections::HashMap;
 use std::time::SystemTime;
-use serde::{Serialize, Deserialize};
-use serde_json::Value;
 
 /// Core trait that all blockchain events must implement
 pub trait Event: Send + Sync + std::fmt::Debug {
     /// Unique identifier for this event
     fn id(&self) -> &str;
-    
+
     /// Chain identifier where this event occurred
     fn chain(&self) -> &str;
-    
+
     /// Block number where this event was included
     fn block_number(&self) -> u64;
-    
+
     /// Block hash where this event was included
     fn block_hash(&self) -> &str;
-    
+
     /// Transaction hash that generated this event
     fn tx_hash(&self) -> &str;
-    
+
     /// Timestamp when this event occurred
     fn timestamp(&self) -> SystemTime;
-    
+
     /// Type of event (e.g., "transfer", "swap", "deposit")
     fn event_type(&self) -> &str;
-    
+
     /// Raw event data as bytes
     fn raw_data(&self) -> &[u8];
-    
+
     /// Get the event as Any for downcasting
     fn as_any(&self) -> &dyn Any;
-    
+
     /// Contract address - default implementation returns empty string
     fn contract_address(&self) -> &str {
         ""
     }
-    
+
     /// Event attributes - default implementation returns empty map
     fn attributes(&self) -> HashMap<String, Value> {
         HashMap::new()

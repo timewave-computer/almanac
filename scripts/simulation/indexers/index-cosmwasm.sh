@@ -14,8 +14,8 @@ NC='\033[0m' # No Color
 WASMD_RPC="http://localhost:26657"
 WASMD_REST="http://localhost:1317"
 WASMD_CHAIN_ID="wasmchain"
-CONTRACTS_DIR="data/contracts/cosmwasm"
-CONTRACT_ADDRESSES_FILE="${CONTRACTS_DIR}/contract-addresses.env"
+CONTRACTS_DIR="fixtures/contracts/cosmos"
+CONTRACT_ADDRESSES_FILE="fixtures/deployments/cosmos/contract-addresses.env"
 LOG_DIR="logs"
 LOG_FILE="${LOG_DIR}/almanac-cosmwasm.log"
 INDEX_DURATION="15m"  # Default indexing duration
@@ -28,7 +28,7 @@ mkdir -p ${LOG_DIR}
 # Check if the contract addresses file exists
 if [ ! -f "${CONTRACT_ADDRESSES_FILE}" ]; then
     echo -e "${RED}Error: Contract addresses file not found at ${CONTRACT_ADDRESSES_FILE}${NC}"
-    echo -e "${YELLOW}Please deploy Valence contracts first using: ./simulation/cosmos/deploy-valence-contracts-wasmd.sh${NC}"
+    echo -e "${YELLOW}Please deploy contracts first${NC}"
     exit 1
 fi
 
@@ -38,7 +38,7 @@ source "${CONTRACT_ADDRESSES_FILE}"
 # Check for required contract addresses
 if [ -z "${VALENCE_REGISTRY_ADDRESS}" ] || [ -z "${VALENCE_GATEWAY_ADDRESS}" ]; then
     echo -e "${RED}Error: Required contract addresses not found in ${CONTRACT_ADDRESSES_FILE}${NC}"
-    echo -e "${YELLOW}Please redeploy Valence contracts using: ./simulation/cosmos/deploy-valence-contracts-wasmd.sh${NC}"
+    echo -e "${YELLOW}Please deploy contracts first${NC}"
     exit 1
 fi
 

@@ -8,12 +8,7 @@ This crate provides comprehensive configuration management with TOML file suppor
 
 ## Key Components
 
-### Configuration Structures
-- `Config` - Main configuration container
-- `ApiConfig` - HTTP API server settings
-- `StorageConfig` - Storage backend configuration
-- `ChainConfig` - Blockchain-specific connection settings
-- `FdbConfig` - FoundationDB-specific configuration
+- `Config` - Main configuration container with nested sections for API, Storage, Chains, and Services.
 
 ### Features
 - **TOML file parsing** with validation
@@ -25,28 +20,21 @@ This crate provides comprehensive configuration management with TOML file suppor
 ## Configuration Structure
 
 ```toml
-[api]
-host = "127.0.0.1"
-port = 8080
-cors_enabled = true
-rate_limit_requests = 1000
-rate_limit_window_secs = 60
+[almanac]
+name = "almanac-dev"
+api_port = 8080
+api_log_file = "./logs/almanac-api.log"
 
 [storage]
-backend = "fdb"  # "memory" or "fdb"
-max_connections = 10
-connection_string = "postgresql://localhost/almanac"
+backend = "memory" # "memory" or "foundationdb"
 
 [storage.fdb]
 cluster_file = "/etc/foundationdb/fdb.cluster"
-api_version = 720
-transaction_timeout_ms = 5000
-retry_limit = 3
+namespace = "almanac_dev"
 
 [[chains]]
 chain_id = "ethereum"
 rpc_url = "https://mainnet.infura.io/v3/YOUR_PROJECT_ID"
-api_key = "your_api_key"
 confirmations = 12
 max_retries = 3
 timeout_secs = 30
@@ -57,6 +45,15 @@ rpc_url = "https://rpc.cosmos.network"
 confirmations = 1
 max_retries = 5
 timeout_secs = 10
+
+[services.foundationdb]
+enabled = true
+cluster_file = "/etc/foundationdb/fdb.cluster"
+
+[services.ethereum]
+enabled = true
+node_type = "anvil"
+rpc_port = 8545
 ```
 
 ## Usage
@@ -64,11 +61,12 @@ timeout_secs = 10
 ```rust
 use almanac_config::Config;
 
-// Load configuration from file
-let config = Config::from_file("config/dev.toml")?;
+// Load configuration from a file (e.g., config/dev.toml)
+let config = Config::load("config/dev.toml")?;
 
 // Access configuration values
-println!("API listening on {}:{}", config.api.host, config.api.port);
+println!("Almanac instance name: {}", config.almanac.name);
+println!("API listening on port: {}", config.almanac.api_port);
 println!("Storage backend: {}", config.storage.backend);
 
 // Iterate through chain configurations
@@ -79,14 +77,14 @@ for chain in &config.chains {
 
 ## Environment Variables
 
-Configuration values can be overridden with environment variables:
+Configuration values can be overridden with environment variables (prefixed with `ALMANAC_` or `FDB_`):
 
-- `ALMANAC_HOST` - API server host
-- `ALMANAC_PORT` - API server port
-- `STORAGE_BACKEND` - Storage backend type
+- `ALMANAC_ALMANAC_NAME` - Almanac instance name
+- `ALMANAC_ALMANAC_API_PORT` - API server port
+- `ALMANAC_STORAGE_BACKEND` - Storage backend type
 - `FDB_CLUSTER_FILE` - FoundationDB cluster file path
-- `ETHEREUM_RPC_URL` - Ethereum RPC endpoint
-- `COSMOS_RPC_URL` - Cosmos RPC endpoint
+- `ALMANAC_CHAINS_ETHEREUM_RPC_URL` - Ethereum RPC endpoint
+- `ALMANAC_CHAINS_COSMOS_RPC_URL` - Cosmos RPC endpoint
 
 ## Testing
 

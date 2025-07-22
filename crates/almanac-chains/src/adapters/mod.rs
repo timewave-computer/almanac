@@ -12,9 +12,15 @@ pub mod ethereum;
 #[cfg(feature = "cosmos")]
 pub mod cosmos;
 
-// #[cfg(feature = "solana")]
-// pub mod solana;
+#[cfg(feature = "solana")]
+pub mod solana;
+#[cfg(feature = "solana")]
+pub mod solana_geyser; // Real Geyser streaming implementation
+#[cfg(feature = "solana")]
+pub mod solana_merkle;
 
 // Re-exports
 pub use traits::{ChainAdapter, ChainAdapterError};
-pub use types::{ChainConfig, ChainDataIR, BlockMetadata, StateChange, StorageProof, FinalityStatus};
+pub use types::{
+    BlockMetadata, ChainConfig, ChainDataIR, FinalityStatus, StateChange, StorageProof,
+};

@@ -241,6 +241,15 @@ latest_block = await client.blocks.get_latest('ethereum')
 - `DELETE /admin/keys/{key}` - Delete API key
 - `PATCH /admin/keys/{key}` - Update API key
 
+### Subscription Endpoints
+- `POST /api/v1/subscriptions/accounts` - Add accounts to subscription list
+- `DELETE /api/v1/subscriptions/accounts` - Remove accounts from subscription list
+- `GET /api/v1/subscriptions/accounts/status` - Check subscription status for specific accounts
+- `GET /api/v1/subscriptions/accounts` - List all subscribed accounts
+- `GET /api/v1/subscriptions/accounts/{chain_id}/{address}/proof` - Generate Merkle tree inclusion proof for an account
+- `GET /api/v1/subscriptions/stats` - Get subscription system statistics
+- `GET /api/v1/subscriptions/touched` - Get accounts touched since a specific block/slot
+
 ### System Endpoints
 - `GET /health` - Health check
 - `GET /liveness` - Liveness probe

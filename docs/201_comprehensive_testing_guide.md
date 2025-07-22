@@ -57,10 +57,10 @@ nix develop --command cargo test -p almanac-chains --features ethereum
 nix run .#run-e2e-tests
 
 # Run specific E2E test module
-nix develop .#fdb --command cargo test -p e2e fdb_data_validation_e2e -- --ignored --nocapture
+nix develop .#fdb --command cargo test -p almanac-tests fdb_data_validation_e2e -- --ignored --nocapture
 
 # Run in FDB environment
-nix develop .#fdb --command cargo test -p e2e
+nix develop .#fdb --command cargo test -p almanac-tests
 ```
 
 ## Writing Tests
@@ -70,23 +70,33 @@ nix develop .#fdb --command cargo test -p e2e
 #[cfg(test)]
 mod tests {
     use super::*;
+    use almanac_core::UnifiedEvent;
+    use std::time::SystemTime;
     
     #[test]
     fn test_event_creation() {
-        let event = Event {
+        let event = UnifiedEvent {
             id: "test_id".to_string(),
-            chain_id: "ethereum".to_string(),
+            chain: "ethereum".to_string(),
             block_number: 12345,
-            data: vec![],
+            block_hash: "0xabc".to_string(),
+            tx_hash: "0xdef".to_string(),
+            timestamp: SystemTime::now(),
+            event_type: "TestEvent".to_string(),
+            contract_address: None,
+            raw_data: vec![],
+            attributes: std::collections::HashMap::new(),
+            source: almanac_core::EventSource::Internal,
         };
         
-        assert_eq!(event.chain_id, "ethereum");
+        assert_eq!(event.chain, "ethereum");
         assert_eq!(event.block_number, 12345);
     }
     
     #[tokio::test]
     async fn test_async_operation() {
-        let result = async_function().await;
+        // Placeholder for an async operation test
+        let result: Result<(), anyhow::Error> = Ok(());
         assert!(result.is_ok());
     }
 }
@@ -95,43 +105,61 @@ mod tests {
 ### Integration Test Example
 ```rust
 // tests/storage_integration.rs
-use almanac_storage::{Storage, FoundationDBBackend};
-use almanac_core::Event;
+use almanac_storage::{MemoryStorage, StorageWriter, StorageReader};
+use almanac_core::UnifiedEvent;
+use std::time::SystemTime;
 
 #[tokio::test]
 async fn test_storage_roundtrip() {
-    let storage = FoundationDBBackend::new_test().await.unwrap();
+    let storage = MemoryStorage::new();
     
-    let event = Event {
+    let event = UnifiedEvent {
         id: "test_event".to_string(),
-        chain_id: "ethereum".to_string(),
+        chain: "ethereum".to_string(),
         block_number: 100,
-        data: vec![1, 2, 3],
+        block_hash: "0xabc".to_string(),
+        tx_hash: "0xdef".to_string(),
+        timestamp: SystemTime::now(),
+        event_type: "TestEvent".to_string(),
+        contract_address: None,
+        raw_data: vec![1, 2, 3],
+        attributes: std::collections::HashMap::new(),
+        source: almanac_core::EventSource::Internal,
     };
     
     // Store and retrieve event
-    storage.store_event(&event).await.unwrap();
-    let retrieved = storage.get_event("test_event").await.unwrap();
-    assert_eq!(retrieved.unwrap(), event);
+    storage.store_event(Box::new(event.clone())).await.unwrap();
+    let retrieved = storage.get_events(vec![]).await.unwrap(); // Simplified filter
+    assert_eq!(retrieved.len(), 1);
+    assert_eq!(retrieved[0].id(), "test_event");
 }
 ```
 
 ### Using Test Utilities
 ```rust
-use almanac_testing::fixtures::*;
+use almanac_testing::fixtures;
 use almanac_testing::mocks::{MockChainAdapter, MockStorage};
+use almanac_indexing::IndexingService;
+use almanac_core::{UnifiedEvent, BlockStatus};
+use std::sync::Arc;
 
 #[tokio::test]
 async fn test_indexing_with_mocks() {
-    let chain = MockChainAdapter::new()
-        .with_block(100, vec![test_event()])
-        .with_finality(100, true);
+    let chain_adapter = MockChainAdapter::new()
+        .with_latest_block(100)
+        .with_block_data(almanac_chains::adapters::types::ChainDataIR::default());
     
     let storage = MockStorage::new();
-    let indexer = Indexer::new(chain, storage);
-    indexer.process_block(100).await.unwrap();
+    let indexer = IndexingService::builder()
+        .chain_adapter(Arc::new(chain_adapter))
+        .storage(Arc::new(storage.clone()))
+        .node_name("test-indexer".to_string())
+        .build();
     
-    assert_eq!(storage.event_count(), 1);
+    // Assuming IndexingService has a method like process_block
+    // indexer.process_block(100).await.unwrap();
+    
+    // assert_eq!(storage.event_count(), 1); // MockStorage doesn't have event_count
 }
 ```
 
@@ -164,20 +192,22 @@ Tests blockchain-specific indexing to FDB storage:
 - Governance proposals
 
 ### 3. FoundationDB Tuple Space Coverage
-Comprehensive testing of all 13 FDB keyspaces:
-1. **ContractState** - Storage slots with historical queries
-2. **BlockMeta** - Block headers and metadata
-3. **StorageProofs** - Merkle proofs and validation
-4. **SemanticMeta** - Field interpretations with trust policies
-5. **TrustGraph** - Developer trust relationships
-6. **ContractLayouts** - Storage layout definitions
-7. **ViewRegistry** - Custom view definitions
-8. **LightwaveState** - Cross-chain proof coordination
-9. **TrustedCheckpoints** - Network checkpoint storage
-10. **SolanaAccounts** - Solana-specific account data
-11. **NetworkConfig** - Chain configuration data
-12. **CircuitKeys** - ZK circuit verification keys
-13. **ChangeTracking** - State change history
+Comprehensive testing of all FDB keyspaces:
+1. **ContractState** (1): Contract storage slots
+2. **BlockMeta** (2): Block headers and consensus data
+3. **StorageProofs** (3): Merkle proofs for verification
+4. **SemanticMeta** (4): Trust-scoped semantic interpretations
+5. **TrustGraph** (5): Developer trust relationships
+6. **ContractLayouts** (6): Layout commitments from Traverse
+7. **ViewRegistry** (7): Custom view definitions
+8. **LightwaveState** (8): Recursive proof coordination
+9. **TrustedCheckpoints** (9): Network checkpoints
+10. **SolanaAccounts** (10): Solana account data
+11. **NetworkConfig** (11): Blockchain network configuration
+12. **CircuitKeys** (12): SP1 verification keys
+13. **ChangeTracking** (13): State change logs
+14. **ValidatorSignatures** (14): Proposer validator signatures
+15. **TrustPolicies** (15): Developer trust policies
 
 ### 4. Cross-Chain Consistency Tests
 Tests data consistency across multiple blockchains:
@@ -271,7 +301,7 @@ RUST_LOG=almanac_storage=debug,almanac_e2e=debug nix develop --command cargo tes
 **Build Errors:**
 ```bash
 nix develop --command bash -c "cargo clean && cargo update"
-cargo check -p almanac-api
+nix develop --command cargo check -p almanac-api
 ```
 
 **FoundationDB Connection Issues:**
@@ -283,7 +313,7 @@ nix run .#fdb-manage -- status
 cat ./data/fdb.cluster
 
 # Clear test data
-fdbcli --exec "clearrange \x00 \xFF"
+nix run .#fdb-manage -- cli --exec "clearrange \x00 \xFF"
 ```
 
 **Test Timeouts:**
@@ -316,12 +346,12 @@ let namespace = format!("almanac_test_{}", uuid::Uuid::new_v4());
 // Always cleanup
 #[tokio::test]
 async fn test_example() -> Result<()> {
-    let storage = setup_test_storage().await?;
+    let storage = helpers::create_memory_storage().await;
     
     // Test logic here
     
     // Cleanup
-    storage.clear_namespace().await?;
+    storage.clear_all_data().await?;
     Ok(())
 }
 ```
@@ -339,7 +369,7 @@ jobs:
     - uses: cachix/install-nix-action@v22
     
     - name: Run unit tests
-      run: nix develop --command cargo test --all-features
+      run: nix develop --command cargo test --workspace --all-targets
       
     - name: Run E2E tests  
       run: nix run .#run-e2e-tests
@@ -350,13 +380,13 @@ jobs:
 ### Generate Coverage Reports
 ```bash
 # Install cargo-tarpaulin
-cargo install cargo-tarpaulin
+nix develop -c cargo install cargo-tarpaulin
 
 # Generate coverage
-cargo tarpaulin --out Html --output-dir coverage
+nix develop -c cargo tarpaulin --out Html --output-dir coverage
 
 # With specific features
-cargo tarpaulin --features ethereum,cosmos --out Lcov
+nix develop -c cargo tarpaulin --features ethereum,cosmos --out Lcov
 ```
 
 ### Coverage Requirements

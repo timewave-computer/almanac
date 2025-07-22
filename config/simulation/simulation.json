@@ -1,0 +1,46 @@
+{
+  "simulation": {
+    "name": "almanac-local-cluster",
+    "chains": ["--help"]
+  },
+  "services": {
+    "foundationdb": {
+      "enabled": false,
+      "cluster_file": "/Users/hxrts/projects/timewave/almanac/data/fdb.cluster",
+      "data_dir": "/Users/hxrts/projects/timewave/almanac/data/foundationdb",
+      "log_dir": "/Users/hxrts/projects/timewave/almanac/logs/foundationdb"
+    },
+    "ethereum": {
+      "enabled": false,
+      "node_type": "anvil",
+      "rpc_port": 8545,
+      "ws_port": 8546,
+      "chain_id": 31337,
+      "data_dir": "/Users/hxrts/projects/timewave/almanac/data/ethereum",
+      "log_file": "/Users/hxrts/projects/timewave/almanac/logs/anvil.log"
+    },
+    "cosmos": {
+      "enabled": false,
+      "node_type": "neutron",
+      "rpc_port": 26657,
+      "grpc_port": 9090,
+      "api_port": 1317,
+      "chain_id": "test-1",
+      "data_dir": "/Users/hxrts/projects/timewave/almanac/data/cosmos",
+      "log_file": "/Users/hxrts/projects/timewave/almanac/logs/neutron.log"
+    },
+    "solana": {
+      "enabled": false,
+      "node_type": "test-validator",
+      "rpc_port": 8899,
+      "ws_port": 8900,
+      "data_dir": "/Users/hxrts/projects/timewave/almanac/data/solana",
+      "log_file": "/Users/hxrts/projects/timewave/almanac/logs/solana.log"
+    }
+  },
+  "almanac": {
+    "indexer_config": "/Users/hxrts/projects/timewave/almanac/config/simulation.toml",
+    "api_port": 3000,
+    "api_log_file": "/Users/hxrts/projects/timewave/almanac/logs/almanac-api.log"
+  }
+}

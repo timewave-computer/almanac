@@ -19,7 +19,7 @@
       systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
 
       perSystem = { config, self', inputs', pkgs, system, ... }: {
-        packages = {
+        packages = rec {
           # Geth - Ethereum execution client (from zero.nix)
           geth = pkgs.buildGoModule rec {
             pname = "geth";

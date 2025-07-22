@@ -19,14 +19,15 @@ This crate provides the fundamental building blocks used throughout the Almanac 
 - `EventFilter` builder for querying events with rich filtering capabilities
 
 ### Storage Abstraction
-- `Storage` trait with async methods for event persistence
-- Support for event querying, block status tracking, and latest block retrieval
+- `StorageWriter` trait for write operations (e.g., storing events, updating block status)
+- `StorageReader` trait for read operations (e.g., querying events, retrieving latest blocks)
+- `Storage` trait as a convenience for types implementing both `StorageWriter` and `StorageReader`
 - Extensible design for different storage backends
 
 ### Common Types
 - `ChainId` enum for supported blockchain networks (Ethereum, Cosmos, Solana)
 - `BlockStatus` enum for finality levels (Confirmed, Safe, Justified, Finalized)
-- Chain-specific constants and utilities
+- Common chain identifiers (e.g., `ChainId::Ethereum`, `ChainId::Cosmos`)
 
 ## Usage
 
@@ -34,13 +35,14 @@ This crate provides the fundamental building blocks used throughout the Almanac 
 use almanac_core::{ChainId, EventFilter, Error, Result};
 
 // Create an event filter
-let filter = EventFilter::builder()
-    .chain_id(ChainId::Ethereum)
-    .event_type("Transfer")
-    .from_block(1000)
-    .to_block(2000)
-    .limit(100)
-    .build();
+let filter = EventFilter {
+    chain: Some(ChainId::Ethereum.to_string()),
+    block_range: Some((1000, 2000)),
+    event_type: Some("Transfer".to_string()),
+    limit: Some(100),
+    offset: Some(0),
+    ..Default::default()
+};
 
 // Handle errors consistently
 fn process_data() -> Result<()> {
@@ -61,7 +63,7 @@ fn process_data() -> Result<()> {
 
 Run tests with:
 ```bash
-cargo test -p almanac-core
+nix develop -c cargo test -p almanac-core
 ```
 
 The test suite covers:

@@ -22,9 +22,9 @@ Pass the configuration file to the indexer using the `--config` parameter:
 nix run .#almanac-api -- --config config/dev.toml
 
 # Chain-specific indexing nodes
-nix run .#ethereum-node -- --config config/ethereum.toml
-nix run .#cosmos-node -- --config config/cosmos.toml
-nix run .#solana-node -- --config config/solana.toml
+nix run .#almanac-node-ethereum -- --config config/ethereum.toml
+nix run .#almanac-node-cosmos -- --config config/cosmos.toml
+nix run .#almanac-node-solana -- --config config/solana.toml
 
 # Multi-chain simulation
 nix run .#sim-cluster -- --config config/simulation.toml

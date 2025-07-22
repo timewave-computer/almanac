@@ -7,7 +7,7 @@ set -euo pipefail
 echo "Setting up FoundationDB headers for compilation..."
 
 # Determine project root
-PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 FDB_LOCAL_INCLUDE="$PROJECT_ROOT/.fdb_include"
 
 # Create local include directory

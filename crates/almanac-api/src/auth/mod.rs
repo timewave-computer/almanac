@@ -1,10 +1,18 @@
 //! Authentication module for API HTTP layer
 
-pub mod client;
-pub mod permissions;
-pub mod mocks;
 mod api_key_compat;
+pub mod auth_enhanced;
+pub mod client;
+pub mod mocks;
+pub mod permissions;
 
-pub use client::{HttpAuthService, AuthServiceConfig};
+pub use api_key_compat::{auth_middleware, optional_auth_middleware, ApiKeyInfo, ApiKeyStore};
+pub use client::{AuthServiceConfig, HttpAuthService};
 pub use permissions::InMemoryPermissionStore;
-pub use api_key_compat::{ApiKeyStore, ApiKeyInfo, auth_middleware, optional_auth_middleware};
+
+// Enhanced auth exports
+pub use auth_enhanced::{
+    enhanced_auth_middleware, ApiKey, ApiKeyError, ApiKeySummary, ApiOperation, ApiPermissions,
+    EnhancedApiKeyStore, GenerateKeyRequest, GenerateKeyResponse, KeyMetadata, PermissionContext,
+    QuotaError, RateLimitConfig, UsageQuotas, UsageStats,
+};

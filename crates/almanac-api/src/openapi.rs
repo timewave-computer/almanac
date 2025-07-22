@@ -1,9 +1,9 @@
+use crate::handlers::events::{EventQuery, LatestBlockResponse};
 use axum::{
     response::{Html, IntoResponse},
     Json,
 };
 use utoipa::OpenApi;
-use crate::handlers::events::{EventQuery, LatestBlockResponse};
 
 #[derive(OpenApi)]
 #[openapi(
@@ -48,7 +48,8 @@ pub async fn openapi_spec() -> impl IntoResponse {
 
 /// Serve Swagger UI HTML
 pub async fn swagger_ui() -> impl IntoResponse {
-    Html(r#"
+    Html(
+        r#"
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -75,12 +76,14 @@ pub async fn swagger_ui() -> impl IntoResponse {
     </script>
 </body>
 </html>
-    "#)
+    "#,
+    )
 }
 
 /// Serve ReDoc HTML
 pub async fn redoc() -> impl IntoResponse {
-    Html(r#"
+    Html(
+        r#"
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -96,5 +99,6 @@ pub async fn redoc() -> impl IntoResponse {
     <script src="https://cdn.jsdelivr.net/npm/redoc@2/bundles/redoc.standalone.js"></script>
 </body>
 </html>
-    "#)
+    "#,
+    )
 }

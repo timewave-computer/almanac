@@ -1,11 +1,13 @@
 # Rust
 target/
 Cargo.lock
+.cargo/
 
 # Nix
 result
 result-*
 .direnv/
+nix/ethereum/result/
 
 # FoundationDB
 .fdb_include/
@@ -51,6 +53,11 @@ Thumbs.db
 # Testing
 test_outputs/
 test_run.log
+tests/contracts/cosmwasm/artifacts/
+e2e/generated/
 
 # Working
 work/
+
+# OpenAPI
+openapi.json

@@ -482,7 +482,7 @@ client.events.subscribe({
 - Add caching layer
 
 #### FoundationDB Performance
-- Check cluster status: `fdbcli --exec status`
+- Check cluster status: `nix run .#fdb-manage -- cli --exec status`
 - Monitor transaction conflicts
 - Adjust transaction size limits
 - Scale FDB cluster if needed

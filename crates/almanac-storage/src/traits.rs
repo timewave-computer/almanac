@@ -3,8 +3,8 @@
 //! This module contains storage-specific traits and types that extend
 //! the core storage functionality.
 
-use almanac_core::{Result, Error};
-use serde::{Serialize, Deserialize};
+use almanac_core::{Error, Result};
+use serde::{Deserialize, Serialize};
 
 /// Storage statistics
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,22 +50,26 @@ pub enum ConnectionStatus {
 pub trait StorageExt: almanac_core::Storage {
     /// Get storage statistics
     async fn get_stats(&self) -> Result<StorageStats>;
-    
+
     /// Check storage health
     async fn health_check(&self) -> Result<StorageHealth>;
-    
+
     /// Compact storage (if supported)
     async fn compact(&self) -> Result<()> {
         Ok(()) // Default no-op
     }
-    
+
     /// Create a backup (if supported)
     async fn backup(&self, _path: &str) -> Result<()> {
-        Err(Error::storage("Backup not supported for this storage backend"))
+        Err(Error::storage(
+            "Backup not supported for this storage backend",
+        ))
     }
-    
+
     /// Restore from backup (if supported)
     async fn restore(&self, _path: &str) -> Result<()> {
-        Err(Error::storage("Restore not supported for this storage backend"))
+        Err(Error::storage(
+            "Restore not supported for this storage backend",
+        ))
     }
 }

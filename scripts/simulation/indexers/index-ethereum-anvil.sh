@@ -15,8 +15,8 @@ ANVIL_PORT=8545
 ANVIL_HOST="localhost"
 ANVIL_URL="http://${ANVIL_HOST}:${ANVIL_PORT}"
 ANVIL_CHAIN_ID=31337
-CONTRACTS_DIR="data/contracts/ethereum/anvil"
-CONTRACT_ADDRESSES_FILE="${CONTRACTS_DIR}/contract-addresses.env"
+CONTRACTS_DIR="fixtures/contracts/ethereum"
+CONTRACT_ADDRESSES_FILE="fixtures/deployments/ethereum/contract-addresses.env"
 LOG_DIR="logs"
 LOG_FILE="${LOG_DIR}/almanac-ethereum-anvil.log"
 INDEX_DURATION="15m"  # Default indexing duration
@@ -29,7 +29,7 @@ mkdir -p ${LOG_DIR}
 # Check if the contract addresses file exists
 if [ ! -f "${CONTRACT_ADDRESSES_FILE}" ]; then
     echo -e "${RED}Error: Contract addresses file not found at ${CONTRACT_ADDRESSES_FILE}${NC}"
-    echo -e "${YELLOW}Please deploy Valence contracts first using: ./simulation/ethereum/deploy-valence-contracts-anvil.sh${NC}"
+    echo -e "${YELLOW}Please deploy contracts first${NC}"
     exit 1
 fi
 
@@ -39,7 +39,7 @@ source "${CONTRACT_ADDRESSES_FILE}"
 # Check for required contract addresses
 if [ -z "${VALENCE_REGISTRY_ADDRESS}" ] || [ -z "${VALENCE_GATEWAY_ADDRESS}" ]; then
     echo -e "${RED}Error: Required contract addresses not found in ${CONTRACT_ADDRESSES_FILE}${NC}"
-    echo -e "${YELLOW}Please redeploy Valence contracts using: ./simulation/ethereum/deploy-valence-contracts-anvil.sh${NC}"
+    echo -e "${YELLOW}Please deploy contracts first${NC}"
     exit 1
 fi
 
@@ -66,7 +66,7 @@ echo -e "${GREEN}Anvil node is running at ${ANVIL_URL}${NC}"
 # Check if PostgreSQL is running
 if ! nix develop --command bash -c 'pg_isready -h localhost -p 5432 -U postgres' > /dev/null 2>&1; then
     echo -e "${RED}Error: PostgreSQL is not running${NC}"
-    echo -e "${YELLOW}Please start PostgreSQL first with: ./simulation/databases/setup-postgres.sh or use 'nix develop --command bash -c \"init_databases\"'${NC}"
+    echo -e "${YELLOW}Please start PostgreSQL first using: nix develop --command init_databases${NC}"
     exit 1
 fi
 
@@ -75,7 +75,7 @@ echo -e "${GREEN}PostgreSQL is running${NC}"
 # Check if RocksDB has been set up
 if [ ! -d "data/rocksdb" ]; then
     echo -e "${RED}Error: RocksDB directory not found${NC}"
-    echo -e "${YELLOW}Please set up RocksDB first with: ./simulation/databases/setup-rocksdb.sh${NC}"
+    echo -e "${YELLOW}Please set up RocksDB first${NC}"
     exit 1
 fi
 
