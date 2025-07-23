@@ -18,6 +18,10 @@ pub mod solana;
 pub mod solana_geyser; // Real Geyser streaming implementation
 #[cfg(feature = "solana")]
 pub mod solana_merkle;
+#[cfg(feature = "solana")]
+pub mod solana_idl; // Anchor IDL detection and parsing
+#[cfg(feature = "solana")]
+pub mod solana_idl_fetcher; // Non-blocking IDL fetcher service
 
 // Re-exports
 pub use traits::{ChainAdapter, ChainAdapterError};

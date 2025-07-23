@@ -7,6 +7,9 @@ repository.workspace = true
 license.workspace = true
 description = "Event bus for internal communication in Almanac"
 
+[lints]
+workspace = true
+
 [dependencies]
 # Async runtime
 tokio = { workspace = true, features = ["sync", "macros"] }

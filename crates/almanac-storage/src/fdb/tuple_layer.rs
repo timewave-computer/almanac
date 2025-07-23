@@ -48,6 +48,7 @@ pub enum TupleKeyspace {
     ChangeTracking = 13,      // State change logs
     ValidatorSignatures = 14, // Proposer validator signatures
     TrustPolicies = 15,       // Developer trust policies
+    AnchorIdl = 16,           // Anchor program IDLs
 }
 
 /// Trust-scoped semantic metadata key
@@ -567,6 +568,15 @@ impl TupleFdbStorage {
 
         tuple.push(Element::String(key.validator_id.clone().into()));
         tuple
+    }
+
+    /// Build a tuple key for Anchor IDLs
+    pub fn build_anchor_idl_key(&self, program_id: &str) -> Vec<Element<'static>> {
+        vec![
+            Element::Bytes(Bytes::from(self.namespace.clone().into_bytes())),
+            Element::Int(TupleKeyspace::AnchorIdl as i64),
+            Element::String(program_id.to_string().into()),
+        ]
     }
 
     /// Store semantic metadata with trust scope
@@ -1163,5 +1173,79 @@ impl TupleFdbStorage {
         }
 
         Ok(None)
+    }
+
+    /// Store Anchor IDL
+    pub async fn store_anchor_idl(&self, program_id: &str, idl_json: &str) -> Result<()> {
+        let tx = self.db.create_trx()?;
+        let tuple_key = self.build_anchor_idl_key(program_id);
+        let serialized = idl_json.as_bytes();
+
+        tx.set(&pack(&tuple_key), serialized);
+        tx.commit()
+            .await
+            .map_err(|e| anyhow!("Transaction commit failed: {:?}", e))?;
+
+        Ok(())
+    }
+
+    /// Get Anchor IDL
+    pub async fn get_anchor_idl(&self, program_id: &str) -> Result<Option<String>> {
+        let tx = self.db.create_trx()?;
+        let tuple_key = self.build_anchor_idl_key(program_id);
+
+        if let Some(value) = tx.get(&pack(&tuple_key), false).await? {
+            let idl_json = String::from_utf8(value.to_vec())?;
+            Ok(Some(idl_json))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Delete Anchor IDL
+    pub async fn delete_anchor_idl(&self, program_id: &str) -> Result<()> {
+        let tx = self.db.create_trx()?;
+        let tuple_key = self.build_anchor_idl_key(program_id);
+
+        tx.clear(&pack(&tuple_key));
+        tx.commit()
+            .await
+            .map_err(|e| anyhow!("Transaction commit failed: {:?}", e))?;
+
+        Ok(())
+    }
+
+    /// Store last processed slot for a program (for tracking upgrades)
+    pub async fn store_program_last_slot(&self, program_id: &str, slot: u64) -> Result<()> {
+        let tx = self.db.create_trx()?;
+        let mut tuple_key = self.build_anchor_idl_key(program_id);
+        tuple_key.push(Element::String("last_slot".to_string().into()));
+        let slot_bytes = slot.to_be_bytes();
+
+        tx.set(&pack(&tuple_key), &slot_bytes);
+        tx.commit()
+            .await
+            .map_err(|e| anyhow!("Transaction commit failed: {:?}", e))?;
+
+        Ok(())
+    }
+
+    /// Get last processed slot for a program
+    pub async fn get_program_last_slot(&self, program_id: &str) -> Result<Option<u64>> {
+        let tx = self.db.create_trx()?;
+        let mut tuple_key = self.build_anchor_idl_key(program_id);
+        tuple_key.push(Element::String("last_slot".to_string().into()));
+
+        if let Some(value) = tx.get(&pack(&tuple_key), false).await? {
+            if value.len() == 8 {
+                let mut bytes = [0u8; 8];
+                bytes.copy_from_slice(&value);
+                Ok(Some(u64::from_be_bytes(bytes)))
+            } else {
+                Ok(None)
+            }
+        } else {
+            Ok(None)
+        }
     }
 }

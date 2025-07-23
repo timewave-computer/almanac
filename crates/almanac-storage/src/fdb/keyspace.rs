@@ -38,6 +38,8 @@ pub enum TupleKeyspace {
     ValidatorSignatures = 15,
     /// Developer trust policies
     TrustPolicies = 16,
+    /// Anchor program IDLs
+    AnchorIdl = 17,
 }
 
 impl TupleKeyspace {
@@ -65,6 +67,7 @@ impl TupleKeyspace {
             TupleKeyspace::TrustPolicies => "trust_policies",
             TupleKeyspace::Subscriptions => "subscriptions",
             TupleKeyspace::ContractLayout => "contract_layout",
+            TupleKeyspace::AnchorIdl => "anchor_idl",
         }
     }
 }

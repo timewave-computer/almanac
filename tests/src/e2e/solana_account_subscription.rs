@@ -94,6 +94,12 @@ pub struct RealEventHandler {
     pub account_updates: Arc<tokio::sync::Mutex<Vec<RealGeyserAccountUpdate>>>,
 }
 
+impl Default for RealEventHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RealEventHandler {
     pub fn new() -> Self {
         Self {

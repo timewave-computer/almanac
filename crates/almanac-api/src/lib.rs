@@ -34,8 +34,6 @@ use std::sync::Arc;
 use almanac_storage::api_adapter::{
     ExtendedStorageReader as ExtendedStorageReaderTrait, StorageReader as StorageReaderTrait,
 };
-#[cfg(feature = "fdb")]
-use chrono;
 
 /// Application configuration loaded from environment
 #[derive(Debug, Clone)]
@@ -413,6 +411,10 @@ impl crate::storage_ext::ExtendedStorageReader for MemoryExtendedStorage {
     async fn get_latest_block_number(&self, _chain: &str) -> crate::types::ApiResult<Option<u64>> {
         Ok(None)
     }
+
+    async fn get_anchor_idl(&self, _program_id: &str) -> crate::types::ApiResult<Option<String>> {
+        Ok(None)
+    }
 }
 
 #[cfg(feature = "fdb")]
@@ -746,7 +748,7 @@ impl crate::storage_ext::ExtendedStorageReader for FdbStorageAdapter {
             .await
             .map_err(Self::convert_error)?;
 
-        Ok(result.map(|v| Self::convert_semantic_value_from_storage(v)))
+        Ok(result.map(Self::convert_semantic_value_from_storage))
     }
 
     async fn detect_semantic_conflicts(
@@ -933,6 +935,13 @@ impl crate::storage_ext::ExtendedStorageReader for FdbStorageAdapter {
     async fn get_latest_block_number(&self, chain: &str) -> crate::types::ApiResult<Option<u64>> {
         self.storage
             .get_latest_block_number(chain)
+            .await
+            .map_err(Self::convert_error)
+    }
+
+    async fn get_anchor_idl(&self, program_id: &str) -> crate::types::ApiResult<Option<String>> {
+        self.storage
+            .get_anchor_idl(program_id)
             .await
             .map_err(Self::convert_error)
     }

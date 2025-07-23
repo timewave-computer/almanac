@@ -7,6 +7,9 @@ repository.workspace = true
 license.workspace = true
 description = "Storage layer for Almanac with FoundationDB backend"
 
+[lints]
+workspace = true
+
 [features]
 default = []
 fdb = ["foundationdb"]

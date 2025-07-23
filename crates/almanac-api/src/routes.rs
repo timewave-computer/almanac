@@ -2,6 +2,7 @@ use crate::{
     handlers::{
         create_api_key, delete_api_key, get_event, get_latest_block, list_api_keys,
         list_chain_events, list_events,
+        idl::{get_anchor_idl, list_anchor_idls},
         semantics::{
             delete_semantic_interpretation, get_semantic_conflicts, get_semantic_interpretations,
             resolve_semantic_conflict, submit_semantic_interpretation,
@@ -141,6 +142,9 @@ pub fn create_router(mut state: AppState) -> Router {
         .route("/events/:id", get(get_event))
         .route("/chains/:chain/events", get(list_chain_events))
         .route("/chains/:chain/latest-block", get(get_latest_block))
+        // Anchor IDL routes
+        .route("/anchor-idl", get(list_anchor_idls))
+        .route("/anchor-idl/:program_id", get(get_anchor_idl))
         // New trust and contract routes
         .nest("/trust", trust_routes.with_state(state.clone()))
         .nest(
@@ -268,6 +272,9 @@ pub fn create_test_router(state: AppState) -> Router {
         .route("/events/:id", get(get_event))
         .route("/chains/:chain/events", get(list_chain_events))
         .route("/chains/:chain/latest-block", get(get_latest_block))
+        // Anchor IDL routes
+        .route("/anchor-idl", get(list_anchor_idls))
+        .route("/anchor-idl/:program_id", get(get_anchor_idl))
         // New trust and contract routes
         .nest("/trust", trust_routes.with_state(state.clone()))
         .nest(

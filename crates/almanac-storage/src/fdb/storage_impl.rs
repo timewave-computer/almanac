@@ -37,6 +37,7 @@ impl FdbStorageExt {
                     .expect("Failed to initialize FoundationDB API");
 
                 // Prevent API from being stopped when dropped
+                #[allow(clippy::forget_non_drop)]
                 std::mem::forget(api);
             });
 

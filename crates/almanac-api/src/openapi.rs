@@ -12,16 +12,20 @@ use utoipa::OpenApi;
         crate::handlers::events::get_event,
         crate::handlers::events::list_chain_events,
         crate::handlers::events::get_latest_block,
+        crate::handlers::idl::get_anchor_idl,
+        crate::handlers::idl::list_anchor_idls,
     ),
     components(
         schemas(
             crate::types::event::ApiEvent,
             EventQuery,
             LatestBlockResponse,
+            crate::handlers::idl::IdlListResponse,
         )
     ),
     tags(
-        (name = "events", description = "Event management API")
+        (name = "events", description = "Event management API"),
+        (name = "anchor-idl", description = "Anchor IDL management API")
     ),
     info(
         title = "Almanac API",

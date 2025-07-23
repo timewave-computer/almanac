@@ -46,3 +46,13 @@ rpc_port = 8899
 ws_port = 8900
 data_dir = "/Users/hxrts/projects/timewave/almanac/data/solana"
 log_file = "/Users/hxrts/projects/timewave/almanac/logs/solana.log"
+
+[services.solana.idl_indexing]
+enabled = true
+queue_size = 10000
+fetch_concurrency = 10
+fetch_timeout_ms = 5000
+retry_max_attempts = 3
+retry_backoff_ms = 1000
+circuit_breaker_threshold = 5
+circuit_breaker_timeout_ms = 60000

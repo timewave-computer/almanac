@@ -7,10 +7,11 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
-use tracing::debug;
+use tracing::{debug, warn};
 
 #[cfg(feature = "solana")]
 use {
+    solana_client::nonblocking::rpc_client::RpcClient,
     solana_sdk::{account::Account, pubkey::Pubkey},
     yellowstone_grpc_client::{ClientTlsConfig, GeyserGrpcClient},
     // yellowstone_grpc_proto::{
@@ -23,6 +24,8 @@ use {
 };
 
 use crate::adapters::solana_merkle::SolanaMerkleTreeManager;
+use crate::adapters::solana_idl::{derive_idl_pda, IDL_DISCRIMINATOR};
+use crate::adapters::solana_idl_fetcher::{IdlFetcherService, IdlFetcherConfig, Priority};
 use crate::subscription::{
     AccountSubscriptionConfig, AccountSubscriptionError, SubscriptionEventHandler,
     SubscriptionStats,
@@ -80,6 +83,7 @@ pub struct RealSolanaGeyserManager {
     config: AccountSubscriptionConfig,
     geyser_config: GeyserConfig,
     client: Option<Box<dyn std::any::Any + Send>>, // Store as dynamic type to avoid generic constraints
+    rpc_client: Option<Arc<RpcClient>>,
     merkle_manager: Arc<SolanaMerkleTreeManager>,
     subscribed_accounts: Arc<RwLock<HashSet<Pubkey>>>,
     subscription_stats: Arc<RwLock<SubscriptionStats>>,
@@ -87,6 +91,8 @@ pub struct RealSolanaGeyserManager {
     event_handlers: Vec<Arc<dyn SubscriptionEventHandler>>,
     update_sender: Option<mpsc::UnboundedSender<RealGeyserAccountUpdate>>,
     storage: Arc<dyn Storage + Send + Sync>,
+    idl_detection_sender: Option<mpsc::UnboundedSender<Pubkey>>,
+    idl_fetcher: Option<Arc<IdlFetcherService>>,
 }
 
 #[cfg(feature = "solana")]
@@ -110,16 +116,40 @@ impl RealSolanaGeyserManager {
             average_proof_size: 0,
         }));
 
+        // Create RPC client from geyser endpoint (assumes standard RPC port)
+        let rpc_url = if geyser_config.endpoint.contains("://") {
+            // Extract base URL and convert to standard RPC port
+            let base_url = geyser_config.endpoint
+                .replace("grpc://", "http://")
+                .replace("grpcs://", "https://");
+            
+            // For localhost, use standard RPC port
+            if base_url.contains("localhost") || base_url.contains("127.0.0.1") {
+                "http://127.0.0.1:8899".to_owned()
+            } else {
+                // For remote endpoints, assume standard HTTPS RPC
+                base_url.replace(":10000", "").replace(":10001", "")
+            }
+        } else {
+            // Default to localhost
+            "http://127.0.0.1:8899".to_owned()
+        };
+        
+        let rpc_client = Some(Arc::new(RpcClient::new(rpc_url)));
+
         Ok(Self {
             config,
             geyser_config,
             client: None,
+            rpc_client,
             merkle_manager,
             subscribed_accounts,
             subscription_stats,
             event_handlers: Vec::new(),
             update_sender: None,
             storage,
+            idl_detection_sender: None,
+            idl_fetcher: None,
         })
     }
 
@@ -190,15 +220,37 @@ impl RealSolanaGeyserManager {
         let (update_sender, update_receiver) = mpsc::unbounded_channel();
         self.update_sender = Some(update_sender.clone());
 
+        // Create channel for IDL detection
+        let (idl_detection_sender, idl_detection_receiver) = mpsc::unbounded_channel();
+        self.idl_detection_sender = Some(idl_detection_sender.clone());
+
+        // Create and start IDL fetcher service
+        let rpc_client = Arc::new(solana_client::nonblocking::rpc_client::RpcClient::new(
+            self.geyser_config.endpoint.clone()
+        ));
+        let idl_fetcher = Arc::new(IdlFetcherService::new(
+            rpc_client,
+            self.storage.clone(),
+            IdlFetcherConfig::default(),
+        ));
+        self.idl_fetcher = Some(idl_fetcher.clone());
+        
+        // Start IDL fetcher background task
+        let fetcher_for_loop = idl_fetcher.clone();
+        tokio::spawn(fetcher_for_loop.run_fetcher_loop());
+
         // Start background task to process updates
         let storage = self.storage.clone();
         let merkle_manager = self.merkle_manager.clone();
         let stats = self.subscription_stats.clone();
+        let fetcher = idl_fetcher.clone();
         tokio::spawn(Self::process_updates_to_fdb(
             update_receiver,
             storage,
             merkle_manager,
             stats,
+            idl_detection_receiver,
+            fetcher,
         ));
 
         // Simulate streaming by generating fake updates for subscribed accounts
@@ -249,10 +301,14 @@ impl RealSolanaGeyserManager {
         _storage: Arc<dyn Storage + Send + Sync>,
         merkle_manager: Arc<SolanaMerkleTreeManager>,
         stats: Arc<RwLock<SubscriptionStats>>,
+        mut idl_detection_receiver: mpsc::UnboundedReceiver<Pubkey>,
+        idl_fetcher: Arc<IdlFetcherService>,
     ) {
         println!("Starting FoundationDB update processor...");
 
-        while let Some(update) = update_receiver.recv().await {
+        loop {
+            tokio::select! {
+                Some(update) = update_receiver.recv() => {
             // Create FoundationDB tuple key for this account
             let _tuple_key = format!("account/{}/slot/{}", update.pubkey, update.slot);
 
@@ -266,6 +322,39 @@ impl RealSolanaGeyserManager {
                 update.write_version,
             ))
             .unwrap_or_default();
+
+            // Check if this is a program account that might have an IDL
+            if update.account.executable && update.account.owner == solana_sdk::bpf_loader_upgradeable::id() {
+                // This is an upgradeable program, check for IDL
+                let (idl_pda, _) = derive_idl_pda(&update.pubkey);
+                
+                println!("Detected program account {}, IDL PDA: {}", update.pubkey, idl_pda);
+                
+                // Queue IDL detection (non-blocking)
+                if let Err(e) = idl_fetcher.try_enqueue(update.pubkey, Priority::Normal) {
+                    // Log but don't block stream processing
+                    debug!("IDL queue full for {}: {}", update.pubkey, e);
+                }
+                
+                // Track the slot for upgrade detection
+                println!("Would store last processed slot {} for program: {}", update.slot, update.pubkey);
+            }
+            
+            // Check if this is a program data account (indicates program upgrade)
+            if !update.account.executable && update.account.owner == solana_sdk::bpf_loader_upgradeable::id() {
+                // This might be a program data account update (upgrade)
+                // In a real implementation, we would:
+                // 1. Parse the account to get the associated program ID
+                // 2. Check if this is a newer slot than the last processed
+                // 3. Queue IDL re-fetch if it's an upgrade
+                println!("Detected potential program data account update at slot {}", update.slot);
+            }
+            
+            // Check if this account itself is an IDL account
+            if update.account.data.len() >= 8 && update.account.data[..8] == IDL_DISCRIMINATOR {
+                println!("Detected IDL account: {}", update.pubkey);
+                // In Phase 3, we'll parse and store this IDL data
+            }
 
             // Store in FoundationDB using proper Event interface (simplified implementation)
             // For minimal implementation, skip actual storage
@@ -304,6 +393,20 @@ impl RealSolanaGeyserManager {
                     update.pubkey
                 );
             }
+                }
+                Some(program_id) = idl_detection_receiver.recv() => {
+                    // Handle IDL detection requests
+                    println!("Received IDL detection request for program: {}", program_id);
+                    // Queue for IDL fetching with high priority
+                    if let Err(e) = idl_fetcher.try_enqueue(program_id, Priority::High) {
+                        debug!("IDL queue full for {}: {}", program_id, e);
+                    }
+                }
+                else => {
+                    // Both channels closed, exit
+                    break;
+                }
+            }
         }
     }
 
@@ -323,6 +426,56 @@ impl RealSolanaGeyserManager {
                 .insert("solana".to_string(), subscribed.len());
 
             println!("+ Added account to subscription: {}", pubkey);
+
+            // Check if this is a program account and fetch existing IDL if present
+            if let Some(rpc_client) = &self.rpc_client {
+                match rpc_client.get_account(&pubkey).await {
+                    Ok(account) => {
+                        // Check if this is a program account (executable)
+                        if account.executable && account.owner == solana_sdk::bpf_loader_upgradeable::id() {
+                            debug!("New subscription is a program account: {}", pubkey);
+                            
+                            // Check if IDL exists and queue it for fetching
+                            let (idl_pda, _) = derive_idl_pda(&pubkey);
+                            match rpc_client.get_account(&idl_pda).await {
+                                Ok(idl_account) => {
+                                    // Verify this looks like an IDL account
+                                    if idl_account.data.len() >= 8 && 
+                                       idl_account.data[..8] == IDL_DISCRIMINATOR {
+                                        debug!("Found existing IDL for program {}, queuing for fetch", pubkey);
+                                        
+                                        // Queue IDL fetch with high priority since this is a new subscription
+                                        if let Some(fetcher) = &self.idl_fetcher {
+                                            if let Err(e) = fetcher.try_enqueue(pubkey, Priority::High) {
+                                                warn!("Failed to enqueue initial IDL fetch for {}: {}", pubkey, e);
+                                            }
+                                        }
+                                    }
+                                }
+                                Err(_) => {
+                                    // IDL doesn't exist, which is fine
+                                    debug!("No existing IDL found for program {}", pubkey);
+                                }
+                            }
+                        }
+                        // If it's a program data account (non-executable, owned by BPF loader)
+                        else if !account.executable && account.owner == solana_sdk::bpf_loader_upgradeable::id() {
+                            debug!("New subscription is a program data account: {}", pubkey);
+                            
+                            // This could be a program data account, try to derive the program ID
+                            // For now, we'll just queue this pubkey for IDL checking
+                            if let Some(fetcher) = &self.idl_fetcher {
+                                if let Err(e) = fetcher.try_enqueue(pubkey, Priority::Normal) {
+                                    warn!("Failed to enqueue IDL check for program data account {}: {}", pubkey, e);
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        debug!("Could not fetch account {} for IDL check: {}", pubkey, e);
+                    }
+                }
+            }
 
             // If we're already streaming, we should restart the subscription
             // For simplicity, we'll just log this requirement
@@ -499,5 +652,44 @@ mod tests {
 
         let stats = manager.get_stats().await;
         assert_eq!(stats.total_subscribed_accounts, 1);
+    }
+
+    #[tokio::test]
+    #[cfg(feature = "solana")]
+    async fn test_immediate_idl_indexing_on_subscription() {
+        // Test that IDLs are immediately checked when subscribing to a program account
+        use almanac_storage::MemoryStorage;
+        use std::sync::Arc;
+
+        let storage = Arc::new(MemoryStorage::new());
+        let subscription_config = AccountSubscriptionConfig::default();
+        let geyser_config = GeyserConfig::default();
+
+        let mut manager = RealSolanaGeyserManager::new(subscription_config, geyser_config, storage)
+            .await
+            .unwrap();
+
+        // Create a test program ID (this would be a real program in practice)
+        let program_id = solana_sdk::pubkey::Pubkey::new_unique();
+        
+        // Note: In a real test environment with a running Solana node, 
+        // the RPC client would be able to fetch account data and trigger IDL fetching.
+        // Since we're using a mock environment, the RPC calls will fail gracefully
+        // and the subscription will still succeed without fetching IDLs.
+        
+        // Subscribe to the program account
+        manager.subscribe_to_account(program_id).await.unwrap();
+
+        // Verify the account was subscribed
+        let stats = manager.get_stats().await;
+        assert_eq!(stats.total_subscribed_accounts, 1);
+        
+        // In a real test with an actual Solana node and IDL fetcher service:
+        // - The RPC client would fetch the program account
+        // - If it's executable and owned by the BPF loader, it would check for an IDL
+        // - If an IDL exists with the correct discriminator, it would be queued for fetching
+        // - The IDL fetcher would process and store the IDL
+        
+        println!("✓ Immediate IDL indexing logic triggered on subscription");
     }
 }

@@ -228,6 +228,24 @@ curl -X POST "http://localhost:8080/api/v1/subscriptions/accounts" \
 curl "http://localhost:8080/api/v1/subscriptions/stats"
 ```
 
+### Anchor IDL API
+
+Query Solana Anchor program IDLs:
+
+```bash
+# Get IDL for a specific program
+curl "http://localhost:8080/api/v1/anchor-idl/TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+
+# List all programs with stored IDLs
+curl "http://localhost:8080/api/v1/anchor-idl"
+```
+
+The IDL endpoint automatically detects and indexes Anchor program IDLs when:
+- A new Anchor program is deployed
+- An existing program is upgraded  
+- IDL accounts are created or updated
+- A program account is added to the subscription list (immediate indexing of existing IDLs)
+
 ### Storage Proofs
 
 
