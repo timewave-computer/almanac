@@ -328,6 +328,10 @@ impl ExtendedStorageReader for MemoryStorageReader {
     async fn get_latest_block_number(&self, _chain: &str) -> ApiResult<Option<u64>> {
         Ok(None)
     }
+
+    async fn get_anchor_idl(&self, _program_id: &str) -> ApiResult<Option<String>> {
+        Ok(None)
+    }
 }
 
 /// Storage writer trait (for implementations that support writing)

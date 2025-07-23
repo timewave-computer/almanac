@@ -90,15 +90,14 @@ mod fdb_impl {
 
         /// Build a tuple key for semantic metadata
         pub fn build_semantic_key(&self, key: &SemanticMetadataKey) -> Vec<Element<'static>> {
-            let mut tuple = Vec::new();
-            tuple.push(Element::Bytes(Bytes::from(
-                self.namespace.clone().into_bytes(),
-            )));
-            tuple.push(Self::keyspace_element(TupleKeyspace::SemanticMeta));
-            tuple.push(Element::String(key.chain_id.clone().into()));
-            tuple.push(Element::String(key.contract_address.clone().into()));
-            tuple.push(Element::Bytes(Bytes::from(key.storage_key.to_vec())));
-            tuple.push(Element::String(key.developer_id.clone().into()));
+            let mut tuple = vec![
+                Element::Bytes(Bytes::from(self.namespace.clone().into_bytes())),
+                Self::keyspace_element(TupleKeyspace::SemanticMeta),
+                Element::String(key.chain_id.clone().into()),
+                Element::String(key.contract_address.clone().into()),
+                Element::Bytes(Bytes::from(key.storage_key.to_vec())),
+                Element::String(key.developer_id.clone().into()),
+            ];
             if let Some(ref project_id) = key.project_id {
                 tuple.push(Element::String(project_id.clone().into()));
             }
@@ -125,13 +124,12 @@ mod fdb_impl {
 
         /// Build a tuple key for contract layout
         pub fn build_layout_key(&self, key: &ContractLayoutKey) -> Vec<Element<'static>> {
-            let mut tuple = Vec::new();
-            tuple.push(Element::Bytes(Bytes::from(
-                self.namespace.clone().into_bytes(),
-            )));
-            tuple.push(Self::keyspace_element(TupleKeyspace::ContractLayouts));
-            tuple.push(Element::String(key.chain_id.clone().into()));
-            tuple.push(Element::String(key.contract_address.clone().into()));
+            let mut tuple = vec![
+                Element::Bytes(Bytes::from(self.namespace.clone().into_bytes())),
+                Self::keyspace_element(TupleKeyspace::ContractLayouts),
+                Element::String(key.chain_id.clone().into()),
+                Element::String(key.contract_address.clone().into()),
+            ];
             if let Some(ref version) = key.version {
                 tuple.push(Element::String(version.clone().into()));
             }
@@ -140,13 +138,12 @@ mod fdb_impl {
 
         /// Build a tuple key for trust relationships
         pub fn build_trust_key(&self, key: &DeveloperTrustKey) -> Vec<Element<'static>> {
-            let mut tuple = Vec::new();
-            tuple.push(Element::Bytes(Bytes::from(
-                self.namespace.clone().into_bytes(),
-            )));
-            tuple.push(Self::keyspace_element(TupleKeyspace::TrustGraph));
-            tuple.push(Element::String(key.trustor.clone().into()));
-            tuple.push(Element::String(key.trustee.clone().into()));
+            let mut tuple = vec![
+                Element::Bytes(Bytes::from(self.namespace.clone().into_bytes())),
+                Self::keyspace_element(TupleKeyspace::TrustGraph),
+                Element::String(key.trustor.clone().into()),
+                Element::String(key.trustee.clone().into()),
+            ];
 
             match &key.scope {
                 TrustScope::Global => tuple.push(Element::String("global".to_string().into())),
@@ -175,14 +172,13 @@ mod fdb_impl {
 
         /// Build a tuple key for storage proofs
         pub fn build_proof_key(&self, key: &StorageProofKey) -> Vec<Element<'static>> {
-            let mut tuple = Vec::new();
-            tuple.push(Element::Bytes(Bytes::from(
-                self.namespace.clone().into_bytes(),
-            )));
-            tuple.push(Self::keyspace_element(TupleKeyspace::StorageProofs));
-            tuple.push(Element::String(key.chain_id.clone().into()));
-            tuple.push(Element::String(key.contract_address.clone().into()));
-            tuple.push(Element::Bytes(Bytes::from(key.storage_key.to_vec())));
+            let mut tuple = vec![
+                Element::Bytes(Bytes::from(self.namespace.clone().into_bytes())),
+                Self::keyspace_element(TupleKeyspace::StorageProofs),
+                Element::String(key.chain_id.clone().into()),
+                Element::String(key.contract_address.clone().into()),
+                Element::Bytes(Bytes::from(key.storage_key.to_vec())),
+            ];
 
             match &key.block_identifier {
                 BlockIdentifier::Height(h) => tuple.push(Element::Int(*h as i64)),
@@ -201,41 +197,35 @@ mod fdb_impl {
             block: u64,
             key: &[u8; 32],
         ) -> Vec<Element<'static>> {
-            let mut tuple = Vec::new();
-            tuple.push(Element::Bytes(Bytes::from(
-                self.namespace.clone().into_bytes(),
-            )));
-            tuple.push(Self::keyspace_element(TupleKeyspace::ContractState));
-            tuple.push(Element::String(chain_id.to_string().into()));
-            tuple.push(Element::String(contract.to_string().into()));
-            tuple.push(Element::Int(block as i64));
-            tuple.push(Element::Bytes(Bytes::from(key.to_vec())));
-            tuple
+            vec![
+                Element::Bytes(Bytes::from(self.namespace.clone().into_bytes())),
+                Self::keyspace_element(TupleKeyspace::ContractState),
+                Element::String(chain_id.to_string().into()),
+                Element::String(contract.to_string().into()),
+                Element::Int(block as i64),
+                Element::Bytes(Bytes::from(key.to_vec())),
+            ]
         }
 
         /// Build a tuple key for Lightwave checkpoints
         pub fn build_checkpoint_key(&self, key: &TrustedCheckpointKey) -> Vec<Element<'static>> {
-            let mut tuple = Vec::new();
-            tuple.push(Element::Bytes(Bytes::from(
-                self.namespace.clone().into_bytes(),
-            )));
-            tuple.push(Self::keyspace_element(TupleKeyspace::TrustedCheckpoints));
-            tuple.push(Element::String(key.chain_id.clone().into()));
-            tuple.push(Element::Int(key.checkpoint_type as i64));
-            tuple.push(Element::Int(key.height_or_slot as i64));
-            tuple
+            vec![
+                Element::Bytes(Bytes::from(self.namespace.clone().into_bytes())),
+                Self::keyspace_element(TupleKeyspace::TrustedCheckpoints),
+                Element::String(key.chain_id.clone().into()),
+                Element::Int(key.checkpoint_type as i64),
+                Element::Int(key.height_or_slot as i64),
+            ]
         }
 
         /// Build a tuple key for Solana accounts
         pub fn build_solana_account_key(&self, key: &SolanaAccountKey) -> Vec<Element<'static>> {
-            let mut tuple = Vec::new();
-            tuple.push(Element::Bytes(Bytes::from(
-                self.namespace.clone().into_bytes(),
-            )));
-            tuple.push(Self::keyspace_element(TupleKeyspace::SolanaAccounts));
-            tuple.push(Element::Bytes(Bytes::from(key.account_address.to_vec())));
-            tuple.push(Element::Int(key.slot as i64));
-            tuple
+            vec![
+                Element::Bytes(Bytes::from(self.namespace.clone().into_bytes())),
+                Self::keyspace_element(TupleKeyspace::SolanaAccounts),
+                Element::Bytes(Bytes::from(key.account_address.to_vec())),
+                Element::Int(key.slot as i64),
+            ]
         }
 
         /// Store semantic metadata with trust scope
@@ -270,12 +260,13 @@ mod fdb_impl {
             let tx = self.db.create_trx()?;
 
             // Build key prefix without developer_id to get all interpretations
-            let mut prefix_tuple = Vec::new();
-            prefix_tuple.push(Element::Bytes(Bytes::from(self.namespace.as_bytes())));
-            prefix_tuple.push(Self::keyspace_element(TupleKeyspace::SemanticMeta));
-            prefix_tuple.push(Element::String(key.chain_id.clone().into()));
-            prefix_tuple.push(Element::String(key.contract_address.clone().into()));
-            prefix_tuple.push(Element::Bytes(Bytes::from(&key.storage_key[..])));
+            let prefix_tuple = vec![
+                Element::Bytes(Bytes::from(self.namespace.as_bytes())),
+                Self::keyspace_element(TupleKeyspace::SemanticMeta),
+                Element::String(key.chain_id.clone().into()),
+                Element::String(key.contract_address.clone().into()),
+                Element::Bytes(Bytes::from(&key.storage_key[..])),
+            ];
 
             let prefix = pack(&prefix_tuple);
             let mut end_key = prefix.clone();
@@ -412,10 +403,11 @@ mod fdb_impl {
         ) -> Result<Vec<(DeveloperTrustKey, DeveloperTrustValue)>> {
             let tx = self.db.create_trx()?;
 
-            let mut prefix_tuple = Vec::new();
-            prefix_tuple.push(Element::Bytes(Bytes::from(self.namespace.as_bytes())));
-            prefix_tuple.push(Self::keyspace_element(TupleKeyspace::TrustGraph));
-            prefix_tuple.push(Element::String(trustor.to_string().into()));
+            let prefix_tuple = vec![
+                Element::Bytes(Bytes::from(self.namespace.as_bytes())),
+                Self::keyspace_element(TupleKeyspace::TrustGraph),
+                Element::String(trustor.to_string().into()),
+            ];
 
             let prefix = pack(&prefix_tuple);
             let mut end_key = prefix.clone();
@@ -672,6 +664,57 @@ mod fdb_impl {
 
             Ok(checkpoints)
         }
+
+        /// Get Anchor IDL
+        pub async fn get_anchor_idl(&self, program_id: &str) -> Result<Option<String>> {
+            let tx = self.db.create_trx()?;
+            let tuple_key = vec![
+                Element::Bytes(Bytes::from(self.namespace.clone().into_bytes())),
+                Element::Int(TupleKeyspace::AnchorIdl as i64),
+                Element::String(program_id.to_string().into()),
+            ];
+
+            if let Some(value) = tx.get(&pack(&tuple_key), false).await? {
+                let idl_json = String::from_utf8(value.to_vec())?;
+                Ok(Some(idl_json))
+            } else {
+                Ok(None)
+            }
+        }
+
+        /// Store Anchor IDL
+        pub async fn store_anchor_idl(&self, program_id: &str, idl_json: &str) -> Result<()> {
+            let tx = self.db.create_trx()?;
+            let tuple_key = vec![
+                Element::Bytes(Bytes::from(self.namespace.clone().into_bytes())),
+                Element::Int(TupleKeyspace::AnchorIdl as i64),
+                Element::String(program_id.to_string().into()),
+            ];
+
+            tx.set(&pack(&tuple_key), idl_json.as_bytes());
+            tx.commit()
+                .await
+                .map_err(|e| anyhow!("Transaction commit failed: {:?}", e))?;
+
+            Ok(())
+        }
+
+        /// Delete Anchor IDL
+        pub async fn delete_anchor_idl(&self, program_id: &str) -> Result<()> {
+            let tx = self.db.create_trx()?;
+            let tuple_key = vec![
+                Element::Bytes(Bytes::from(self.namespace.clone().into_bytes())),
+                Element::Int(TupleKeyspace::AnchorIdl as i64),
+                Element::String(program_id.to_string().into()),
+            ];
+
+            tx.clear(&pack(&tuple_key));
+            tx.commit()
+                .await
+                .map_err(|e| anyhow!("Transaction commit failed: {:?}", e))?;
+
+            Ok(())
+        }
     }
 }
 
@@ -776,6 +819,21 @@ mod mock_impl {
             _checkpoint_type: CheckpointType,
             _min_verification_count: u32,
         ) -> Result<Vec<(TrustedCheckpointKey, TrustedCheckpointValue)>> {
+            Err(anyhow!("FoundationDB not available (feature not enabled)"))
+        }
+
+        /// Get Anchor IDL (mock implementation)
+        pub async fn get_anchor_idl(&self, _program_id: &str) -> Result<Option<String>> {
+            Err(anyhow!("FoundationDB not available (feature not enabled)"))
+        }
+
+        /// Store Anchor IDL (mock implementation)
+        pub async fn store_anchor_idl(&self, _program_id: &str, _idl_json: &str) -> Result<()> {
+            Err(anyhow!("FoundationDB not available (feature not enabled)"))
+        }
+
+        /// Delete Anchor IDL (mock implementation)
+        pub async fn delete_anchor_idl(&self, _program_id: &str) -> Result<()> {
             Err(anyhow!("FoundationDB not available (feature not enabled)"))
         }
     }

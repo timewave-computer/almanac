@@ -468,6 +468,35 @@
         devshells.default = {
           name = "solana-development";
           
+          packages = with pkgs; [
+            # C++ build tools for protobuf-src (use clang, not gcc to avoid conflicts)
+            gnumake
+            autoconf
+            automake
+            libtool
+            pkg-config
+            
+            # C++ compiler and standard library
+            clang
+            libcxx
+            
+            # Required libraries
+            zlib
+            protobuf
+            openssl
+            
+            # Other tools
+            curl
+            jq
+            nodejs
+          ] ++ lib.optionals (pkgs.stdenv.system != "aarch64-linux") [
+            self'.packages.solana-node
+          ] ++ [
+            self'.packages.anchor-wrapper
+            self'.packages.setup-solana  
+            self'.packages.yellowstone-grpc-geyser
+          ];
+          
           commands = [
           ] ++ lib.optionals (pkgs.stdenv.system != "aarch64-linux") [
             {
@@ -501,8 +530,108 @@
             }
           ];
           
+          devshell.startup.protobuf-setup = {
+            deps = [];
+            text = ''
+              # Create wrapper scripts to handle duplicate flags in protobuf-src builds
+              mkdir -p $HOME/.local/bin
+              
+              # Create a C++ wrapper that ensures C++11 and libc++ support
+              cat > $HOME/.local/bin/clang++-wrapper << 'EOF'
+#!/bin/bash
+# C++ compiler wrapper that ensures C++11 and libc++ support for protobuf-src
+args=()
+has_std=false
+has_stdlib=false
+
+# Check existing args for C++ standard and stdlib
+for arg in "$@"; do
+  case "$arg" in
+    -std=c++*)
+      has_std=true
+      ;;
+    -stdlib=*)
+      has_stdlib=true
+      ;;
+  esac
+done
+
+# Always ensure we have C++11 and libc++ on macOS, plus header paths
+if [ "$(uname)" = "Darwin" ]; then  
+  if [ "$has_std" = false ]; then
+    args+=("-std=c++11")
+  fi
+  if [ "$has_stdlib" = false ]; then
+    args+=("-stdlib=libc++")
+  fi
+  # Add system header paths for C++ standard library
+  args+=("-isystem" "${pkgs.libcxx.dev}/include/c++/v1")
+fi
+
+# Add all original arguments, deduplicating C++11 flags
+seen_std=false
+seen_stdlib=false
+
+for arg in "$@"; do
+  case "$arg" in
+    -std=c++11)
+      if [ "$seen_std" = false ]; then
+        args+=("$arg")
+        seen_std=true
+      fi
+      ;;
+    -stdlib=libc++)
+      if [ "$seen_stdlib" = false ]; then
+        args+=("$arg")
+        seen_stdlib=true
+      fi
+      ;;
+    *)
+      args+=("$arg")
+      ;;
+  esac
+done
+
+exec clang++ "''${args[@]}"
+EOF
+              
+              chmod +x $HOME/.local/bin/clang++-wrapper
+              
+              # Set up environment for protobuf-src builds on macOS
+              export CC="clang"
+              export CXX="$HOME/.local/bin/clang++-wrapper"
+              
+              # Don't set CXXFLAGS here - let the build script add them, wrapper will dedupe
+              export LDFLAGS="-stdlib=libc++"
+              
+              # Ensure autotools can find dependencies
+              export CPPFLAGS="-I${pkgs.zlib.dev}/include"
+              export PKG_CONFIG_PATH="${pkgs.zlib.dev}/lib/pkgconfig:${pkgs.openssl.dev}/lib/pkgconfig:$PKG_CONFIG_PATH"
+              
+              # Library paths for macOS
+              export LIBRARY_PATH="${pkgs.zlib.out}/lib:$LIBRARY_PATH"
+              
+              # Force autotools to use system zlib
+              export ZLIB_ROOT="${pkgs.zlib.out}"
+              export ZLIB_INCLUDE_DIR="${pkgs.zlib.dev}/include"
+              export ZLIB_LIBRARY="${pkgs.zlib.out}/lib/libz.dylib"
+              
+              # Protobuf setup
+              export PROTOC="${pkgs.protobuf}/bin/protoc"
+              export PROTOBUF_LOCATION="${pkgs.protobuf}"
+              
+              echo "✓ Protobuf-src build environment configured with wrapper"
+              echo "  CC: $CC"
+              echo "  CXX: $CXX"
+              echo "  LDFLAGS: $LDFLAGS"
+            '';
+          };
+          
+          env = map (name: { inherit name; value = commonEnv.${name}; }) 
+                (lib.attrNames commonEnv);
+          
           motd = ''
-            {14}{bold}Solana development environment{reset}
+            {14}{bold}Solana development environment with Geyser support{reset}
             {9}Solana v${sol-version} + Anchor v${anchor-version}{reset}
             
             {13}Quick start:{reset}
@@ -510,6 +639,8 @@
               solana-test-validator
               anchor init my-project
               cd my-project && anchor build
+              
+            {12}Environment includes C++11 support for protobuf-src builds{reset}
           '';
         };
       };

@@ -376,6 +376,9 @@ pub trait ExtendedStorageReader: CoreStorageReader {
 
     // Block data methods
     async fn get_latest_block_number(&self, chain: &str) -> ApiResult<Option<u64>>;
+
+    // Anchor IDL methods
+    async fn get_anchor_idl(&self, program_id: &str) -> ApiResult<Option<String>>;
 }
 
 // Implementation of StorageReader for FdbStorageExt
@@ -1175,9 +1178,23 @@ impl ExtendedStorageReader for FdbStorageExt {
 
     // Block data
     async fn get_latest_block_number(&self, chain: &str) -> ApiResult<Option<u64>> {
-        match almanac_core::StorageReader::get_latest_block(self, &chain.to_string()).await {
+        match almanac_core::StorageReader::get_latest_block(self, chain).await {
             Ok(block) => Ok(Some(block)),
             Err(e) => Err(e.into()),
+        }
+    }
+
+    // Anchor IDL methods
+    async fn get_anchor_idl(&self, program_id: &str) -> ApiResult<Option<String>> {
+        if let Some(ref tuple_storage) = self.tuple_storage {
+            tuple_storage.get_anchor_idl(program_id).await
+                .map_err(|e| {
+                    tracing::error!("Failed to get anchor IDL for {}: {}", program_id, e);
+                    ApiError::Storage(format!("Failed to get anchor IDL: {}", e))
+                })
+        } else {
+            tracing::warn!("Tuple storage not available, cannot get anchor IDL");
+            Ok(None)
         }
     }
 }

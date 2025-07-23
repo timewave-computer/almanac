@@ -36,6 +36,9 @@ authors = ["Timewave"]
 repository = "https://github.com/timewave-computer/almanac"
 license = "MIT OR Apache-2.0"
 
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(test)'] }
+
 [workspace.dependencies]
 # Async runtime
 tokio = { version = "1.32", features = ["full"] }
@@ -83,6 +86,9 @@ traverse-core = { git = "https://github.com/timewave-computer/traverse", rev = "
 traverse-cosmos = { git = "https://github.com/timewave-computer/traverse", rev = "78b85c8e3714d04a17dd01151a03a43d6b53a768" }
 traverse-valence = { git = "https://github.com/timewave-computer/traverse", rev = "78b85c8e3714d04a17dd01151a03a43d6b53a768" }
 
+# Pin problematic dependencies to avoid edition2024 requirement
+base64ct = ">=1.0, <1.8"  # Avoid 1.8.0 which requires edition2024
+
 [profile.release]
 opt-level = 3
 lto = true
@@ -91,6 +97,7 @@ codegen-units = 1
 [profile.dev]
 opt-level = 0
 debug = true
+
 
 
  

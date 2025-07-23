@@ -490,7 +490,7 @@ impl crate::manager::SimpleSubscriptionManager for FdbAccountSubscriptionManager
 
 impl From<AccountSubscriptionError> for almanac_core::Error {
     fn from(err: AccountSubscriptionError) -> Self {
-        almanac_core::Error::storage(&err.to_string())
+        almanac_core::Error::storage(err.to_string())
     }
 }
 

@@ -1,5 +1,6 @@
 pub mod admin;
 pub mod events;
+pub mod idl;
 pub mod semantics;
 pub mod subscriptions;
 pub mod traverse;

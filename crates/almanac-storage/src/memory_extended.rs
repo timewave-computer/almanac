@@ -379,4 +379,8 @@ impl ExtendedStorageReader for MemoryExtendedStorage {
     async fn get_latest_block_number(&self, _chain: &str) -> ApiResult<Option<u64>> {
         Ok(Some(0))
     }
+
+    async fn get_anchor_idl(&self, _program_id: &str) -> ApiResult<Option<String>> {
+        Ok(None)
+    }
 }

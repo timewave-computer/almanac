@@ -40,6 +40,7 @@ Each chain adapter implements the [`ChainAdapter`](crates/almanac-chains/src/ada
 - **FoundationDB Storage** - ACID transactions with strong consistency guarantees
 - **Real-time Indexing** - Low-latency event processing with configurable batch sizes
 - **REST API** - Comprehensive API for querying indexed data
+- **Anchor IDL Indexing** - Automatic detection and storage of Solana Anchor program IDLs
 - **Authentication** - API key-based authentication with configurable permissions
 - **Rate Limiting** - Built-in rate limiting to protect against abuse
 - **Reorg Handling** - Automatic blockchain reorganization detection and handling

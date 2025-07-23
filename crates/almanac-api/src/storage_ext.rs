@@ -199,6 +199,9 @@ pub trait ExtendedStorageReader: StorageReader {
 
     // Block data methods
     async fn get_latest_block_number(&self, chain: &str) -> ApiResult<Option<u64>>;
+
+    // Anchor IDL methods
+    async fn get_anchor_idl(&self, program_id: &str) -> ApiResult<Option<String>>;
 }
 
 /// Blanket implementation for Arc<T> where T implements StorageReader
@@ -427,5 +430,9 @@ where
 
     async fn get_latest_block_number(&self, chain: &str) -> ApiResult<Option<u64>> {
         (**self).get_latest_block_number(chain).await
+    }
+
+    async fn get_anchor_idl(&self, program_id: &str) -> ApiResult<Option<String>> {
+        (**self).get_anchor_idl(program_id).await
     }
 }
