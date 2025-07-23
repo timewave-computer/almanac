@@ -7,6 +7,9 @@ repository.workspace = true
 license.workspace = true
 description = "HTTP API server for Almanac"
 
+[lints]
+workspace = true
+
 [[bin]]
 name = "almanac-api"
 path = "src/main.rs"

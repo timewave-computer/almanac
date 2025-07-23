@@ -5,8 +5,7 @@
 
 #[cfg(feature = "valence")]
 use almanac_chains::valence::{ValenceClientManager, ValenceExecutionRequest};
-use std::collections::HashMap;
-use tracing::{info, error};
+use tracing::info;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

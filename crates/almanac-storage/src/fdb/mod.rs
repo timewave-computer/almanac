@@ -117,14 +117,14 @@ impl FdbStorage {
 
             // Initialize FoundationDB API
             let _fdb = FdbApiBuilder::default().build().map_err(|e| {
-                Error::storage(&format!("Failed to initialize FoundationDB API: {}", e))
+                Error::storage(format!("Failed to initialize FoundationDB API: {}", e))
             })?;
 
             // Create database handle using foundationdb 0.8 API
             let database = match Database::new(config.cluster_file.as_deref()) {
                 Ok(db) => Arc::new(db),
                 Err(e) => {
-                    return Err(Error::storage(&format!(
+                    return Err(Error::storage(format!(
                         "Failed to open FoundationDB database: {}",
                         e
                     )));
@@ -205,7 +205,7 @@ impl StorageWriter for FdbStorage {
 
             // Serialize event data
             let event_data = bincode::serialize(&unified_event)
-                .map_err(|e| Error::storage(&format!("Failed to serialize event: {}", e)))?;
+                .map_err(|e| Error::storage(format!("Failed to serialize event: {}", e)))?;
 
             // Block key for latest block tracking
             let block_key = format!(
@@ -228,12 +228,12 @@ impl StorageWriter for FdbStorage {
                     (self.config.connection_timeout * 1000) as i32,
                 ))
                 .map_err(|e| {
-                    Error::storage(&format!("Failed to set transaction timeout: {}", e))
+                    Error::storage(format!("Failed to set transaction timeout: {}", e))
                 })?;
 
                 // Store event and latest block
-                tx.set(&event_key.as_bytes(), &event_data);
-                tx.set(&block_key.as_bytes(), &block_data);
+                tx.set(event_key.as_bytes(), &event_data);
+                tx.set(block_key.as_bytes(), &block_data);
 
                 match tx.commit().await {
                     Ok(_) => {
@@ -248,7 +248,7 @@ impl StorageWriter for FdbStorage {
                         retry_count += 1;
                         if retry_count >= self.config.max_retries {
                             error!("Failed to store event after {} retries: {}", retry_count, e);
-                            return Err(Error::storage(&format!("Failed to store event: {}", e)));
+                            return Err(Error::storage(format!("Failed to store event: {}", e)));
                         }
                         // Exponential backoff
                         tokio::time::sleep(std::time::Duration::from_millis(
@@ -297,7 +297,7 @@ impl StorageWriter for FdbStorage {
             tx.set_option(TransactionOption::Timeout(
                 (self.config.connection_timeout * 1000) as i32,
             ))
-            .map_err(|e| Error::storage(&format!("Failed to set transaction timeout: {}", e)))?;
+            .map_err(|e| Error::storage(format!("Failed to set transaction timeout: {}", e)))?;
 
             let status_key = format!(
                 "{}\x00{}\x00{}\x00{}\x00status",
@@ -308,9 +308,9 @@ impl StorageWriter for FdbStorage {
             );
 
             let status_data = bincode::serialize(&status)
-                .map_err(|e| Error::storage(&format!("Failed to serialize block status: {}", e)))?;
+                .map_err(|e| Error::storage(format!("Failed to serialize block status: {}", e)))?;
 
-            tx.set(&status_key.as_bytes(), &status_data);
+            tx.set(status_key.as_bytes(), &status_data);
 
             match tx.commit().await {
                 Ok(_) => {
@@ -322,7 +322,7 @@ impl StorageWriter for FdbStorage {
                 }
                 Err(e) => {
                     error!("Failed to update block status: {}", e);
-                    Err(Error::storage(&format!(
+                    Err(Error::storage(format!(
                         "Failed to update block status: {}",
                         e
                     )))
@@ -348,9 +348,9 @@ impl StorageWriter for FdbStorage {
 
             // Simple health check - try to read a test key
             let test_key = format!("{}\x00healthcheck", self.config.namespace);
-            match tx.get(&test_key.as_bytes(), false).await {
+            match tx.get(test_key.as_bytes(), false).await {
                 Ok(_) => Ok(()),
-                Err(e) => Err(Error::storage(&format!(
+                Err(e) => Err(Error::storage(format!(
                     "FoundationDB health check failed: {}",
                     e
                 ))),
@@ -378,7 +378,7 @@ impl StorageWriter for FdbStorage {
             tx.set_option(TransactionOption::Timeout(
                 (self.config.connection_timeout * 1000) as i32,
             ))
-            .map_err(|e| Error::storage(&format!("Failed to set transaction timeout: {}", e)))?;
+            .map_err(|e| Error::storage(format!("Failed to set transaction timeout: {}", e)))?;
 
             // Find all events from the reorg point
             let key_prefix = format!(
@@ -394,7 +394,7 @@ impl StorageWriter for FdbStorage {
                 chain, from_block
             );
 
-            match scan_with_prefix(&tx, &key_prefix.as_bytes(), 10000).await {
+            match scan_with_prefix(&tx, key_prefix.as_bytes(), 10000).await {
                 Ok(kvs) => {
                     let mut deleted_count = 0;
 
@@ -412,7 +412,7 @@ impl StorageWriter for FdbStorage {
                             chain
                         );
                         let block_data = (from_block - 1).to_be_bytes();
-                        tx.set(&block_key.as_bytes(), &block_data);
+                        tx.set(block_key.as_bytes(), &block_data);
                     }
 
                     match tx.commit().await {
@@ -425,13 +425,13 @@ impl StorageWriter for FdbStorage {
                         }
                         Err(e) => {
                             error!("Failed to commit reorg transaction: {}", e);
-                            Err(Error::storage(&format!("Failed to commit reorg: {}", e)))
+                            Err(Error::storage(format!("Failed to commit reorg: {}", e)))
                         }
                     }
                 }
                 Err(e) => {
                     error!("Failed to query events for reorg: {}", e);
-                    Err(Error::storage(&format!(
+                    Err(Error::storage(format!(
                         "Failed to query events for reorg: {}",
                         e
                     )))
@@ -484,7 +484,7 @@ impl StorageReader for FdbStorage {
                 let limit = filter.limit.unwrap_or(1000);
 
                 // Query events using FoundationDB 0.8 API
-                let range_result = scan_with_prefix(&tx, &key_prefix.as_bytes(), limit).await;
+                let range_result = scan_with_prefix(&tx, key_prefix.as_bytes(), limit).await;
 
                 match range_result {
                     Ok(kvs) => {
@@ -501,7 +501,7 @@ impl StorageReader for FdbStorage {
                     }
                     Err(e) => {
                         error!("Failed to query events: {}", e);
-                        return Err(Error::storage(&format!("Failed to query events: {}", e)));
+                        return Err(Error::storage(format!("Failed to query events: {}", e)));
                     }
                 }
             }
@@ -536,12 +536,12 @@ impl StorageReader for FdbStorage {
                 chain
             );
 
-            match tx.get(&block_key.as_bytes(), false).await {
+            match tx.get(block_key.as_bytes(), false).await {
                 Ok(Some(value)) => {
                     if value.len() >= 8 {
                         let block_number =
                             u64::from_be_bytes(value[0..8].try_into().map_err(|e| {
-                                Error::storage(&format!("Invalid block number format: {}", e))
+                                Error::storage(format!("Invalid block number format: {}", e))
                             })?);
                         debug!("Latest block for chain {}: {}", chain, block_number);
                         Ok(block_number)
@@ -555,7 +555,7 @@ impl StorageReader for FdbStorage {
                 }
                 Err(e) => {
                     error!("Failed to get latest block for chain {}: {}", chain, e);
-                    Err(Error::storage(&format!(
+                    Err(Error::storage(format!(
                         "Failed to get latest block: {}",
                         e
                     )))
@@ -622,9 +622,9 @@ impl StorageReader for FdbStorage {
 
             // Simple health check - try to read a test key
             let test_key = format!("{}\x00healthcheck", self.config.namespace);
-            match tx.get(&test_key.as_bytes(), false).await {
+            match tx.get(test_key.as_bytes(), false).await {
                 Ok(_) => Ok(()),
-                Err(e) => Err(Error::storage(&format!(
+                Err(e) => Err(Error::storage(format!(
                     "FoundationDB health check failed: {}",
                     e
                 ))),

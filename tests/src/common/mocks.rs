@@ -59,7 +59,7 @@ impl std::ops::Sub for U256 {
 impl From<Vec<u8>> for U256 {
     fn from(bytes: Vec<u8>) -> Self {
         // Simple conversion for testing
-        U256(bytes.get(0).copied().unwrap_or(0) as u64)
+        U256(bytes.first().copied().unwrap_or(0) as u64)
     }
 }
 
@@ -114,7 +114,7 @@ impl FdbStorage {
             if filter.matches_chain(&event.chain)
                 && filter.matches_block(event.block_number)
                 && filter.matches_event_type(&event.event_type)
-                && filter.matches_address(&event.contract_address.as_deref().unwrap_or(""))
+                && filter.matches_address(event.contract_address.as_deref().unwrap_or(""))
                 && filter.matches_tx_hash(&event.tx_hash)
             {
                 result.push(event.clone());
@@ -267,6 +267,12 @@ impl AnvilInstance {
 pub struct Anvil;
 
 #[allow(dead_code)]
+impl Default for Anvil {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Anvil {
     pub fn new() -> Self {
         Self
@@ -351,7 +357,7 @@ impl StorageReader for FdbStorage {
                 if !filter.matches_chain(&event.chain)
                     || !filter.matches_block(event.block_number)
                     || !filter.matches_event_type(&event.event_type)
-                    || !filter.matches_address(&event.contract_address.as_deref().unwrap_or(""))
+                    || !filter.matches_address(event.contract_address.as_deref().unwrap_or(""))
                     || !filter.matches_tx_hash(&event.tx_hash)
                 {
                     matches = false;
@@ -410,7 +416,7 @@ impl StorageReader for FdbStorage {
                 if !filter.matches_chain(&event.chain)
                     || !filter.matches_block(event.block_number)
                     || !filter.matches_event_type(&event.event_type)
-                    || !filter.matches_address(&event.contract_address.as_deref().unwrap_or(""))
+                    || !filter.matches_address(event.contract_address.as_deref().unwrap_or(""))
                     || !filter.matches_tx_hash(&event.tx_hash)
                 {
                     matches = false;

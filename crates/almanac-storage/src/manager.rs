@@ -181,7 +181,7 @@ mod tests {
         let app_state = StorageManager::create_memory();
         // Test that we can create memory storage - no version field to check
         // Just verify we got an AppState
-        assert!(!app_state.storage.get_latest_block("test").await.is_err());
+        assert!(app_state.storage.get_latest_block("test").await.is_ok());
     }
 
     #[test]
