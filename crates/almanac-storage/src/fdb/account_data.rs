@@ -165,9 +165,9 @@ mod tests {
             1234567890,
         );
 
-        let serialized = almanac_chains::merkle_tree::AccountData::serialize(&original).unwrap();
+        let serialized = AccountData::serialize(&original).unwrap();
         let deserialized: ChainAccountData =
-            almanac_chains::merkle_tree::AccountData::deserialize(&serialized).unwrap();
+            AccountData::deserialize(&serialized).unwrap();
 
         assert_eq!(original.account_id, deserialized.account_id);
         assert_eq!(original.chain_id, deserialized.chain_id);

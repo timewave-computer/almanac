@@ -25,7 +25,8 @@ use solana_sdk::pubkey::Pubkey;
 use almanac_chains::adapters::solana_geyser::{
     GeyserConfig, RealGeyserAccountUpdate, RealSolanaGeyserManager,
 };
-use almanac_chains::adapters::solana_merkle::{SolanaAccountData, SolanaMerkleTreeManager};
+use almanac_chains::adapters::solana_native_merkle::{SolanaAccountData, SolanaNativeMerkleTree};
+use almanac_chains::merkle_trait::ChainMerkleTree;
 #[cfg(test)]
 use almanac_chains::subscription::AccountAddress;
 use almanac_chains::subscription::{
@@ -163,7 +164,7 @@ pub struct RealSolanaE2EInfrastructure {
     solana_process: Option<std::process::Child>,
     storage: Option<Arc<dyn Storage + Send + Sync>>,
     geyser_manager: Option<RealSolanaGeyserManager>,
-    merkle_manager: Option<Arc<SolanaMerkleTreeManager>>,
+    merkle_tree: Option<Arc<SolanaNativeMerkleTree>>,
     account_manager: Option<SolanaAccountManager>,
     event_handler: Option<Arc<RealEventHandler>>,
     created_accounts: Vec<Pubkey>,
@@ -176,7 +177,7 @@ impl RealSolanaE2EInfrastructure {
             solana_process: None,
             storage: None,
             geyser_manager: None,
-            merkle_manager: None,
+            merkle_tree: None,
             account_manager: None,
             event_handler: None,
             created_accounts: Vec::new(),
@@ -201,7 +202,7 @@ impl RealSolanaE2EInfrastructure {
         self.setup_real_geyser_manager().await?;
 
         // Step 5: Setup Merkle tree manager
-        self.setup_merkle_manager().await?;
+        self.setup_merkle_tree().await?;
 
         // Step 6: Wait for all services to be ready
         self.wait_for_services().await?;
@@ -407,14 +408,14 @@ impl RealSolanaE2EInfrastructure {
     }
 
     /// Setup Merkle tree manager
-    async fn setup_merkle_manager(&mut self) -> Result<()> {
+    async fn setup_merkle_tree(&mut self) -> Result<()> {
         println!("Setting up Merkle tree manager...");
 
-        let merkle_manager = Arc::new(SolanaMerkleTreeManager::new(
-            self.config.subscription_config.merkle_tree_depth,
+        let merkle_tree = Arc::new(SolanaNativeMerkleTree::new(
+            self.config.subscription_config.merkle_tree_depth as usize,
         ));
 
-        self.merkle_manager = Some(merkle_manager);
+        self.merkle_tree = Some(merkle_tree);
 
         // Create event handler
         let event_handler = Arc::new(RealEventHandler::new());
@@ -685,8 +686,8 @@ impl RealSolanaE2EInfrastructure {
     pub async fn verify_merkle_tree_proofs(&self) -> Result<()> {
         println!("Verifying Merkle tree inclusion proofs with real data...");
 
-        let merkle_manager = self
-            .merkle_manager
+        let merkle_tree = self
+            .merkle_tree
             .as_ref()
             .ok_or_else(|| anyhow!("Merkle manager not initialized"))?;
 
@@ -703,7 +704,7 @@ impl RealSolanaE2EInfrastructure {
                 write_version: 1,
             };
 
-            let _ = merkle_manager.update_account_full(account_data).await;
+            let _ = merkle_tree.update(account_data).await;
         }
 
         let mut verified_proofs = 0;
@@ -711,13 +712,13 @@ impl RealSolanaE2EInfrastructure {
         // Generate and verify inclusion proofs for each account
         for account_pubkey in &self.created_accounts {
             // Generate inclusion proof
-            match merkle_manager
-                .generate_inclusion_proof(account_pubkey)
+            match merkle_tree
+                .generate_proof(account_pubkey.as_ref())
                 .await
             {
                 Ok(proof) => {
                     // Verify the proof
-                    match merkle_manager.verify_inclusion_proof(&proof).await {
+                    match merkle_tree.verify_proof(&proof).await {
                         Ok(is_valid) => {
                             if is_valid {
                                 verified_proofs += 1;
@@ -747,14 +748,12 @@ impl RealSolanaE2EInfrastructure {
         }
 
         // Get tree statistics
-        let stats = merkle_manager.get_stats().await;
+        let stats = merkle_tree.stats().await;
         println!("Merkle tree statistics:");
-        println!("  - Total accounts in tree: {}", stats.total_accounts);
-        println!("  - Last update slot: {}", stats.last_update_slot);
-        println!(
-            "  - Total updates processed: {}",
-            stats.total_updates_processed
-        );
+        println!("  - Total accounts in tree: {}", stats.leaf_count);
+        println!("  - Tree depth: {}", stats.tree_depth);
+        println!("  - Root hash: {}", hex::encode(stats.root_hash));
+        println!("  - Memory usage: {} bytes", stats.memory_usage);
         println!(
             "  - Verified proofs: {}/{}",
             verified_proofs,
@@ -823,10 +822,10 @@ impl RealSolanaE2EInfrastructure {
             println!("Updates processed: {}", stats.total_updates_processed);
         }
 
-        if let Some(merkle_manager) = &self.merkle_manager {
-            let stats = merkle_manager.get_stats().await;
-            println!("Merkle tree accounts: {}", stats.total_accounts);
-            println!("Tree root hash: {}", hex::encode(stats.last_root_hash));
+        if let Some(merkle_tree) = &self.merkle_tree {
+            let stats = merkle_tree.stats().await;
+            println!("Merkle tree accounts: {}", stats.leaf_count);
+            println!("Tree root hash: {}", hex::encode(stats.root_hash));
         }
 
         println!("Created accounts: {}", self.created_accounts.len());

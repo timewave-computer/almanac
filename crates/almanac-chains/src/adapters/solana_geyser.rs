@@ -1,4 +1,4 @@
-//! Real Solana Geyser streaming implementation
+//! Solana Geyser streaming implementation
 //!
 //! This module provides real-time account streaming using Yellowstone Geyser gRPC
 //! to connect to actual Solana validators and stream real account updates.
@@ -23,7 +23,8 @@ use {
     // futures::StreamExt, // Unused in simplified implementation
 };
 
-use crate::adapters::solana_merkle::SolanaMerkleTreeManager;
+use crate::adapters::solana_native_merkle::{SolanaNativeMerkleTree, SolanaAccountData};
+use crate::merkle_trait::ChainMerkleTree;
 use crate::adapters::solana_idl::{derive_idl_pda, IDL_DISCRIMINATOR};
 use crate::adapters::solana_idl_fetcher::{IdlFetcherService, IdlFetcherConfig, Priority};
 use crate::subscription::{
@@ -84,7 +85,7 @@ pub struct RealSolanaGeyserManager {
     geyser_config: GeyserConfig,
     client: Option<Box<dyn std::any::Any + Send>>, // Store as dynamic type to avoid generic constraints
     rpc_client: Option<Arc<RpcClient>>,
-    merkle_manager: Arc<SolanaMerkleTreeManager>,
+    merkle_tree: Arc<SolanaNativeMerkleTree>,
     subscribed_accounts: Arc<RwLock<HashSet<Pubkey>>>,
     subscription_stats: Arc<RwLock<SubscriptionStats>>,
     #[allow(dead_code)]
@@ -103,7 +104,7 @@ impl RealSolanaGeyserManager {
         geyser_config: GeyserConfig,
         storage: Arc<dyn Storage + Send + Sync>,
     ) -> Result<Self, AccountSubscriptionError> {
-        let merkle_manager = Arc::new(SolanaMerkleTreeManager::new(config.merkle_tree_depth));
+        let merkle_tree = Arc::new(SolanaNativeMerkleTree::new(config.merkle_tree_depth as usize));
 
         let subscribed_accounts = Arc::new(RwLock::new(HashSet::new()));
         let subscription_stats = Arc::new(RwLock::new(SubscriptionStats {
@@ -142,7 +143,7 @@ impl RealSolanaGeyserManager {
             geyser_config,
             client: None,
             rpc_client,
-            merkle_manager,
+            merkle_tree,
             subscribed_accounts,
             subscription_stats,
             event_handlers: Vec::new(),
@@ -241,13 +242,13 @@ impl RealSolanaGeyserManager {
 
         // Start background task to process updates
         let storage = self.storage.clone();
-        let merkle_manager = self.merkle_manager.clone();
+        let merkle_tree = self.merkle_tree.clone();
         let stats = self.subscription_stats.clone();
         let fetcher = idl_fetcher.clone();
         tokio::spawn(Self::process_updates_to_fdb(
             update_receiver,
             storage,
-            merkle_manager,
+            merkle_tree,
             stats,
             idl_detection_receiver,
             fetcher,
@@ -299,7 +300,7 @@ impl RealSolanaGeyserManager {
     async fn process_updates_to_fdb(
         mut update_receiver: mpsc::UnboundedReceiver<RealGeyserAccountUpdate>,
         _storage: Arc<dyn Storage + Send + Sync>,
-        merkle_manager: Arc<SolanaMerkleTreeManager>,
+        merkle_tree: Arc<SolanaNativeMerkleTree>,
         stats: Arc<RwLock<SubscriptionStats>>,
         mut idl_detection_receiver: mpsc::UnboundedReceiver<Pubkey>,
         idl_fetcher: Arc<IdlFetcherService>,
@@ -365,16 +366,16 @@ impl RealSolanaGeyserManager {
             );
 
             // Update Merkle tree
-            let pubkey_bytes = update.pubkey.to_bytes();
-            let data_hash = {
-                use sha2::{Digest, Sha256};
-                let mut hasher = Sha256::new();
-                hasher.update(&account_data);
-                hasher.finalize()
-            };
+            // Create SolanaAccountData from the update
+            let account_data_obj = SolanaAccountData::from_account(
+                update.pubkey,
+                update.account.clone(),
+                update.slot,
+                update.write_version,
+            );
 
-            if let Ok(new_root) = merkle_manager
-                .update_account(&pubkey_bytes, &data_hash.into())
+            if let Ok(new_root) = merkle_tree
+                .update(account_data_obj)
                 .await
             {
                 let mut stats_guard = stats.write().await;
