@@ -12,16 +12,16 @@ pub mod ethereum;
 #[cfg(feature = "cosmos")]
 pub mod cosmos;
 
-#[cfg(feature = "solana")]
+#[cfg(any(feature = "solana", feature = "solana-core"))]
 pub mod solana;
 #[cfg(feature = "solana")]
-pub mod solana_geyser; // Real Geyser streaming implementation
-#[cfg(feature = "solana")]
-pub mod solana_merkle;
-#[cfg(feature = "solana")]
+pub mod solana_geyser; // Real Geyser streaming implementation (requires gRPC)
+#[cfg(any(feature = "solana", feature = "solana-core"))]
+pub mod solana_native_merkle; // Native Solana merkle tree
+#[cfg(any(feature = "solana", feature = "solana-core"))]
 pub mod solana_idl; // Anchor IDL detection and parsing
 #[cfg(feature = "solana")]
-pub mod solana_idl_fetcher; // Non-blocking IDL fetcher service
+pub mod solana_idl_fetcher; // Non-blocking IDL fetcher service (requires gRPC)
 
 // Re-exports
 pub use traits::{ChainAdapter, ChainAdapterError};

@@ -41,8 +41,6 @@ flate2 = "1.0"
 sha2 = { workspace = true }
 bincode = { workspace = true }
 
-# Sparse Merkle Tree
-sparse-merkle-tree = "0.6.1"
 
 # Chain-specific clients (optional)
 # Valence domain clients for cross-chain execution
@@ -62,6 +60,8 @@ tendermint-rpc = { version = "0.32", optional = true, features = ["http-client"]
 # Solana-specific (optional) - for real Geyser integration  
 solana-client = { version = "~2.3.0", optional = true }
 solana-sdk = { version = "~2.3.0", optional = true }
+solana-merkle-tree = { version = "~2.3.0", optional = true }
+solana-sha256-hasher = { version = "~2.2.0", optional = true }
 # solana-account-decoder = { version = "~2.3.0", optional = true }
 # solana-geyser-plugin-interface = { version = "~1.18.0", optional = true }
 yellowstone-grpc-client = { version = "=8.0.0", optional = true }
@@ -74,16 +74,20 @@ anchor-lang = { version = "0.31", optional = true }
 default = []
 cosmos = ["cosmrs", "tendermint", "tendermint-rpc"]
 ethereum = ["ethers"]
-solana = [
+solana-core = [
     "solana-client", 
     "solana-sdk", 
-    # "solana-account-decoder", 
-    # "solana-geyser-plugin-interface",
+    "solana-merkle-tree",
+    "solana-sha256-hasher",
+    "borsh",
+    "anchor-lang"
+]
+solana = [
+    "solana-core",
+    # gRPC dependencies for Geyser streaming
     "yellowstone-grpc-client",
     "yellowstone-grpc-proto", 
     "tonic",
-    "borsh",
-    "anchor-lang"
 ]
 valence = []
 valence-ethereum = ["ethereum"]

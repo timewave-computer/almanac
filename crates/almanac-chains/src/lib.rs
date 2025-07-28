@@ -4,7 +4,7 @@
 //! for event indexing and account subscription.
 
 pub mod adapters;
-pub mod merkle_tree;
+pub mod merkle_trait;
 pub mod subscription;
 
 // Valence domain client integration

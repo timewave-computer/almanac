@@ -73,6 +73,14 @@
             pkgs.curl
             pkgs.jq
             
+            # Build tools for protobuf and C++ compilation
+            pkgs.protobuf
+            pkgs.gcc
+            pkgs.clang
+            pkgs.llvmPackages.libcxx
+            pkgs.unzip
+            pkgs.cacert
+            
             # FoundationDB
             fdb-packages.foundationdb
             fdb-packages.fdb-manage
@@ -123,13 +131,32 @@
             export LD_LIBRARY_PATH="${fdb-packages.foundationdb}/lib:''${LD_LIBRARY_PATH:-}"
             export DYLD_LIBRARY_PATH="${fdb-packages.foundationdb}/lib:''${DYLD_LIBRARY_PATH:-}"
             
-            # Fix PKG_CONFIG_PATH to include OpenSSL and FoundationDB
-            export PKG_CONFIG_PATH="${fdb-packages.foundationdb}/lib/pkgconfig:${pkgs.openssl.dev}/lib/pkgconfig:''${PKG_CONFIG_PATH:-}"
+            # Fix PKG_CONFIG_PATH to include OpenSSL, FoundationDB, and Protobuf
+            export PKG_CONFIG_PATH="${fdb-packages.foundationdb}/lib/pkgconfig:${pkgs.openssl.dev}/lib/pkgconfig:${pkgs.protobuf}/lib/pkgconfig:''${PKG_CONFIG_PATH:-}"
             
             # Set OpenSSL environment variables for rust-openssl
             export OPENSSL_DIR="${pkgs.openssl.dev}"
             export OPENSSL_LIB_DIR="${pkgs.openssl.out}/lib"
             export OPENSSL_INCLUDE_DIR="${pkgs.openssl.dev}/include"
+            
+            # Set up protobuf environment variables
+            export PROTOC="${pkgs.protobuf}/bin/protoc"
+            export PROTOBUF_INCLUDE="${pkgs.protobuf}/include"
+            
+            # Set up C/C++ compiler environment for protobuf
+            export CC="${pkgs.clang}/bin/clang"
+            export CXX="${pkgs.clang}/bin/clang++"
+            export CFLAGS="-I${pkgs.protobuf}/include"
+            export CXXFLAGS="-I${pkgs.protobuf}/include -std=c++14 -stdlib=libc++"
+            export LDFLAGS="-L${pkgs.protobuf}/lib -stdlib=libc++"
+            
+            # Additional C++11 compiler detection fixes
+            export ac_cv_cxx_compile_cxx11=yes
+            export CONFIGURE_ENV="CXX='${pkgs.clang}/bin/clang++ -std=c++14 -stdlib=libc++'"
+            
+            # Certificate bundle for build scripts that fetch over HTTPS
+            export SSL_CERT_FILE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+            export CURL_CA_BUNDLE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
             
             # Create local include directory for FoundationDB headers
             if command -v fdbcli >/dev/null 2>&1; then

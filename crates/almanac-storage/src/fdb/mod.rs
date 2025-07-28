@@ -19,9 +19,8 @@ use foundationdb::{
 mod account_data;
 mod impl_actual;
 mod keyspace;
-pub mod merkle_tree;
 mod storage_impl;
-pub mod subscription_manager;
+pub mod subscription_manager_simple;
 mod tuple_encoding;
 mod tuple_layer;
 mod tuple_storage_impl;
@@ -37,7 +36,7 @@ pub use account_data::ChainAccountData;
 pub use impl_actual::TupleFdbStorage;
 pub use keyspace::TupleKeyspace;
 pub use storage_impl::FdbStorageExt;
-pub use subscription_manager::{
+pub use subscription_manager_simple::{
     AccountSubscriptionConfig, AccountSubscriptionManager, FdbAccountSubscriptionManager,
 };
 pub use tuple_layer::*;
