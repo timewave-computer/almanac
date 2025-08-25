@@ -102,7 +102,7 @@ impl FdbAccountSubscriptionManager {
                 Ok(accounts) => {
                     let mut subs = self.subscriptions.write().await;
                     for address in accounts {
-                        let account_addr = AccountAddress::new(address, chain.to_string());
+                        let account_addr = AccountAddress::new(address.into_bytes(), chain.to_string());
                         subs.insert(account_addr);
                     }
                     debug!("Loaded {} subscriptions for chain {}", subs.len(), chain);
@@ -148,7 +148,7 @@ impl AccountSubscriptionManager for FdbAccountSubscriptionManager {
             // Store in FDB
             match self
                 .tuple_storage
-                .add_account_subscription(&account.chain, &account.address, chrono::Utc::now().timestamp() as u64)
+                .add_account_subscription(&account.chain, &account.to_hex(), chrono::Utc::now().timestamp() as u64)
                 .await
             {
                 Ok(_) => {
@@ -181,7 +181,7 @@ impl AccountSubscriptionManager for FdbAccountSubscriptionManager {
             // Remove from FDB
             match self
                 .tuple_storage
-                .remove_account_subscription(&account.chain, &account.address)
+                .remove_account_subscription(&account.chain, &account.to_hex())
                 .await
             {
                 Ok(_) => {
@@ -234,8 +234,7 @@ impl AccountSubscriptionManager for FdbAccountSubscriptionManager {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use almanac_core::storage::memory::MemoryStorage;
+    // Test implementation would need proper setup
 
     #[tokio::test]
     async fn test_subscription_management() {

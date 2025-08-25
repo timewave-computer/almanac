@@ -40,6 +40,8 @@ pub enum TupleKeyspace {
     TrustPolicies = 16,
     /// Anchor program IDLs
     AnchorIdl = 17,
+    /// Account subscriptions for real-time updates
+    AccountSubscriptions = 18,
 }
 
 impl TupleKeyspace {
@@ -68,6 +70,7 @@ impl TupleKeyspace {
             TupleKeyspace::Subscriptions => "subscriptions",
             TupleKeyspace::ContractLayout => "contract_layout",
             TupleKeyspace::AnchorIdl => "anchor_idl",
+            TupleKeyspace::AccountSubscriptions => "account_subscriptions",
         }
     }
 }

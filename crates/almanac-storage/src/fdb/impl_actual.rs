@@ -715,6 +715,71 @@ mod fdb_impl {
 
             Ok(())
         }
+
+        /// Add account subscription
+        pub async fn add_account_subscription(&self, chain: &str, address: &str, timestamp: u64) -> Result<()> {
+            let tx = self.db.create_trx()?;
+            let tuple_key = vec![
+                Element::Bytes(Bytes::from(self.namespace.clone().into_bytes())),
+                Self::keyspace_element(TupleKeyspace::AccountSubscriptions),
+                Element::String(chain.to_string().into()),
+                Element::String(address.to_string().into()),
+            ];
+
+            tx.set(&pack(&tuple_key), &timestamp.to_be_bytes());
+            tx.commit()
+                .await
+                .map_err(|e| anyhow!("Transaction commit failed: {:?}", e))?;
+
+            Ok(())
+        }
+
+        /// Remove account subscription
+        pub async fn remove_account_subscription(&self, chain: &str, address: &str) -> Result<()> {
+            let tx = self.db.create_trx()?;
+            let tuple_key = vec![
+                Element::Bytes(Bytes::from(self.namespace.clone().into_bytes())),
+                Self::keyspace_element(TupleKeyspace::AccountSubscriptions),
+                Element::String(chain.to_string().into()),
+                Element::String(address.to_string().into()),
+            ];
+
+            tx.clear(&pack(&tuple_key));
+            tx.commit()
+                .await
+                .map_err(|e| anyhow!("Transaction commit failed: {:?}", e))?;
+
+            Ok(())
+        }
+
+        /// Get subscribed accounts for a chain
+        pub async fn get_subscribed_accounts(&self, chain: &str) -> Result<Vec<String>> {
+            let tx = self.db.create_trx()?;
+            let prefix_tuple = vec![
+                Element::Bytes(Bytes::from(self.namespace.as_bytes())),
+                Self::keyspace_element(TupleKeyspace::AccountSubscriptions),
+                Element::String(chain.to_string().into()),
+            ];
+
+            let prefix = pack(&prefix_tuple);
+            let kvs = match scan_with_prefix(&tx, &prefix, 10000).await {
+                Ok(range_results) => range_results,
+                Err(e) => {
+                    tracing::error!("Range scan failed: {}", e);
+                    Vec::new()
+                }
+            };
+
+            let mut addresses = Vec::new();
+            for (k, _) in kvs {
+                let tuple: Vec<Element> = unpack(&k)?;
+                if let Some(Element::String(address)) = tuple.get(3) {
+                    addresses.push(address.to_string());
+                }
+            }
+
+            Ok(addresses)
+        }
     }
 }
 
@@ -834,6 +899,21 @@ mod mock_impl {
 
         /// Delete Anchor IDL (mock implementation)
         pub async fn delete_anchor_idl(&self, _program_id: &str) -> Result<()> {
+            Err(anyhow!("FoundationDB not available (feature not enabled)"))
+        }
+
+        /// Add account subscription (mock implementation)
+        pub async fn add_account_subscription(&self, _chain: &str, _address: &str, _timestamp: u64) -> Result<()> {
+            Err(anyhow!("FoundationDB not available (feature not enabled)"))
+        }
+
+        /// Remove account subscription (mock implementation)
+        pub async fn remove_account_subscription(&self, _chain: &str, _address: &str) -> Result<()> {
+            Err(anyhow!("FoundationDB not available (feature not enabled)"))
+        }
+
+        /// Get subscribed accounts (mock implementation)
+        pub async fn get_subscribed_accounts(&self, _chain: &str) -> Result<Vec<String>> {
             Err(anyhow!("FoundationDB not available (feature not enabled)"))
         }
     }

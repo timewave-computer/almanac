@@ -14,12 +14,15 @@ use almanac_core::StorageReader;
 
 #[cfg(feature = "fdb")]
 use crate::fdb::{
-    subscription_manager::AccountSubscriptionConfig, FdbAccountSubscriptionManager, FdbConfig,
+    subscription_manager_simple::AccountSubscriptionConfig, FdbAccountSubscriptionManager, FdbConfig,
     FdbStorage, FdbStorageExt, TupleFdbStorage,
 };
 
 // Define a simple trait for subscription manager to avoid feature gate issues
 pub trait SimpleSubscriptionManager: Send + Sync {}
+
+#[cfg(feature = "fdb")]
+impl SimpleSubscriptionManager for FdbAccountSubscriptionManager {}
 
 // Define a basic AppState locally to avoid almanac-api circular dependency
 #[derive(Clone)]

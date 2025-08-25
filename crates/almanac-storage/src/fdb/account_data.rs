@@ -1,8 +1,25 @@
 //! Account data implementations for subscription management
 
-use crate::fdb::merkle_tree::{AccountData, MerkleTreeError};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+
+/// Error type for merkle tree operations
+#[derive(Debug, thiserror::Error)]
+pub enum MerkleTreeError {
+    #[error("Serialization error: {0}")]
+    SerializationError(String),
+}
+
+/// Trait for account data that can be stored in merkle trees
+pub trait AccountData {
+    fn account_id(&self) -> &[u8];
+    fn data_hash(&self) -> [u8; 32];
+    fn chain_id(&self) -> &str;
+    fn serialize(&self) -> Result<Vec<u8>, MerkleTreeError>;
+    fn deserialize(data: &[u8]) -> Result<Self, MerkleTreeError>
+    where
+        Self: Sized;
+}
 
 // Removed circular dependency - define local types
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
