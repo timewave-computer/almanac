@@ -7,7 +7,8 @@ Cargo.lock
 result
 result-*
 .direnv/
-nix/ethereum/result/
+nix/*/result
+nix/*/result-*
 
 # FoundationDB
 .fdb_include/
