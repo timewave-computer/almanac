@@ -10,6 +10,11 @@ result-*
 nix/*/result
 nix/*/result-*
 
+# Build artifacts
+target/
+build.log
+build_default.log
+
 # FoundationDB
 .fdb_include/
 data/foundationdb/
@@ -51,14 +56,27 @@ forge-cache/
 .DS_Store
 Thumbs.db
 
+# Solana
+test-ledger/
+*.keypair
+ledger/
+
 # Testing
 test_outputs/
 test_run.log
 tests/contracts/cosmwasm/artifacts/
 e2e/generated/
+tests/environment/*/logs/
+tests/environment/*/data/
 
 # Working
 work/
+scripts/
 
 # OpenAPI
 openapi.json
+
+# Config files (keep templates but ignore instances)
+config/nixos-server.toml
+config/prod-historical.toml
+config/simulation.toml

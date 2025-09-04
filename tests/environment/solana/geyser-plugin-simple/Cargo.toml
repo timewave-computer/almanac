@@ -1,0 +1,14 @@
+[package]
+name = "almanac-geyser-plugin"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+name = "almanac_geyser_plugin"
+
+[dependencies]
+solana-geyser-plugin-interface = "=1.18.26"
+log = "0.4"
+
+[workspace]

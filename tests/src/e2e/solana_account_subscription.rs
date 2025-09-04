@@ -19,6 +19,9 @@ use tempfile::TempDir;
 use tokio::time::sleep;
 use uuid::Uuid;
 
+// Import our Nix environment utilities
+use crate::utils::NixEnvironment;
+
 // Solana imports for account interaction
 use solana_sdk::pubkey::Pubkey;
 
@@ -161,6 +164,7 @@ impl SubscriptionEventHandler for RealEventHandler {
 /// Solana E2E test infrastructure with FoundationDB
 pub struct RealSolanaE2EInfrastructure {
     config: RealSolanaE2EConfig,
+    nix_env: NixEnvironment,
     solana_process: Option<std::process::Child>,
     storage: Option<Arc<dyn Storage + Send + Sync>>,
     geyser_manager: Option<RealSolanaGeyserManager>,
@@ -171,9 +175,18 @@ pub struct RealSolanaE2EInfrastructure {
 }
 
 impl RealSolanaE2EInfrastructure {
-    pub fn new(config: RealSolanaE2EConfig) -> Self {
-        Self {
+    pub fn new(config: RealSolanaE2EConfig) -> Result<Self> {
+        let nix_env = NixEnvironment::detect()
+            .map_err(|e| anyhow!("Failed to detect Nix environment: {}", e))?;
+        
+        // Check if Solana environment is available
+        if let Err(e) = nix_env.check_blockchain_availability("solana") {
+            println!("Warning: Solana environment not available: {}", e);
+        }
+
+        Ok(Self {
             config,
+            nix_env,
             solana_process: None,
             storage: None,
             geyser_manager: None,
@@ -181,7 +194,7 @@ impl RealSolanaE2EInfrastructure {
             account_manager: None,
             event_handler: None,
             created_accounts: Vec::new(),
-        }
+        })
     }
 
     /// Set up the complete real test infrastructure
@@ -223,16 +236,24 @@ impl RealSolanaE2EInfrastructure {
         // Create Geyser plugin configuration
         self.create_geyser_config().await?;
 
-        // Start solana test validator with Geyser plugin using nix develop environment
-        let validator_process = Command::new("nix")
-            .args([
-                "develop", ".#solana",
-                "--command", "bash", "-c",
-                &format!(
-                    "solana-test-validator --ledger {} --rpc-port 8899 --bind-address 0.0.0.0 --reset --geyser-plugin-config /tmp/geyser-config.json --log",
-                    self.config.temp_dir.path().join("test-ledger").display()
-                )
-            ])
+        // Start solana test validator with Geyser plugin using appropriate nix environment
+        let mut nix_cmd = self.nix_env.get_nix_develop_command("solana")
+            .map_err(|e| anyhow!("Failed to get Solana nix command: {}", e))?;
+        
+        nix_cmd.extend([
+            "bash".to_string(),
+            "-c".to_string(),
+            format!(
+                "solana-test-validator --ledger {} --rpc-port 8899 --bind-address 0.0.0.0 --reset --geyser-plugin-config /tmp/geyser-config.json --log",
+                self.config.temp_dir.path().join("test-ledger").display()
+            )
+        ]);
+
+        println!("Starting Solana validator with command: {:?}", nix_cmd);
+        println!("Using Nix environment: {:?}", self.nix_env.os);
+
+        let validator_process = Command::new(&nix_cmd[0])
+            .args(&nix_cmd[1..])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
@@ -890,7 +911,7 @@ pub async fn run_real_solana_account_subscription_e2e_test() -> Result<()> {
     println!();
 
     let config = RealSolanaE2EConfig::default();
-    let mut infrastructure = RealSolanaE2EInfrastructure::new(config);
+    let mut infrastructure = RealSolanaE2EInfrastructure::new(config)?;
 
     // Setup infrastructure
     infrastructure.setup().await?;

@@ -1,6 +1,6 @@
-# Almanac Test Contracts and Infrastructure
+# Almanac Test Infrastructure
 
-This directory primarily contains smart contract source code and related infrastructure used for testing the Almanac project's chain adapters and indexing capabilities. These contracts are compiled and deployed as part of the integration and end-to-end test suites.
+This directory contains test infrastructure for the Almanac project, including smart contracts, environment validation, integration tests, and end-to-end test suites.
 
 ## Running Tests
 
@@ -16,24 +16,57 @@ nix develop --command cargo test
 nix run .#run-e2e-tests
 ```
 
-## Contract Categories
+## Directory Structure
 
-### Solidity Contracts
-- Located in `ethereum-contracts/`
-- Used for testing Ethereum chain adapter functionality.
-- Compiled and deployed using Foundry.
+### Environment Tests (`environment/`)
+- **`solana/`** - Solana environment validation tests for macOS and NixOS
+  - Geyser plugin compatibility testing
+  - Nix environment validation  
+  - KVM/DigitalOcean deployment checks
+  - Build system verification
 
-### CosmWasm Contracts
-- Located in `cosmos-contracts/`
-- Used for testing Cosmos chain adapter functionality.
-- Compiled into WASM binaries and deployed using CosmWasm tools.
+### Smart Contracts (`contracts/`)
+
+#### Solidity Contracts
+- Located in `contracts/solidity/`
+- Used for testing Ethereum chain adapter functionality
+- Compiled and deployed using Foundry
+
+#### CosmWasm Contracts  
+- Located in `contracts/cosmwasm/`
+- Used for testing Cosmos chain adapter functionality
+- Compiled into WASM binaries and deployed using CosmWasm tools
+
+### Integration Tests (`integration/`)
+- Cross-chain event correlation tests
+- Storage backend integration tests
+- API endpoint validation
+
+### End-to-End Tests (`e2e/`)
+- Multi-chain simulation tests
+- Account subscription validation
+- IDL indexing functionality
 
 ## Test Fixtures
 
 General test data and configurations (e.g., ABIs, schemas, example configurations) are located in the project's root-level `fixtures/` directory.
 
-## Adding New Contracts or Tests
+## Adding New Tests
 
-1.  **For new Solidity contracts**: Add `.sol` files to `ethereum-contracts/`.
-2.  **For new CosmWasm contracts**: Add Rust source files to `cosmos-contracts/`.
-3.  **For tests utilizing these contracts**: Refer to the `e2e/` directory for examples of how these contracts are integrated into the end-to-end testing infrastructure.
+1. **Environment tests**: Add to `environment/` for Nix flake validation and deployment testing
+2. **Smart contracts**: 
+   - Solidity: Add `.sol` files to `contracts/solidity/`
+   - CosmWasm: Add Rust source files to `contracts/cosmwasm/`
+3. **Integration tests**: Add to `integration/` for component interaction testing
+4. **E2E tests**: Add to `e2e/` for full system validation
+
+## Running Environment Tests
+
+Environment tests validate Nix configurations and deployment compatibility:
+
+```bash
+# Run Solana environment tests
+cd tests/environment/solana
+./test-build.sh            # Test build compatibility (macOS/NixOS)
+./test-geyser-setup.sh     # Test Geyser plugin setup
+```

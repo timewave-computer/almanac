@@ -57,10 +57,35 @@ chain_id = 1337
 starting_block = 0
 batch_size = 50
 
+# Historical state management for Ethereum
+[chains.ethereum.historical_state]
+blocks_to_keep = 1000      # Keep last 1000 blocks
+enable_pruning = true      # Enable state pruning
+pruning_interval = 100     # Prune every 100 blocks
+
 [[chains.cosmos]]
 name = "cosmos-dev"
 rpc_url = "http://localhost:26657"
 grpc_url = "http://localhost:9090"
 chain_id = "ufo-local-1"
 starting_block = 0
-batch_size = 50 
+batch_size = 50
+
+# Historical state management for Cosmos
+[chains.cosmos.historical_state]
+blocks_to_keep = 2000      # Keep last 2000 blocks
+enable_pruning = true      # Enable state pruning
+pruning_interval = 500     # Prune every 500 blocks
+
+[[chains.solana]]
+name = "solana-dev"
+rpc_url = "http://localhost:8899"
+ws_url = "ws://localhost:8900"
+starting_slot = 0
+batch_size = 50
+
+# Historical state management for Solana
+[chains.solana.historical_state]
+blocks_to_keep = 500       # Keep last 500 slots
+enable_pruning = true      # Enable state pruning
+pruning_interval = 50      # Prune every 50 slots 

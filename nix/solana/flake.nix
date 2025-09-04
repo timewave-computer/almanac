@@ -316,7 +316,6 @@
             fetchSubmodules = true;
           };
 
-          useFetchCargoVendor = true;
           cargoHash = "sha256-fjhLA+utQdgR75wg+/N4VwASW6+YBHglRPj14sPHmGA=";
 
           # Build the CLI package specifically
@@ -620,7 +619,7 @@ EOF
               export PROTOC="${pkgs.protobuf}/bin/protoc"
               export PROTOBUF_LOCATION="${pkgs.protobuf}"
               
-              echo "✓ Protobuf-src build environment configured with wrapper"
+              echo "Protobuf-src build environment configured with wrapper"
               echo "  CC: $CC"
               echo "  CXX: $CXX"
               echo "  LDFLAGS: $LDFLAGS"

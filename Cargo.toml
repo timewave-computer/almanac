@@ -13,10 +13,14 @@ members = [
     "crates/almanac-testing",
     
     
-    # Chain-specific node binaries
-    "crates/almanac-nodes/ethereum",
-    "crates/almanac-nodes/cosmos",
-    # "crates/almanac-nodes/solana",  # Temporarily disabled due to dependency issues
+    # NOTE: Chain-specific node binaries are isolated to prevent dependency conflicts
+    # Build them separately:
+    # - Ethereum: cd crates/almanac-nodes/ethereum && cargo build
+    # - Cosmos: cd crates/almanac-nodes/cosmos && cargo build  
+    # - Solana: cd crates/almanac-nodes/solana && cargo build
+    # "crates/almanac-nodes/ethereum",
+    # "crates/almanac-nodes/cosmos",
+    # "crates/almanac-nodes/solana",
     
     # Test suite
     "tests",

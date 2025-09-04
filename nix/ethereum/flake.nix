@@ -1,5 +1,5 @@
 {
-  description = "Ethereum development environment with geth, lighthouse, and forge";
+  description = "Ethereum development environment for macOS";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -16,111 +16,42 @@
         inputs.devshell.flakeModule
       ];
 
-      systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
+      systems = [ "aarch64-darwin" "x86_64-darwin" "x86_64-linux" "aarch64-linux" ];
 
       perSystem = { config, self', inputs', pkgs, system, ... }: {
         packages = rec {
-          # Geth - Ethereum execution client (from zero.nix)
-          geth = pkgs.buildGoModule rec {
-            pname = "geth";
-            version = "1.15.6";
-            
-            src = pkgs.fetchFromGitHub {
-              owner = "ethereum";
-              repo = "go-ethereum";
-              rev = "v${version}";
-              hash = "sha256-BdNv0rx+9/F0leNj2AAej8psy8X8HysDrIXheVOOkSo=";
+          # Use system packages optimized for macOS
+          geth = pkgs.go-ethereum;
+          lighthouse = if (pkgs ? lighthouse && !pkgs.lighthouse.meta.broken or false) 
+            then pkgs.lighthouse 
+            else pkgs.writeShellApplication {
+              name = "lighthouse";
+              text = ''
+                echo "Lighthouse not available on macOS in current nixpkgs"
+                echo "Install via:"
+                echo "  brew install lighthouse"
+                echo "  or download from: https://github.com/sigp/lighthouse/releases"
+                exit 1
+              '';
             };
-            
-            vendorHash = "sha256-KRVI1DxjoABZFJkmjGaMVlmxIHvtSFuvmpuMuvr8Pws=";
-            
-            doCheck = false;
-            
-            subPackages = [ "cmd/geth" ];
-            
-            # Build configuration
-            env.CGO_ENABLED = if pkgs.stdenv.isLinux then "1" else "0";
-            buildFlags = [ "-mod=readonly" ];
-            
-            # Add necessary inputs for CGO on Linux
-            buildInputs = with pkgs; lib.optionals stdenv.isLinux [
-              glibc
-              gcc
-            ];
-            
-            nativeBuildInputs = with pkgs; lib.optionals stdenv.isLinux [
-              pkg-config
-            ];
-            
-            meta = with pkgs.lib; {
-              description = "Official Go implementation of the Ethereum protocol";
-              homepage = "https://github.com/ethereum/go-ethereum";
-              license = licenses.lgpl3Plus;
-              mainProgram = "geth";
-            };
-          };
-          
-          # Lighthouse - Ethereum consensus client (from zero.nix)
-          lighthouse = pkgs.rustPlatform.buildRustPackage rec {
-            pname = "lighthouse";
-            version = "5.3.0";
-            
-            src = pkgs.fetchFromGitHub {
-              owner = "sigp";
-              repo = "lighthouse";
-              rev = "v${version}";
-              hash = "sha256-wIj+YabyUrgLjWCfjCAH/Xb8jUG6ss+5SwnE2M82a+4=";
-            };
-            
-            cargoHash = "sha256-v/gOTbkzcwmqV8XCzkLzAl6LyshVBWxUclZxx1mr53o=";
-            useFetchCargoVendor = true;
-            
-            buildInputs = with pkgs; [
-              openssl
-            ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
-              pkgs.darwin.apple_sdk.frameworks.Security
-              pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
-            ];
-            
-            nativeBuildInputs = with pkgs; [
-              pkg-config
-              protobuf
-              cmake
-            ];
-            
-            # Disable tests that require network access
-            doCheck = false;
-            
-            # Build only the lighthouse binary
-            cargoBuildFlags = [ "--bin" "lighthouse" ];
-            
-            meta = with pkgs.lib; {
-              description = "Ethereum consensus client written in Rust";
-              homepage = "https://github.com/sigp/lighthouse";
-              license = licenses.asl20;
-              mainProgram = "lighthouse";
-            };
-          };
-
-          # Forge from Foundry toolchain
-          forge = pkgs.foundry;
+          foundry = pkgs.foundry;
         };
 
         devshells.default = {
-          name = "ethereum-development";
+          name = "ethereum-development-macos";
           
           commands = [
             {
               package = self'.packages.geth;
-              help = "Ethereum execution client";
+              help = "Ethereum execution client (geth)";
             }
             {
               package = self'.packages.lighthouse;
-              help = "Ethereum consensus client";
+              help = "Ethereum consensus client (lighthouse)";
             }
             {
-              package = self'.packages.forge;
-              help = "Ethereum development framework";
+              package = self'.packages.foundry;
+              help = "Ethereum development framework (forge, cast, anvil)";
             }
             {
               package = pkgs.curl;
@@ -134,16 +65,82 @@
               package = pkgs.openssl;
               help = "SSL/TLS toolkit";
             }
+            {
+              package = pkgs.nodejs;
+              help = "Node.js for web3 development";
+            }
+            {
+              package = pkgs.yarn;
+              help = "Package manager for Node.js";
+            }
+            {
+              package = pkgs.python3;
+              help = "Python for web3.py development";
+            }
+            {
+              package = pkgs.git;
+              help = "Version control";
+            }
+          ];
+          
+          env = [
+            {
+              name = "ETH_RPC_URL";
+              value = "http://127.0.0.1:8545";
+            }
+            {
+              name = "ETH_WS_URL";
+              value = "ws://127.0.0.1:8546";
+            }
+            {
+              name = "FOUNDRY_PROFILE";
+              value = "default";
+            }
+            {
+              name = "ANVIL_IP_ADDR";
+              value = "0.0.0.0";
+            }
+            {
+              name = "MACOSX_DEPLOYMENT_TARGET";
+              value = "10.15";
+            }
           ];
           
           motd = ''
-            {14}{bold}Ethereum development environment{reset}
-            {9}Network: sepolia (default){reset}
+            {14}{bold}Ethereum development environment (macOS){reset}
+            {9}Optimized for Apple Silicon and Intel Macs{reset}
+            
+            {13}Available tools:{reset}
+              - geth: Ethereum execution client (${self'.packages.geth.version or "latest"})
+              - lighthouse: Ethereum consensus client (install via brew if not available)
+              - foundry: Complete Ethereum development framework
+                * forge: Build, test, and deploy contracts
+                * cast: Ethereum RPC client and Swiss Army knife
+                * anvil: Local Ethereum node for development
+              - Node.js/Yarn: For web3.js development
+              - Python: For web3.py development
             
             {13}Quick start:{reset}
+              # Start local development node
+              anvil                     # Local Ethereum node (port 8545)
+              
+              # Ethereum mainnet/testnet
               geth --sepolia --datadir ./data/geth --http --ws
               lighthouse bn --network sepolia --datadir ./data/lighthouse
-              forge init my-project
+              
+              # Smart contract development
+              forge init my-project     # Create new Foundry project
+              cd my-project
+              forge build               # Compile contracts
+              forge test                # Run tests
+              forge script script/Deploy.s.sol --rpc-url $ETH_RPC_URL --broadcast
+              
+            {13}Environment variables:{reset}
+              - ETH_RPC_URL: $ETH_RPC_URL
+              - ETH_WS_URL: $ETH_WS_URL
+              - FOUNDRY_PROFILE: $FOUNDRY_PROFILE
+              - ANVIL_IP_ADDR: $ANVIL_IP_ADDR
+              - MACOSX_DEPLOYMENT_TARGET: $MACOSX_DEPLOYMENT_TARGET
           '';
         };
       };

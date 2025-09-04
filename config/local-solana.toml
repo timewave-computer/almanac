@@ -1,0 +1,54 @@
+# Almanac Configuration for Local Solana Testing
+
+[simulation]
+name = "almanac-solana-test"
+chains = ["solana"]
+
+[almanac]
+name = "local-solana"
+api_port = 8080
+api_log_file = "logs/almanac-api.log"
+
+[storage]
+backend = "memory"
+
+[services.solana]
+enabled = true
+node_type = "test-validator"
+rpc_port = 8899
+ws_port = 8900
+data_dir = "data/solana"
+log_file = "logs/solana.log"
+
+[services.solana.idl_indexing]
+enabled = true
+queue_size = 10000
+fetch_concurrency = 10
+fetch_timeout_ms = 5000
+retry_max_attempts = 3
+retry_backoff_ms = 1000
+circuit_breaker_threshold = 5
+circuit_breaker_timeout_ms = 60000
+
+# Chain configuration
+[[chains.solana]]
+name = "local-testnet"
+rpc_url = "http://localhost:8899"
+ws_url = "ws://localhost:8900"
+starting_slot = 0
+batch_size = 100
+
+# Subscription configuration
+[subscription_config]
+max_subscribed_accounts = 1000
+bloom_filter_size = 10000
+bloom_filter_hash_count = 3
+merkle_tree_depth = 32
+max_batch_size = 10
+cleanup_interval_blocks = 100
+
+# Historical state management
+[chains.solana.historical_state]
+blocks_to_keep = 500
+enable_pruning = true
+pruning_interval = 50

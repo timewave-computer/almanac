@@ -11,7 +11,10 @@ The Almanac API includes comprehensive Swagger UI documentation that provides in
 The simplest way to start the Swagger UI server is using the Nix flake:
 
 ```bash
-# Start with default settings (port 8080)
+# Start with default settings using Just (recommended)
+just start-swagger
+
+# Start with Nix (alternative)
 nix run .#swagger-ui
 
 # Start with custom port

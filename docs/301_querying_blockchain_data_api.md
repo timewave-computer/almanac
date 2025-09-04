@@ -44,11 +44,15 @@ For development, start the API server locally:
 # Enter nix development environment (automatically sets up library paths)
 nix develop
 
-# Start FoundationDB
-fdb-manage start
+# Start FoundationDB using Just (recommended)
+just start-fdb
 
-# Start the API server
-cargo run -p almanac-api --features fdb
+# Start the API server using Just
+just start-api
+
+# Or manually:
+# nix develop --command fdb-manage start
+# nix develop --command cargo run -p almanac-api --features fdb
 ```
 
 The API will be available at `http://localhost:8080`.

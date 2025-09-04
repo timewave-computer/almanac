@@ -163,6 +163,15 @@ pub fn create_router(mut state: AppState) -> Router {
             "/subscriptions",
             subscription_routes.with_state(state.clone()),
         );
+    
+    // Test routes (only in debug builds)
+    #[cfg(debug_assertions)]
+    let api_v1_routes = api_v1_routes.nest(
+        "/test",
+        Router::new()
+            .route("/simulate-update", post(crate::handlers::test::simulate_account_update))
+            .with_state(state.clone()),
+    );
     // .layer(from_fn_with_state(state.rate_limiter.clone(), rate_limit_middleware));
 
     // Apply new auth middleware if auth service is configured, otherwise use legacy

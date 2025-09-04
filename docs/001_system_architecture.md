@@ -44,13 +44,13 @@ Almanac uses a distributed microservices architecture where chain-specific index
        │                  │                   │
 ┌──────▼──────────┐ ┌─────▼──────────┐ ┌──────▼──────────┐
 │ almanac-ethereum│ │almanac-cosmos  │ │almanac-solana   │
-│     :9091       │ │     :9092      │ │    :9093        │
+│     :9092       │ │     :9093      │ │    :8899        │
 ├─────────────────┤ ├────────────────┤ ├─────────────────┤
 │ • Event indexing│ │• Event indexing│ │• Account data   │
 │ • Reorg handling│ │• BFT consensus │ │• PoH validation │
 │ • State proofs  │ │• IBC tracking  │ │• Program logs   │
 │ • EVM traces    │ │• Module events │ │• Slot tracking  │
-│ • Health :9091  │ │• Health :9092  │ │• Health :9093   │
+│ • Health :9092  │ │• Health :9093  │ │• Health :8899   │
 │ • Metrics       │ │• Metrics       │ │• Metrics        │
 └─────────────────┘ └────────────────┘ └─────────────────┘
         │                    │                  │

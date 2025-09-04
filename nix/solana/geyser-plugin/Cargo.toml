@@ -1,0 +1,51 @@
+[package]
+name = "almanac-geyser-plugin"
+version = "0.1.0"
+edition = "2021"
+authors = ["Timewave Labs"]
+license = "MIT"
+description = "Geyser plugin for streaming Solana data to Almanac database"
+
+[lib]
+crate-type = ["cdylib"]
+name = "almanac_geyser_plugin"
+
+[dependencies]
+# Solana Geyser plugin interface
+solana-geyser-plugin-interface = "=1.18.26"
+solana-sdk = "=1.18.26"
+solana-transaction-status = "=1.18.26"
+solana-account-decoder = "=1.18.26"
+
+# Database
+tokio-postgres = { version = "0.7", features = ["with-serde_json-1"] }
+deadpool-postgres = "0.10"
+
+# Async runtime
+tokio = { version = "1.29", features = ["full"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+bincode = "1.3"
+bs58 = "0.5"
+
+# Logging
+log = "0.4"
+env_logger = "0.10"
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Configuration
+config = "0.13"
+
+# Utils
+chrono = "0.4"
+
+[dev-dependencies]
+tempfile = "3.8"
+serial_test = "2.0"
+
+[workspace]

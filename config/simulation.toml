@@ -1,58 +1,43 @@
 # Almanac Simulation Configuration
-# Consolidated configuration for local multi-chain simulation environment
+# Generated on Wed Aug 27 18:58:22 CEST 2025
 
 [simulation]
 name = "almanac-local-cluster"
-chains = ["--help"]
+chains = ["ethereum", "cosmos"]
 
 [almanac]
 name = "local-simulation"
 api_port = 3000
-api_log_file = "/Users/hxrts/projects/timewave/almanac/logs/almanac-api.log"
+api_log_file = "logs/almanac-api.log"
 
 [storage]
-backend = "foundationdb"
-cluster_file = "/Users/hxrts/projects/timewave/almanac/data/fdb.cluster"
-
-[services.foundationdb]
-enabled = false
-cluster_file = "/Users/hxrts/projects/timewave/almanac/data/fdb.cluster"
-data_dir = "/Users/hxrts/projects/timewave/almanac/data/foundationdb"
-log_dir = "/Users/hxrts/projects/timewave/almanac/logs/foundationdb"
+backend = "memory"
 
 [services.ethereum]
-enabled = false
-node_type = "anvil"
+enabled = true
 rpc_port = 8545
 ws_port = 8546
 chain_id = 31337
-data_dir = "/Users/hxrts/projects/timewave/almanac/data/ethereum"
-log_file = "/Users/hxrts/projects/timewave/almanac/logs/anvil.log"
+data_dir = "data/ethereum"
+log_file = "logs/anvil.log"
 
 [services.cosmos]
-enabled = false
-node_type = "neutron"
+enabled = true
 rpc_port = 26657
 grpc_port = 9090
-api_port = 1317
 chain_id = "test-1"
-data_dir = "/Users/hxrts/projects/timewave/almanac/data/cosmos"
-log_file = "/Users/hxrts/projects/timewave/almanac/logs/neutron.log"
+data_dir = "data/cosmos"
+log_file = "logs/cosmos.log"
 
 [services.solana]
 enabled = false
-node_type = "test-validator"
 rpc_port = 8899
 ws_port = 8900
-data_dir = "/Users/hxrts/projects/timewave/almanac/data/solana"
-log_file = "/Users/hxrts/projects/timewave/almanac/logs/solana.log"
+data_dir = "data/solana"
+log_file = "logs/solana.log"
 
-[services.solana.idl_indexing]
-enabled = true
-queue_size = 10000
-fetch_concurrency = 10
-fetch_timeout_ms = 5000
-retry_max_attempts = 3
-retry_backoff_ms = 1000
-circuit_breaker_threshold = 5
-circuit_breaker_timeout_ms = 60000
+[services.foundationdb]
+enabled = false
+cluster_file = "data/fdb.cluster"
+data_dir = "data/foundationdb"
+log_dir = "logs/foundationdb"

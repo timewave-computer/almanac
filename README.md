@@ -30,7 +30,7 @@ Almanac supports multiple blockchain networks through dedicated node services:
 
 - **[`almanac-nodes/ethereum`](crates/almanac-nodes/ethereum/)** - Ethereum indexing node
 - **[`almanac-nodes/cosmos`](crates/almanac-nodes/cosmos/)** - Cosmos indexing node
-- **[`almanac-nodes/solana`](crates/almanac-nodes/solana/)** - Solana indexing node (WIP)
+- **[`almanac-nodes/solana`](crates/almanac-nodes/solana/)** - Solana indexing node
 
 Each chain adapter implements the [`ChainAdapter`](crates/almanac-chains/src/adapters/traits.rs) trait, providing a unified interface for blockchain integration.
 
@@ -65,19 +65,23 @@ The storage layer also includes a memory backend for testing and development.
 Configuration is managed through TOML files with environment-specific overrides:
 
 - [`config/dev.toml`](config/dev.toml) - Development configuration
-- [`config/prod.toml`](config/prod.toml) - Production configuration  
+- [`config/prod.toml`](config/prod.toml) - Production configuration
+- [`config/prod-historical.toml`](config/prod-historical.toml) - Historical data configuration
+- [`config/nixos-server.toml`](config/nixos-server.toml) - NixOS server configuration  
 - [`config/test.toml`](config/test.toml) - Test configuration
 - [`config/cosmos.toml`](config/cosmos.toml) - Cosmos-specific settings
 - [`config/ethereum.toml`](config/ethereum.toml) - Ethereum-specific settings
 - [`config/solana.toml`](config/solana.toml) - Solana-specific settings
+- [`config/simulation.toml`](config/simulation.toml) - Multi-chain simulation settings
 
 ## Development Setup
 
 ### Prerequisites
 
 - Rust 1.75+
-- FoundationDB 7.1+
-- Nix
+- FoundationDB 7.1+ (optional - can use memory backend for development)
+- Nix with flakes enabled
+- Just command runner (optional - provides convenience commands)
 
 ### Using Nix
 
@@ -85,10 +89,13 @@ Configuration is managed through TOML files with environment-specific overrides:
 # Enter development shell
 nix develop
 
-# Build all crates
-nix build
+# Build all crates (simplified - no longer requires nix wrapper)
+cargo build --workspace
 
-# Run tests
+# Run tests  
+just test
+
+# Check nix flake
 nix flake check
 ```
 
@@ -97,11 +104,11 @@ nix flake check
 ### API Server
 
 ```bash
-# Development - run API with Swagger UI
-nix run .#swagger-ui
-
-# Alternative - run via development shell
+# Run API server via development shell
 nix develop
+cargo run --bin almanac-api
+
+# Alternative - run directly without nix
 cargo run --bin almanac-api
 ```
 
@@ -115,12 +122,21 @@ export API_HOST=127.0.0.1
 export API_PORT=8080
 ```
 
-### Indexing Nodes
+### Simulation Environment
 
 ```bash
-# Use simulation cluster for multi-chain indexing
-nix run .#sim-cluster -- init ethereum,cosmos,fdb
-nix run .#sim-cluster -- start
+# Use the integrated simulation environment (recommended)
+cd nix/simulation
+nix develop
+
+# Initialize with all blockchain services
+sim-cluster init
+
+# Start services (shows platform-specific commands)
+sim-cluster start
+
+# Check service status
+sim-cluster status
 
 # Or run individual indexers via development shell
 nix develop
@@ -128,25 +144,31 @@ cargo run --bin almanac-node-ethereum -- --config config/ethereum.toml
 cargo run --bin almanac-node-cosmos -- --config config/cosmos.toml
 ```
 
-### Using Helper Scripts
+### Using Just Commands
 
-The project includes several helper scripts in the [`scripts/`](scripts/) directory:
+The project uses `just` as a command runner with various automated tasks:
 
 ```bash
-# Setup development environment
-./scripts/dev/setup-dev-env.sh
+# Initialize project directories
+just init
 
-# Run all tests
-./scripts/testing/run-all-tests.sh
+# Build the project
+just build
 
-# Test API functionality
-./scripts/testing/api-tests.sh
+# Run tests
+just test
 
-# Monitor API health
-./scripts/services/monitor-api-health.sh
+# Start/stop blockchain services
+just start-fdb          # Start FoundationDB
+just start-ethereum     # Start Ethereum (Anvil)
+just start-cosmos       # Start Cosmos (Neutron)
+just start-solana       # Start Solana test validator
 
-# Manage API service
-./scripts/services/manage-api-service.sh
+# Stop all services
+just stop
+
+# Run simulation environment  
+just sim-quick-start    # Quick start integrated multi-chain simulation
 ```
 
 ## API Usage
@@ -210,26 +232,19 @@ curl http://localhost:9093/health  # Cosmos node
 ### Nix Deployment
 
 ```bash
-# Build production image
-nix build .#almanac-api
-
-# Use NixOS modules
-# See nix/modules/almanac-api.nix for configuration options
+# Build release binaries
+cargo build --release --bin almanac-api
+cargo build --release --bin almanac-node-ethereum  
+cargo build --release --bin almanac-node-cosmos
+cargo build --release --bin almanac-node-solana
 ```
 
 ### Manual Deployment
 
 1. Build release binaries:
    ```bash
-   # Build API and tools
-   nix build .#swagger-ui
-   nix build .#generate-openapi-spec
-   
-   # Build via development shell
-   nix develop
-   cargo build --release --bin almanac-api
-   cargo build --release --bin almanac-node-ethereum  
-   cargo build --release --bin almanac-node-cosmos
+   # Build all release binaries
+   cargo build --release
    ```
 
 2. Set up FoundationDB cluster
@@ -244,27 +259,35 @@ The project includes comprehensive testing at multiple levels:
 
 ### Unit Tests
 ```bash
-# Run all unit tests
+# Run all unit tests (using just command)
+just test
+
+# Or run directly with cargo
 nix develop -c cargo test
 
 # Test specific crates
-nix develop -c cargo test --package almanac-storage
-nix develop -c cargo test --package almanac-api
+cargo test --package almanac-storage
+cargo test --package almanac-api
 ```
 
 ### Integration Tests
 ```bash
-# Run integration tests
-nix develop -c cargo test --package almanac-chains --features ethereum,cosmos -- --ignored
+# Run integration tests with specific chains
+cargo test --package almanac-chains --features ethereum,cosmos -- --ignored
 
 # E2E tests
-nix develop -c cargo test --package e2e
+cargo test --package tests
 ```
 
-### Performance Tests
+### Environment Tests
 ```bash
-# Run benchmarks (when available)
-nix develop -c cargo bench
+# Test individual blockchain environments
+cd tests/environment/ethereum && ./test.sh
+cd tests/environment/cosmos && ./test.sh  
+cd tests/environment/solana && ./test.sh
+
+# Test simulation environment
+cd nix/simulation && nix develop -c sim-cluster status
 ```
 
 ## Monitoring
@@ -324,11 +347,21 @@ cluster_file = "/etc/foundationdb/fdb.cluster"
 ## Documentation
 
 - [Architecture Overview](docs/001_system_architecture.md)
+- [Running and Configuration](docs/002_running_and_configuration.md)
+- [FoundationDB Setup](docs/003_foundationdb_setup_and_usage.md)
 - [FoundationDB Implementation](docs/101_foundationdb_tuple_storage_implementation.md)
 - [Chain Adapter Guide](docs/103_blockchain_chain_adapter_development.md)
 - [Integration Guide](docs/104_api_integration_examples.md)
-- [Running Guide](docs/002_running_and_configuration.md)
 - [Testing Guide](docs/201_comprehensive_testing_guide.md)
+- [API Documentation](docs/301_querying_blockchain_data_api.md)
+- [Swagger UI Setup](docs/302_api_documentation_swagger_ui.md)
+- [Development Workflows](docs/401_development_workflows.md)
+- [Deployment and Monitoring](docs/501_deployment_and_monitoring.md)
+
+### Environment-Specific Documentation
+- [Historical State Management](docs/historical-state-management.md)
+- [Swagger UI NixOS Setup](docs/swagger-ui-nixos-setup.md)
+- [Solana Geyser Plugin](docs/nix-environments/solana/README-geyser.md)
 
 ---
 

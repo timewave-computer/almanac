@@ -19,20 +19,30 @@ This guide covers how to set up and use FoundationDB with the Almanac API.
 
 ## Installation
 
-### 1. Set up FoundationDB Headers
+### 1. Enter Development Environment
 
-First, set up the FoundationDB headers for compilation:
+First, enter the Nix development environment which automatically sets up FoundationDB:
 
 ```bash
-./scripts/dev/setup-fdb-headers.sh
-source .env.fdb
+# Enter development environment (sets up FoundationDB headers automatically)
+nix develop
 ```
 
-This creates a local include directory at `.fdb_include/` with the necessary headers.
+This automatically creates a local include directory at `.fdb_include/` with the necessary headers.
 
 ### 2. Start FoundationDB Server
 
-Using the Nix flake:
+Using Just commands (recommended):
+
+```bash
+# Start FDB server
+just start-fdb
+
+# Check status
+just status-fdb
+```
+
+Or using Nix directly:
 
 ```bash
 # Start FDB server
@@ -95,20 +105,30 @@ nix develop .#fdb --command cargo build -p almanac-api --features fdb
 nix develop .#fdb --command cargo run -p almanac-api --features fdb
 ```
 
-### Using the Test Script
+### Using Just Commands
 
-A convenience script is provided:
+Use the integrated Just commands for testing:
 
 ```bash
-./scripts/testing/api-tests.sh --backend fdb
+# Start the full system (FDB + API + Swagger)
+just start-system
+
+# Check system status
+just status-system
+
+# Run tests with FDB backend
+just test
+
+# Run E2E tests (requires FoundationDB)
+just test-e2e
 ```
 
-This script:
-1. Checks FDB status
-2. Builds the API with FDB support
-3. Starts the API server
-4. Runs test API calls
-5. Keeps the server running for manual testing
+This will:
+1. Check FDB status
+2. Build the API with FDB support  
+3. Start the API server
+4. Run test API calls
+5. Keep the server running for manual testing
 
 ## API Endpoints
 

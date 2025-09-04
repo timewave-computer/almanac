@@ -72,6 +72,7 @@ anchor-lang = { version = "0.31", optional = true }
 
 [features]
 default = []
+# Chain-specific features should be enabled explicitly to avoid conflicts
 cosmos = ["cosmrs", "tendermint", "tendermint-rpc"]
 ethereum = ["ethers"]
 solana-core = [

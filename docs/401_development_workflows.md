@@ -47,8 +47,8 @@ The simulation environment provides a complete multi-chain development cluster:
 │                                                                 │
 │  ┌────────────────────────────────────────────────────────────┐ │
 │  │               Almanac Services                             │ │
-│  │  • almanac-api (:3000)      • almanac-ethereum (:9091)    │ │
-│  │  • almanac-cosmos (:9092)   • almanac-solana (:9093)      │ │
+│  │  • almanac-api (:8080)      • almanac-ethereum (:9092)    │ │
+│  │  • almanac-cosmos (:9093)   • almanac-solana (:8899)      │ │
 │  └────────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -159,20 +159,24 @@ The simulation automatically generates configuration files:
 5. **Access Services**:
    - **Ethereum RPC**: http://localhost:8545
    - **Cosmos RPC**: http://localhost:26657
-   - **Almanac API**: http://localhost:3000
-   - **API Health**: http://localhost:3000/health
-   - **Swagger UI**: http://localhost:3000/swagger-ui
+   - **Solana RPC**: http://localhost:8899
+   - **Almanac API**: http://localhost:8080
+   - **API Health**: http://localhost:8080/health
+   - **Swagger UI**: http://localhost:8080/swagger-ui
 
 6. **Develop and Test**:
    ```bash
-   # Run unit tests
-   nix develop --command cargo test
+   # Run unit tests (recommended)
+   just test
    
-   # Run API tests
+   # Run API tests (if available)
    ./scripts/testing/api-tests.sh
    
    # Run specific chain tests
    nix develop --command cargo test -p almanac-chains --features ethereum
+   
+   # Run manual tests  
+   nix develop --command cargo test
    ```
 
 7. **View Logs During Development**:

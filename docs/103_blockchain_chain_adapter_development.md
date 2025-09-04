@@ -14,8 +14,8 @@ Create a new crate for your chain-specific binary:
 
 ```bash
 # Create directory structure
-mkdir -p crates/nodes/almanac-mychain/src
-cd crates/nodes/almanac-mychain
+mkdir -p crates/almanac-nodes/mychain/src
+cd crates/almanac-nodes/mychain
 ```
 
 Create `Cargo.toml`:

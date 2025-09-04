@@ -607,12 +607,13 @@ impl TupleFdbStorage {
         let tx = self.db.create_trx()?;
 
         // Build key prefix without developer_id to get all interpretations
-        let mut prefix = Vec::new();
-        prefix.push(Element::Bytes(Bytes::from(self.namespace.as_bytes())));
-        prefix.push(Element::Int(TupleKeyspace::SemanticMeta as i64));
-        prefix.push(Element::String(func_key.chain_id.clone().into()));
-        prefix.push(Element::String(func_key.contract_address.clone().into()));
-        prefix.push(Element::Bytes(Bytes::from(&func_key.storage_key[..])));
+        let prefix = vec![
+            Element::Bytes(Bytes::from(self.namespace.as_bytes())),
+            Element::Int(TupleKeyspace::SemanticMeta as i64),
+            Element::String(func_key.chain_id.clone().into()),
+            Element::String(func_key.contract_address.clone().into()),
+            Element::Bytes(Bytes::from(&func_key.storage_key[..])),
+        ];
 
         let prefix_packed = pack(&prefix);
         // Implement proper range scanning for foundationdb 0.8
@@ -728,10 +729,11 @@ impl TupleFdbStorage {
     ) -> Result<Vec<(DeveloperTrustKey, DeveloperTrustValue)>> {
         let tx = self.db.create_trx()?;
 
-        let mut prefix = Vec::new();
-        prefix.push(Element::Bytes(Bytes::from(self.namespace.as_bytes())));
-        prefix.push(Element::Int(TupleKeyspace::TrustGraph as i64));
-        prefix.push(Element::String(trustor.to_string().into()));
+        let prefix = vec![
+            Element::Bytes(Bytes::from(self.namespace.as_bytes())),
+            Element::Int(TupleKeyspace::TrustGraph as i64),
+            Element::String(trustor.to_string().into()),
+        ];
 
         let prefix_packed = pack(&prefix);
         // Implement proper range scanning for foundationdb 0.8
@@ -855,10 +857,11 @@ impl TupleFdbStorage {
     ) -> Result<Option<crate::api_adapter::TrustPolicy>> {
         let tx = self.db.create_trx()?;
 
-        let mut tuple = Vec::new();
-        tuple.push(Element::Bytes(Bytes::from(self.namespace.as_bytes())));
-        tuple.push(Element::Int(TupleKeyspace::TrustPolicies as i64));
-        tuple.push(Element::String(developer_id.to_string().into()));
+        let tuple = vec![
+            Element::Bytes(Bytes::from(self.namespace.as_bytes())),
+            Element::Int(TupleKeyspace::TrustPolicies as i64),
+            Element::String(developer_id.to_string().into()),
+        ];
 
         let tuple_key = pack(&tuple);
 
@@ -878,10 +881,11 @@ impl TupleFdbStorage {
     ) -> Result<()> {
         let tx = self.db.create_trx()?;
 
-        let mut tuple = Vec::new();
-        tuple.push(Element::Bytes(Bytes::from(self.namespace.as_bytes())));
-        tuple.push(Element::Int(TupleKeyspace::TrustPolicies as i64));
-        tuple.push(Element::String(developer_id.to_string().into()));
+        let tuple = vec![
+            Element::Bytes(Bytes::from(self.namespace.as_bytes())),
+            Element::Int(TupleKeyspace::TrustPolicies as i64),
+            Element::String(developer_id.to_string().into()),
+        ];
 
         let tuple_key = pack(&tuple);
         let serialized = bincode::serialize(policy)?;
@@ -922,11 +926,12 @@ impl TupleFdbStorage {
     ) -> Result<Vec<(TrustedCheckpointKey, TrustedCheckpointValue)>> {
         let tx = self.db.create_trx()?;
 
-        let mut prefix = Vec::new();
-        prefix.push(Element::Bytes(Bytes::from(self.namespace.as_bytes())));
-        prefix.push(Element::Int(TupleKeyspace::TrustedCheckpoints as i64));
-        prefix.push(Element::String(chain_id.to_string().into()));
-        prefix.push(Element::Int(checkpoint_type as i64));
+        let prefix = vec![
+            Element::Bytes(Bytes::from(self.namespace.as_bytes())),
+            Element::Int(TupleKeyspace::TrustedCheckpoints as i64),
+            Element::String(chain_id.to_string().into()),
+            Element::Int(checkpoint_type as i64),
+        ];
 
         let prefix_packed = pack(&prefix);
         // Implement proper range scanning for foundationdb 0.8
@@ -1027,10 +1032,11 @@ impl TupleFdbStorage {
     ) -> Result<Vec<(CircuitVKKey, CircuitVKValue)>> {
         let tx = self.db.create_trx()?;
 
-        let mut prefix = Vec::new();
-        prefix.push(Element::Bytes(Bytes::from(self.namespace.as_bytes())));
-        prefix.push(Element::Int(TupleKeyspace::CircuitKeys as i64));
-        prefix.push(Element::String(circuit_type.to_string().into()));
+        let prefix = vec![
+            Element::Bytes(Bytes::from(self.namespace.as_bytes())),
+            Element::Int(TupleKeyspace::CircuitKeys as i64),
+            Element::String(circuit_type.to_string().into()),
+        ];
 
         let prefix_packed = pack(&prefix);
         // Implement proper range scanning for foundationdb 0.8
@@ -1105,10 +1111,11 @@ impl TupleFdbStorage {
     ) -> Result<Vec<(ValidatorSignatureKey, ValidatorSignatureValue)>> {
         let tx = self.db.create_trx()?;
 
-        let mut prefix = Vec::new();
-        prefix.push(Element::Bytes(Bytes::from(self.namespace.as_bytes())));
-        prefix.push(Element::Int(TupleKeyspace::ValidatorSignatures as i64));
-        prefix.push(Element::String(chain_id.to_string().into()));
+        let mut prefix = vec![
+            Element::Bytes(Bytes::from(self.namespace.as_bytes())),
+            Element::Int(TupleKeyspace::ValidatorSignatures as i64),
+            Element::String(chain_id.to_string().into()),
+        ];
 
         match block_identifier {
             BlockIdentifier::Height(h) => {

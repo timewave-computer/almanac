@@ -207,10 +207,10 @@ async fn main() -> anyhow::Result<()> {
         &context,
     ).await {
         Ok(key) => {
-            info!("✅ Read-only key validated for ReadEvents on ethereum");
+            info!("Read-only key validated for ReadEvents on ethereum");
             info!("   Key name: {}", key.name);
         },
-        Err(e) => error!("❌ Validation failed: {}", e),
+        Err(e) => error!("Validation failed: {}", e),
     }
     
     // Test invalid permission (write operation with read-only key)
@@ -219,11 +219,11 @@ async fn main() -> anyhow::Result<()> {
         ApiOperation::WriteLayouts,
         &context,
     ).await {
-        Ok(_) => warn!("⚠️  Unexpected success for write operation with read-only key"),
+        Ok(_) => warn!("Warning: Unexpected success for write operation with read-only key"),
         Err(ApiKeyError::InsufficientPermissions) => {
-            info!("✅ Correctly rejected write operation for read-only key");
+            info!("Correctly rejected write operation for read-only key");
         },
-        Err(e) => error!("❌ Unexpected error: {}", e),
+        Err(e) => error!("Unexpected error: {}", e),
     }
     
     // Test chain restriction
@@ -238,11 +238,11 @@ async fn main() -> anyhow::Result<()> {
         ApiOperation::ReadEvents,
         &restricted_context,
     ).await {
-        Ok(_) => warn!("⚠️  Unexpected success for restricted chain"),
+        Ok(_) => warn!("Warning: Unexpected success for restricted chain"),
         Err(ApiKeyError::ChainNotAllowed) => {
-            info!("✅ Correctly rejected access to restricted chain (bitcoin)");
+            info!("Correctly rejected access to restricted chain (bitcoin)");
         },
-        Err(e) => error!("❌ Unexpected error: {}", e),
+        Err(e) => error!("Unexpected error: {}", e),
     }
     
     // Example 5: Demonstrate usage tracking
@@ -273,8 +273,8 @@ async fn main() -> anyhow::Result<()> {
     ).await?;
     
     match key_store.check_quotas(&read_only_key_data).await {
-        Ok(()) => info!("✅ Read-only key is within quotas"),
-        Err(e) => warn!("⚠️  Quota exceeded: {}", e),
+        Ok(()) => info!("Read-only key is within quotas"),
+        Err(e) => warn!("Warning: Quota exceeded: {}", e),
     }
     
     // Example 6: List keys for developers
@@ -298,13 +298,13 @@ async fn main() -> anyhow::Result<()> {
     
     info!("Enhanced authentication system example completed successfully!");
     info!("Key features demonstrated:");
-    info!("  ✅ Fine-grained permission control");
-    info!("  ✅ Chain and contract restrictions");
-    info!("  ✅ Rate limiting configuration");
-    info!("  ✅ Usage quotas and tracking");
-    info!("  ✅ Key expiration and IP whitelisting");
-    info!("  ✅ Developer-scoped key management");
-    info!("  ✅ Comprehensive validation and error handling");
+    info!("  - Fine-grained permission control");
+    info!("  - Chain and contract restrictions");
+    info!("  - Rate limiting configuration");
+    info!("  - Usage quotas and tracking");
+    info!("  - Key expiration and IP whitelisting");
+    info!("  - Developer-scoped key management");
+    info!("  - Comprehensive validation and error handling");
     
     Ok(())
 }

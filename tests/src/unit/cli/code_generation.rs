@@ -187,14 +187,7 @@ pub async fn run_validation_tests(
         }
 
         let compilation_result =
-            match validate_rust_compilation(&cosmos_compilation_dir.to_string_lossy()).await {
-                Ok(_) => TestOutcome::success("validation_cosmos_compilation", 1000),
-                Err(_) => TestOutcome::failure(
-                    "validation_cosmos_compilation",
-                    1000,
-                    "Compilation test setup failed",
-                ),
-            };
+            validate_rust_compilation(&cosmos_compilation_dir, "validation_cosmos_compilation");
         results.add_result(compilation_result);
     }
 
@@ -215,14 +208,7 @@ pub async fn run_validation_tests(
         }
 
         let compilation_result =
-            match validate_rust_compilation(&ethereum_compilation_dir.to_string_lossy()).await {
-                Ok(_) => TestOutcome::success("validation_ethereum_compilation", 1000),
-                Err(_) => TestOutcome::failure(
-                    "validation_ethereum_compilation",
-                    1000,
-                    "Compilation test setup failed",
-                ),
-            };
+            validate_rust_compilation(&ethereum_compilation_dir, "validation_ethereum_compilation");
         results.add_result(compilation_result);
     }
 

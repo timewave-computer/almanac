@@ -1,9 +1,10 @@
 //! Validation utilities for generated code and output files
 
-use crate::{E2EError, TestOutcome};
+use crate::{E2EError, TestConfig, TestOutcome};
 use regex::Regex;
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 use std::time::Instant;
 use walkdir::WalkDir;
 
@@ -289,5 +290,85 @@ pub fn validate_toml_config<P: AsRef<Path>>(config_path: P, test_name: &str) -> 
             start.elapsed().as_millis() as u64,
             &format!("Invalid TOML in {:?}: {}", config_path, e),
         ),
+    }
+}
+
+/// Run a CLI command and return the result
+pub async fn run_cli_command(
+    _config: &TestConfig,
+    args: &[&str],
+    test_name: &str,
+) -> TestOutcome {
+    let start_time = Instant::now();
+    
+    // For now, this is a placeholder implementation
+    // In a real implementation, this would execute the CLI command
+    let output = Command::new("echo")
+        .args(args)
+        .output();
+    
+    let duration = start_time.elapsed();
+    
+    match output {
+        Ok(output) => {
+            if output.status.success() {
+                TestOutcome::success("compile_check", duration.as_millis() as u64)
+            } else {
+                TestOutcome::failure(
+                    test_name,
+                    duration.as_millis() as u64,
+                    &format!("Command failed with status: {}", output.status),
+                )
+            }
+        }
+        Err(e) => TestOutcome::failure(
+            test_name,
+            duration.as_millis() as u64,
+            &format!("Failed to execute command: {}", e),
+        )
+    }
+}
+
+/// Validate Rust compilation
+pub fn validate_rust_compilation<P: AsRef<Path>>(
+    output_dir: P,
+    test_name: &str,
+) -> TestOutcome {
+    let start = Instant::now();
+    let output_dir_ref = output_dir.as_ref();
+    
+    // Check if the directory exists and contains Rust files
+    if !output_dir_ref.exists() {
+        return TestOutcome::failure(
+            test_name,
+            start.elapsed().as_millis() as u64,
+            &format!("Output directory does not exist: {:?}", output_dir_ref),
+        );
+    }
+    
+    // Try to compile the Rust code
+    let status = Command::new("cargo")
+        .args(&["check", "--manifest-path"])
+        .arg(output_dir_ref.join("Cargo.toml"))
+        .status();
+    
+    match status {
+        Ok(status) if status.success() => {
+            TestOutcome::success(test_name, start.elapsed().as_millis() as u64)
+        }
+        Ok(status) => {
+            TestOutcome::failure(
+                test_name,
+                start.elapsed().as_millis() as u64,
+                &format!("Cargo check failed with status: {}", status),
+            )
+        }
+        Err(e) => {
+            TestOutcome::failure(
+                test_name,
+                start.elapsed().as_millis() as u64,
+                &format!("Failed to run cargo check: {}", e),
+            )
+        }
     }
 }

@@ -545,10 +545,11 @@ mod fdb_impl {
         ) -> Result<Option<crate::api_adapter::TrustPolicy>> {
             let tx = self.db.create_trx()?;
 
-            let mut tuple = Vec::new();
-            tuple.push(Element::Bytes(Bytes::from(self.namespace.as_bytes())));
-            tuple.push(Self::keyspace_element(TupleKeyspace::TrustPolicies));
-            tuple.push(Element::String(developer_id.to_string().into()));
+            let tuple = vec![
+                Element::Bytes(Bytes::from(self.namespace.as_bytes())),
+                Self::keyspace_element(TupleKeyspace::TrustPolicies),
+                Element::String(developer_id.to_string().into()),
+            ];
 
             let tuple_key = pack(&tuple);
 
@@ -568,10 +569,11 @@ mod fdb_impl {
         ) -> Result<()> {
             let tx = self.db.create_trx()?;
 
-            let mut tuple = Vec::new();
-            tuple.push(Element::Bytes(Bytes::from(self.namespace.as_bytes())));
-            tuple.push(Self::keyspace_element(TupleKeyspace::TrustPolicies));
-            tuple.push(Element::String(developer_id.to_string().into()));
+            let tuple = vec![
+                Element::Bytes(Bytes::from(self.namespace.as_bytes())),
+                Self::keyspace_element(TupleKeyspace::TrustPolicies),
+                Element::String(developer_id.to_string().into()),
+            ];
 
             let tuple_key = pack(&tuple);
             let serialized = bincode::serialize(policy)?;
@@ -616,11 +618,12 @@ mod fdb_impl {
         ) -> Result<Vec<(TrustedCheckpointKey, TrustedCheckpointValue)>> {
             let tx = self.db.create_trx()?;
 
-            let mut prefix_tuple = Vec::new();
-            prefix_tuple.push(Element::Bytes(Bytes::from(self.namespace.as_bytes())));
-            prefix_tuple.push(Self::keyspace_element(TupleKeyspace::TrustedCheckpoints));
-            prefix_tuple.push(Element::String(chain_id.to_string().into()));
-            prefix_tuple.push(Element::Int(checkpoint_type as i64));
+            let prefix_tuple = vec![
+                Element::Bytes(Bytes::from(self.namespace.as_bytes())),
+                Self::keyspace_element(TupleKeyspace::TrustedCheckpoints),
+                Element::String(chain_id.to_string().into()),
+                Element::Int(checkpoint_type as i64),
+            ];
 
             let prefix = pack(&prefix_tuple);
             let mut end_key = prefix.clone();

@@ -1,0 +1,14 @@
+{
+  "libpath": "/path/to/libalmanac_geyser_plugin.so",
+  "database_url": "postgresql://almanac:almanac@localhost/almanac",
+  "accounts_selector": {
+    "owners": ["11111111111111111111111111111111"],
+    "accounts": []
+  },
+  "transaction_selector": {
+    "mentions": []
+  },
+  "instruction_selector": {
+    "programs": []
+  }
+}

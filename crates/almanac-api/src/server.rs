@@ -59,6 +59,11 @@ impl ApiServer {
         Self { config, state }
     }
 
+    /// Create a new API server with pre-configured state
+    pub fn with_state(config: ServerConfig, state: AppState) -> Self {
+        Self { config, state }
+    }
+
     /// Run the server
     pub async fn run(self) -> anyhow::Result<()> {
         // Create the app with all middleware

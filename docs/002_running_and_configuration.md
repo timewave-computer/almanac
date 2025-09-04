@@ -34,13 +34,13 @@ Almanac uses a distributed microservices architecture where chain-specific index
        │                  │                   │
 ┌──────▼──────────┐ ┌─────▼──────────┐ ┌──────▼──────────┐
 │ almanac-ethereum│ │almanac-cosmos  │ │almanac-solana   │
-│     :9091       │ │     :9092      │ │    :9093        │
+│     :9092       │ │     :9093      │ │    :8899        │
 ├─────────────────┤ ├────────────────┤ ├─────────────────┤
 │ • Event indexing│ │• Event indexing│ │• Account data   │
 │ • Reorg handling│ │• BFT consensus │ │• PoH validation │
 │ • State proofs  │ │• IBC tracking  │ │• Program logs   │
 │ • EVM traces    │ │• Module events │ │• Slot tracking  │
-│ • Health :9091  │ │• Health :9092  │ │• Health :9093   │
+│ • Health :9092  │ │• Health :9093  │ │• Health :8899   │
 │ • Metrics       │ │• Metrics       │ │• Metrics        │
 └─────────────────┘ └────────────────┘ └─────────────────┘
         │                    │                  │
@@ -114,7 +114,10 @@ nix develop --command cargo build --all --release
 ### Run Tests
 
 ```bash
-# Run all tests
+# Run all tests using Just (recommended)
+just test
+
+# Run all tests manually
 nix develop --command cargo test
 
 # Run e2e tests (requires FoundationDB)
@@ -122,6 +125,9 @@ nix run .#run-e2e-tests
 
 # Run specific crate tests
 nix develop --command cargo test -p almanac-core
+
+# Run quick tests
+just test --quick
 ```
 
 ## Configuration

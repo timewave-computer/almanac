@@ -18,6 +18,7 @@ pub mod routes;
 pub mod server;
 pub mod state;
 pub mod storage_ext;
+pub mod memory_subscription_manager;
 
 #[cfg(test)]
 pub mod test_helpers;
@@ -130,7 +131,23 @@ pub async fn run_server(config: AppConfig) -> anyhow::Result<()> {
     };
 
     // Update AppState to use ExtendedStorageReader
-    let app_state = AppState::new(storage);
+    let mut app_state = AppState::new(storage);
+
+    // Add subscription manager based on storage backend
+    match config.storage_backend {
+        StorageBackend::Memory => {
+            // Use MemorySubscriptionManager for memory backend
+            use crate::memory_subscription_manager::MemorySubscriptionManager;
+            app_state = app_state.with_subscription_manager(MemorySubscriptionManager::new());
+        }
+        StorageBackend::FoundationDB => {
+            // For FDB, we would need to create FdbAccountSubscriptionManager
+            // but that requires more complex setup with TupleFdbStorage
+            // For now, use memory manager even for FDB backend
+            use crate::memory_subscription_manager::MemorySubscriptionManager;
+            app_state = app_state.with_subscription_manager(MemorySubscriptionManager::new());
+        }
+    }
 
     // Create server config
     let server_config = ServerConfig {
@@ -141,7 +158,7 @@ pub async fn run_server(config: AppConfig) -> anyhow::Result<()> {
     };
 
     // Create and run server
-    let server = ApiServer::new(server_config, app_state.storage.clone());
+    let server = ApiServer::with_state(server_config, app_state);
     server.run().await
 }
 

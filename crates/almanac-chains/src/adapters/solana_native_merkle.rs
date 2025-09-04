@@ -194,8 +194,8 @@ impl SolanaNativeMerkleTree {
                 // the proof path by walking the tree structure ourselves
                 let serializable_entries = self.extract_proof_entries(&tree, leaf_index)?;
                 
-                return Ok(bincode::serialize(&serializable_entries)
-                    .map_err(|e| MerkleTreeError::SerializationError(e.to_string()))?);
+                return bincode::serialize(&serializable_entries)
+                    .map_err(|e| MerkleTreeError::SerializationError(e.to_string()));
             }
         }
         

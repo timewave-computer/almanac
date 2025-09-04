@@ -1,5 +1,6 @@
 use almanac_config::{
-    load_config, Config, CosmosChainConfig, EthereumChainConfig, FdbConfig, StorageConfig,
+    load_config, Config, CosmosChainConfig, EthereumChainConfig, FdbConfig, 
+    HistoricalStateConfig, StorageConfig,
 };
 use std::io::Write;
 use tempfile::NamedTempFile;
@@ -54,6 +55,7 @@ fn test_ethereum_chain_config_creation() {
         chain_id: 1,
         starting_block: Some(0),
         batch_size: Some(100),
+        historical_state: None,
     };
 
     assert_eq!(chain_config.name, "ethereum-mainnet");
@@ -73,11 +75,54 @@ fn test_cosmos_chain_config_creation() {
         chain_id: "cosmoshub-4".to_string(),
         starting_block: Some(0),
         batch_size: Some(100),
+        historical_state: None,
     };
 
     assert_eq!(chain_config.name, "cosmos-hub");
     assert_eq!(chain_config.chain_id, "cosmoshub-4");
     assert_eq!(chain_config.rpc_url, "https://rpc.cosmos.network");
+}
+
+#[test]
+fn test_historical_state_config() {
+    // Test default configuration
+    let default_config = HistoricalStateConfig::default();
+    assert_eq!(default_config.blocks_to_keep, 1000);
+    assert_eq!(default_config.enable_pruning, true);
+    assert_eq!(default_config.pruning_interval, None);
+    assert_eq!(default_config.archive_mode, None);
+
+    // Test custom configuration
+    let custom_config = HistoricalStateConfig {
+        blocks_to_keep: 5000,
+        enable_pruning: false,
+        pruning_interval: Some(100),
+        archive_mode: Some(true),
+    };
+    assert_eq!(custom_config.blocks_to_keep, 5000);
+    assert_eq!(custom_config.enable_pruning, false);
+    assert_eq!(custom_config.pruning_interval, Some(100));
+    assert_eq!(custom_config.archive_mode, Some(true));
+
+    // Test with chain config
+    let chain_config = EthereumChainConfig {
+        name: "eth-archive".to_string(),
+        rpc_url: "http://localhost:8545".to_string(),
+        ws_url: None,
+        chain_id: 1,
+        starting_block: None,
+        batch_size: None,
+        historical_state: Some(HistoricalStateConfig {
+            blocks_to_keep: 0,
+            enable_pruning: false,
+            pruning_interval: None,
+            archive_mode: Some(true),
+        }),
+    };
+    assert!(chain_config.historical_state.is_some());
+    let hist_state = chain_config.historical_state.as_ref().unwrap();
+    assert_eq!(hist_state.archive_mode, Some(true));
+    assert_eq!(hist_state.enable_pruning, false);
 }
 
 #[test]
@@ -280,4 +325,79 @@ starting_slot = 0
     let solana_chains = config.chains.solana.as_ref().unwrap();
     assert_eq!(solana_chains.len(), 1);
     assert_eq!(solana_chains[0].name, "solana-mainnet");
+}
+
+#[test]
+fn test_config_with_historical_state_toml() {
+    let toml_content = r#"
+[simulation]
+name = "historical-test"
+chains = ["ethereum", "cosmos", "solana"]
+
+[almanac]
+name = "historical-almanac"
+api_port = 8080
+
+[storage]
+backend = "memory"
+
+[services]
+
+[[chains.ethereum]]
+name = "eth-with-history"
+rpc_url = "http://localhost:8545"
+chain_id = 1
+
+[chains.ethereum.historical_state]
+blocks_to_keep = 10000
+enable_pruning = true
+pruning_interval = 1000
+
+[[chains.cosmos]]
+name = "cosmos-archive"
+rpc_url = "http://localhost:26657"
+chain_id = "test-chain"
+
+[chains.cosmos.historical_state]
+blocks_to_keep = 0        # Ignored when archive_mode = true
+archive_mode = true
+enable_pruning = false
+
+[[chains.solana]]
+name = "solana-minimal"
+rpc_url = "http://localhost:8899"
+
+[chains.solana.historical_state]
+blocks_to_keep = 500
+enable_pruning = true
+pruning_interval = 50
+"#;
+
+    let mut temp_file = NamedTempFile::new().unwrap();
+    writeln!(temp_file, "{}", toml_content).unwrap();
+
+    let config = load_config(temp_file.path()).unwrap();
+
+    // Check Ethereum historical state
+    let eth_chains = config.chains.ethereum.as_ref().unwrap();
+    assert_eq!(eth_chains[0].name, "eth-with-history");
+    let eth_hist = eth_chains[0].historical_state.as_ref().unwrap();
+    assert_eq!(eth_hist.blocks_to_keep, 10000);
+    assert_eq!(eth_hist.enable_pruning, true);
+    assert_eq!(eth_hist.pruning_interval, Some(1000));
+
+    // Check Cosmos archive mode
+    let cosmos_chains = config.chains.cosmos.as_ref().unwrap();
+    assert_eq!(cosmos_chains[0].name, "cosmos-archive");
+    let cosmos_hist = cosmos_chains[0].historical_state.as_ref().unwrap();
+    assert_eq!(cosmos_hist.archive_mode, Some(true));
+    assert_eq!(cosmos_hist.enable_pruning, false);
+
+    // Check Solana minimal history
+    let solana_chains = config.chains.solana.as_ref().unwrap();
+    assert_eq!(solana_chains[0].name, "solana-minimal");
+    let solana_hist = solana_chains[0].historical_state.as_ref().unwrap();
+    assert_eq!(solana_hist.blocks_to_keep, 500);
+    assert_eq!(solana_hist.enable_pruning, true);
+    assert_eq!(solana_hist.pruning_interval, Some(50));
 }

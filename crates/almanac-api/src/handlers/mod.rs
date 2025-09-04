@@ -5,6 +5,8 @@ pub mod semantics;
 pub mod subscriptions;
 pub mod traverse;
 pub mod trust;
+#[cfg(debug_assertions)]
+pub mod test;
 
 pub use admin::{create_api_key, delete_api_key, list_api_keys, update_api_key};
 

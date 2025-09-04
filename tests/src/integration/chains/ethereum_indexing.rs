@@ -8,12 +8,17 @@
 //! This demonstrates the full storage architecture with FoundationDB
 //! as the unified storage layer for all indexing operations.
 
+#![cfg(feature = "ethereum")]
+
 use anyhow::anyhow;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tempfile::TempDir;
 use tokio::time::sleep;
+
+// Import our Nix environment utilities
+use crate::utils::NixEnvironment;
 
 use almanac_chains::adapters::{
     ethereum::EthereumAdapter, traits::ChainAdapter, types::ChainConfig,
@@ -124,6 +129,7 @@ impl Event for TestEvent {
 pub struct E2ETestInfrastructure {
     #[allow(dead_code)]
     config: E2ETestConfig,
+    nix_env: NixEnvironment,
     geth_process: Option<std::process::Child>,
     #[allow(dead_code)]
     storage: Option<Arc<dyn Storage + Send + Sync>>,
@@ -135,14 +141,23 @@ pub struct E2ETestInfrastructure {
 
 impl E2ETestInfrastructure {
     #[allow(dead_code)]
-    pub fn new(config: E2ETestConfig) -> Self {
-        Self {
+    pub fn new(config: E2ETestConfig) -> anyhow::Result<Self> {
+        let nix_env = NixEnvironment::detect()
+            .map_err(|e| anyhow!("Failed to detect Nix environment: {}", e))?;
+        
+        // Check if Ethereum environment is available
+        if let Err(e) = nix_env.check_blockchain_availability("ethereum") {
+            println!("Warning: Ethereum environment not available: {}", e);
+        }
+
+        Ok(Self {
             config,
+            nix_env,
             geth_process: None,
             storage: None,
             ethereum_client: None,
             event_bus: None,
-        }
+        })
     }
 
     /// Set up the complete test infrastructure
@@ -181,24 +196,33 @@ impl E2ETestInfrastructure {
         std::fs::create_dir_all(&self.config.geth_data_dir)
             .map_err(|e| anyhow::anyhow!("Failed to create data dir: {}", e))?;
 
-        // Start anvil (simpler and more reliable than geth)
-        let anvil_process = Command::new("anvil")
-            .args([
-                "--host",
-                "0.0.0.0",
-                "--port",
-                "8545",
-                "--chain-id",
-                "31337",
-                "--accounts",
-                "10",
-                "--balance",
-                "10000",
-                "--gas-limit",
-                "30000000",
-                "--gas-price",
-                "1",
-            ])
+        // Start anvil using appropriate Nix environment
+        let mut nix_cmd = self.nix_env.get_nix_develop_command("ethereum")
+            .map_err(|e| anyhow!("Failed to get Ethereum nix command: {}", e))?;
+        
+        nix_cmd.extend([
+            "anvil".to_string(),
+            "--host".to_string(),
+            "0.0.0.0".to_string(),
+            "--port".to_string(),
+            "8545".to_string(),
+            "--chain-id".to_string(),
+            "31337".to_string(),
+            "--accounts".to_string(),
+            "10".to_string(),
+            "--balance".to_string(),
+            "10000".to_string(),
+            "--gas-limit".to_string(),
+            "30000000".to_string(),
+            "--gas-price".to_string(),
+            "1".to_string(),
+        ]);
+
+        println!("Starting Anvil with command: {:?}", nix_cmd);
+        println!("Using Nix environment: {:?}", self.nix_env.os);
+
+        let anvil_process = Command::new(&nix_cmd[0])
+            .args(&nix_cmd[1..])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
@@ -541,7 +565,7 @@ pub async fn run_ethereum_indexing_e2e_test() -> Result<()> {
 
     let config = E2ETestConfig::default();
     let test_duration = config.test_duration;
-    let mut infrastructure = E2ETestInfrastructure::new(config);
+    let mut infrastructure = E2ETestInfrastructure::new(config)?;
 
     // Setup infrastructure
     infrastructure.setup().await?;
@@ -581,13 +605,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_infrastructure_setup() {
+    async fn test_infrastructure_setup() -> anyhow::Result<()> {
         let config = E2ETestConfig::default();
-        let infrastructure = E2ETestInfrastructure::new(config);
+        let infrastructure = E2ETestInfrastructure::new(config)?;
 
         // Test that infrastructure can be created
         assert!(infrastructure.storage.is_none());
         assert!(infrastructure.ethereum_client.is_none());
+        Ok(())
     }
 
     #[tokio::test]

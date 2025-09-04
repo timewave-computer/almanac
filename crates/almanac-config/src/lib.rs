@@ -108,6 +108,19 @@ pub struct ChainConfigurations {
     pub solana: Option<Vec<SolanaChainConfig>>,
 }
 
+/// Historical state configuration for chain nodes
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HistoricalStateConfig {
+    /// Number of blocks to retain in the node's state
+    pub blocks_to_keep: u64,
+    /// Whether to enable state pruning
+    pub enable_pruning: bool,
+    /// Custom pruning interval (in blocks)
+    pub pruning_interval: Option<u64>,
+    /// Archive mode - keeps all historical state (overrides blocks_to_keep)
+    pub archive_mode: Option<bool>,
+}
+
 /// Ethereum chain configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EthereumChainConfig {
@@ -123,6 +136,8 @@ pub struct EthereumChainConfig {
     pub starting_block: Option<u64>,
     /// Batch size
     pub batch_size: Option<u64>,
+    /// Historical state configuration
+    pub historical_state: Option<HistoricalStateConfig>,
 }
 
 /// Cosmos chain configuration
@@ -140,6 +155,8 @@ pub struct CosmosChainConfig {
     pub starting_block: Option<u64>,
     /// Batch size
     pub batch_size: Option<u64>,
+    /// Historical state configuration
+    pub historical_state: Option<HistoricalStateConfig>,
 }
 
 /// Solana chain configuration
@@ -155,6 +172,19 @@ pub struct SolanaChainConfig {
     pub starting_slot: Option<u64>,
     /// Batch size
     pub batch_size: Option<u64>,
+    /// Historical state configuration
+    pub historical_state: Option<HistoricalStateConfig>,
+}
+
+impl Default for HistoricalStateConfig {
+    fn default() -> Self {
+        Self {
+            blocks_to_keep: 1000,    // Default: keep last 1000 blocks
+            enable_pruning: true,    // Default: enable pruning
+            pruning_interval: None,  // Use chain default
+            archive_mode: None,      // Not archive mode by default
+        }
+    }
 }
 
 impl Default for Config {

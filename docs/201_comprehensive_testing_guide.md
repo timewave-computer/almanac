@@ -38,11 +38,14 @@ e2e/src/tests/
 
 ### Basic Commands
 ```bash
-# Run all tests
-nix develop --command cargo test
+# Run all tests using Just (recommended)
+just test
 
 # Run with output
-nix develop --command cargo test -- --nocapture
+just test -- --nocapture
+
+# Run all tests manually
+nix develop --command cargo test
 
 # Test specific crate
 nix develop --command cargo test -p almanac-core

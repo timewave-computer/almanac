@@ -32,7 +32,7 @@ Almanac uses a distributed architecture where chain-specific nodes connect to a 
 Create a new binary crate for your chain adapter:
 
 ```toml
-# crates/nodes/almanac-mychain/Cargo.toml
+# crates/almanac-nodes/mychain/Cargo.toml
 [package]
 name = "almanac-mychain"
 version = "0.1.0"

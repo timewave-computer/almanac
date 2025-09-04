@@ -109,24 +109,25 @@ async fn main() -> anyhow::Result<()> {
 }
 
 /// Example of integrating Valence with Almanac storage
-#[cfg(all(feature = "valence", feature = "fdb"))]
+#[cfg(feature = "valence")]
 pub async fn valence_storage_integration_example() -> anyhow::Result<()> {
-    use almanac_storage::{StorageManager, FdbConfig};
-    use almanac_chains::valence::ValenceExecutionStatus;
+    // This would require the fdb feature to be enabled in almanac-storage
+    // use almanac_storage::{StorageManager, FdbConfig};
+    // use almanac_chains::valence::ValenceExecutionStatus;
     
     info!("Valence + Almanac Storage integration example");
     
     // Create storage manager
-    let storage_config = FdbConfig {
-        namespace: "valence_example".to_string(),
-        ..Default::default()
-    };
+    // let storage_config = FdbConfig {
+    //     namespace: "valence_example".to_string(),
+    //     ..Default::default()
+    // };
     
-    let storage_manager = StorageManager::new(storage_config).await?;
-    let app_state = storage_manager.create_api_state();
+    // let storage_manager = StorageManager::new(storage_config).await?;
+    // let app_state = storage_manager.create_api_state();
     
     // Create Valence manager
-    let valence_manager = ValenceClientManager::new();
+    let _valence_manager = ValenceClientManager::new();
     
     // In a real implementation, you would:
     // 1. Execute cross-chain operations via Valence
@@ -142,7 +143,7 @@ pub async fn valence_storage_integration_example() -> anyhow::Result<()> {
 /// Example configuration for different environments
 #[cfg(feature = "valence")]
 pub mod config_examples {
-    use super::*;
+    use std::collections::HashMap;
     
     /// Development environment configuration
     pub fn dev_config() -> HashMap<String, String> {

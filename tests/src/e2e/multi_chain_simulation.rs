@@ -21,6 +21,8 @@ use tokio::time::sleep;
 use almanac_core::Storage;
 use almanac_storage::{create_storage, StorageBackend};
 
+use crate::utils::nix_env::NixEnvironment;
+
 /// Configuration for the multi-chain simulation with isolated environments
 #[derive(Debug)]
 pub struct IsolatedMultiChainConfig {
@@ -51,12 +53,17 @@ impl Default for IsolatedMultiChainConfig {
     fn default() -> Self {
         let temp_dir = TempDir::new().unwrap();
         let data_dir = temp_dir.path().to_path_buf();
+        
+        // Detect platform and get appropriate nix environments
+        let nix_env = NixEnvironment::detect().unwrap_or_else(|_| {
+            panic!("Failed to detect platform for nix environments");
+        });
 
         Self {
             enabled_chains: vec![
                 ChainEnvironment {
                     name: "solana".to_string(),
-                    nix_flake: ".#solana".to_string(),
+                    nix_flake: nix_env.solana_flake.clone(),
                     rpc_port: 8899,
                     ws_port: Some(8900),
                     grpc_port: Some(10000),
@@ -64,7 +71,7 @@ impl Default for IsolatedMultiChainConfig {
                 },
                 ChainEnvironment {
                     name: "ethereum".to_string(),
-                    nix_flake: ".#ethereum".to_string(),
+                    nix_flake: nix_env.ethereum_flake.clone(),
                     rpc_port: 8545,
                     ws_port: Some(8546),
                     grpc_port: None,
@@ -72,7 +79,7 @@ impl Default for IsolatedMultiChainConfig {
                 },
                 ChainEnvironment {
                     name: "cosmos".to_string(),
-                    nix_flake: ".#cosmos".to_string(),
+                    nix_flake: nix_env.cosmos_flake.clone(),
                     rpc_port: 26657,
                     ws_port: None,
                     grpc_port: Some(9090),
@@ -97,14 +104,20 @@ pub struct IsolatedMultiChainManager {
     config: IsolatedMultiChainConfig,
     chain_processes: HashMap<String, std::process::Child>,
     storage: Option<Arc<dyn Storage + Send + Sync>>,
+    nix_env: NixEnvironment,
 }
 
 impl IsolatedMultiChainManager {
     pub fn new(config: IsolatedMultiChainConfig) -> Self {
+        let nix_env = NixEnvironment::detect().unwrap_or_else(|_| {
+            panic!("Failed to detect platform for nix environments");
+        });
+        
         Self {
             config,
             chain_processes: HashMap::new(),
             storage: None,
+            nix_env,
         }
     }
 
@@ -112,6 +125,8 @@ impl IsolatedMultiChainManager {
     pub async fn start_all_chains(&mut self) -> Result<()> {
         println!("Starting isolated multi-chain simulation...");
         println!("=========================================");
+        println!("Platform detected: {:?}", self.nix_env.os);
+        println!("Using platform-specific nix environments:");
 
         // Step 1: Setup FoundationDB in its own environment
         self.setup_foundationdb().await?;
@@ -131,20 +146,32 @@ impl IsolatedMultiChainManager {
 
     /// Setup FoundationDB in its isolated environment
     async fn setup_foundationdb(&mut self) -> Result<()> {
-        println!("Setting up FoundationDB in isolated nix environment...");
+        println!("Setting up storage backend for testing...");
 
-        let storage = create_storage(StorageBackend::Fdb(almanac_storage::fdb::FdbConfig {
-            cluster_file: None, // Use embedded FDB
-            namespace: self.config.fdb_namespace.clone(),
-            connection_timeout: 30,
-            max_retries: 5,
-        }))
-        .await
-        .map_err(|e| anyhow!("Failed to create FoundationDB storage: {}", e))?;
+        // For testing, use memory storage instead of FDB
+        // This allows tests to run without requiring FDB to be running
+        let use_memory_storage = std::env::var("USE_MEMORY_STORAGE").unwrap_or_else(|_| "true".to_string()) == "true";
+        
+        let storage = if use_memory_storage {
+            println!("Using in-memory storage for testing");
+            create_storage(StorageBackend::Memory)
+                .await
+                .map_err(|e| anyhow!("Failed to create memory storage: {}", e))?
+        } else {
+            println!("Using FoundationDB storage");
+            create_storage(StorageBackend::Fdb(almanac_storage::fdb::FdbConfig {
+                cluster_file: None, // Use embedded FDB
+                namespace: self.config.fdb_namespace.clone(),
+                connection_timeout: 30,
+                max_retries: 5,
+            }))
+            .await
+            .map_err(|e| anyhow!("Failed to create FoundationDB storage: {}", e))?
+        };
 
         self.storage = Some(storage);
         println!(
-            "FoundationDB configured with namespace: {}",
+            "Storage configured with namespace: {}",
             self.config.fdb_namespace
         );
         Ok(())
@@ -838,6 +865,16 @@ mod tests {
             .find(|env| env.name == "solana")
             .unwrap();
         assert_eq!(solana_env.rpc_port, 8899);
-        assert_eq!(solana_env.nix_flake, ".#solana");
+        
+        // Check platform-specific nix flake paths
+        match manager.nix_env.os {
+            crate::utils::nix_env::OperatingSystem::MacOS => {
+                assert_eq!(solana_env.nix_flake, "./nix/solana/flake-macos.nix");
+            }
+            crate::utils::nix_env::OperatingSystem::NixOS | 
+            crate::utils::nix_env::OperatingSystem::Linux => {
+                assert_eq!(solana_env.nix_flake, "./nix/solana/flake-nixos.nix");
+            }
+        }
     }
 }

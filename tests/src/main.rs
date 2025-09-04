@@ -50,7 +50,11 @@ async fn main() -> Result<()> {
             run_integration_tests(test).await?;
         }
         Commands::E2e { test } => {
-            println!("Running E2E tests...");
+            if let Some(ref test_name) = test {
+                println!("Running E2E test: {}...", test_name);
+            } else {
+                println!("Running E2E tests...");
+            }
             run_e2e_tests(test).await?;
         }
         Commands::All => {
@@ -106,12 +110,22 @@ async fn run_integration_tests(test: Option<String>) -> Result<()> {
 }
 
 async fn run_e2e_tests(test: Option<String>) -> Result<()> {
+    use almanac_tests::e2e::multi_chain_simulation::run_multi_chain_simulation_e2e_test;
+    
     if let Some(specific_test) = test {
-        println!("Running E2E test: {}", specific_test);
+        match specific_test.as_str() {
+            "multi-chain-simulation" => {
+                println!("Running Multi-Chain Simulation E2E test...");
+                run_multi_chain_simulation_e2e_test().await?;
+            }
+            _ => println!("Unknown E2E test: {}", specific_test),
+        }
     } else {
         println!("Running all E2E tests...");
+        // Run multi-chain simulation test
+        println!("\n=== Running Multi-Chain Simulation E2E Test ===");
+        run_multi_chain_simulation_e2e_test().await?;
     }
-    // E2E tests would be run here
     Ok(())
 }
 

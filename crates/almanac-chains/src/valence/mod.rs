@@ -106,8 +106,8 @@ impl ValenceClientManager {
     }
 
     /// Get client for a specific chain
-    pub fn get_client(&self, chain_id: &str) -> Option<&Box<dyn ValenceDomainClient>> {
-        self.clients.get(chain_id)
+    pub fn get_client(&self, chain_id: &str) -> Option<&dyn ValenceDomainClient> {
+        self.clients.get(chain_id).map(|boxed| &**boxed)
     }
 
     /// Execute cross-chain operation
@@ -116,7 +116,7 @@ impl ValenceClientManager {
         request: ValenceExecutionRequest,
     ) -> Result<ValenceExecutionResult> {
         let client = self.get_client(&request.target_chain).ok_or_else(|| {
-            Error::generic(&format!("No client for chain: {}", request.target_chain))
+            Error::generic(format!("No client for chain: {}", request.target_chain))
         })?;
 
         client.execute(request).await
